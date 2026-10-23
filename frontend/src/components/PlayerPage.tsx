@@ -78,7 +78,7 @@ export default function PlayerPage({ pid, go }: { pid: string; go: (to: string) 
     <>
       <Header go={go} title={p.name} />
       <main className="page" id="main" tabIndex={-1}>
-        <button type="button" className="back-link" onClick={() => go("/")} style={{ marginBottom: 10 }}><IBack size={15} /> All players</button>
+        <button type="button" className="back-link" onClick={() => go("/")} style={{ marginBottom: 10 }}><IBack size={15} /> Your workspace</button>
         <div className="card profile-card">
           {editing ? (
             <>
@@ -117,7 +117,7 @@ export default function PlayerPage({ pid, go }: { pid: string; go: (to: string) 
         ) : (
           <>
             <div className="stat-tiles">
-              <div className="card stat"><small>Sessions analysed</small><b>{s.count}</b><span className="faint">{dateOf(s.first)} – {dateOf(s.last)}</span></div>
+              <div className="card stat"><small>Sessions analysed</small><b>{s.count}</b><span className="faint">{dateOf(s.first) === dateOf(s.last) ? dateOf(s.first) : `${dateOf(s.first)} – ${dateOf(s.last)}`}</span></div>
               <div className="card stat">
                 <small>Latest score</small><b>{s.latest_score ?? "–"}</b>
                 {s.count >= 2 && s.latest_score !== null && s.first_score !== null && (

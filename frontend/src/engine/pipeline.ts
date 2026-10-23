@@ -46,14 +46,21 @@ export type ProgressCb = (p: { stage: string; label: string; progress: number; d
 
 class Progress {
   private t0 = performance.now();
+  private paused = 0;                   // ms spent waiting for a hidden tab: not working time
+  private pausedAt: number | null = null;
   constructor(private cb?: ProgressCb) {}
+  pause(on: boolean) {
+    const t = performance.now();
+    if (on && this.pausedAt === null) this.pausedAt = t;
+    else if (!on && this.pausedAt !== null) { this.paused += t - this.pausedAt; this.pausedAt = null; }
+  }
   stage(key: string, frac = 0, detail: string | null = null) {
     if (!this.cb) return;
     let acc = 0;
     for (const [k, label, w] of STAGES) {
       if (k === key) {
         this.cb({ stage: key, label, progress: Math.min(0.999, acc + w * clip(frac, 0, 1)), detail,
-          elapsed: round((performance.now() - this.t0) / 1000, 1) });
+          elapsed: round((performance.now() - this.t0 - this.paused) / 1000, 1) });
         return;
       }
       acc += w;
@@ -225,6 +232,7 @@ export async function analyseVideo(file: Blob, options: Partial<Options>, onProg
     throw new AnalysisError((e as Error).message);
   }
   src.onHidden = (paused) => {
+    prog.pause(paused);
     if (paused && lastProgress) onProgress?.({ ...lastProgress, label: "Paused",
       detail: "Paused while Seamly is in the background — come back to this tab to continue." });
   };

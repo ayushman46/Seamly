@@ -1,5 +1,5 @@
 import type { AnalysisResult, Metric } from "../types";
-import { RATING_LABEL } from "../lib/constants";
+import { RATING_LABEL, TECHNIQUE_HELP } from "../lib/constants";
 import { fmt, unitLabel } from "../lib/format";
 
 const GROUPS: { title: string; keys: string[] }[] = [
@@ -54,7 +54,7 @@ export default function MetricsPanel({ result, selected, onSelect }: { result: A
 const withheld = (m: Metric) => m.value === null || m.value === undefined;
 
 function MetricCard({ m, sel, onClick }: { m: Metric; sel: boolean; onClick: () => void }) {
-  const extra = m.technique ? `Technique: ${m.technique}` : m.action_type ? `Action: ${m.action_type}` : m.metres ? `≈ ${m.metres.toFixed(2)} m` : null;
+  const extra = m.technique ? `Technique: ${m.technique}${TECHNIQUE_HELP[m.technique] ? ` (${TECHNIQUE_HELP[m.technique]})` : ""}` : m.action_type ? `Action: ${m.action_type}` : m.metres ? `≈ ${m.metres.toFixed(2)} m` : null;
   return (
     <div className={`metric ${sel ? "sel" : ""} ${m.reliability === "estimate" ? "estimate" : ""}`} onClick={onClick}
       role="button" tabIndex={0} aria-pressed={sel} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); onClick(); } }}>

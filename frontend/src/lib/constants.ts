@@ -73,3 +73,11 @@ export const SLOWMO_OPTIONS: { value: number; label: string }[] = [
   { value: 8, label: "Slowed 8× (240→30 fps)" },
   { value: 10, label: "Slowed 10× (240→24 fps)" },
 ];
+
+/** What each front-knee technique class (Portus et al.) means, for people who haven't met the terms. */
+export const TECHNIQUE_HELP: Record<string, string> = {
+  "Flexor": "the knee bends after landing and stays bent",
+  "Extender": "the knee straightens after landing",
+  "Flexor-extender": "the knee bends after landing, then straightens by release",
+  "Constant brace": "the knee stays firm from landing to release",
+};

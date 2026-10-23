@@ -23,7 +23,10 @@ export default function PlayerForm({ initial, submitLabel, onSave, onCancel }: {
     if (busy) return;   // a double Enter must not create two players
     const h = f.height ? Number(f.height) : null;
     if (!f.name.trim()) return setErr("Give the player a name.");
-    if (!f.age_group) return setErr("Choose the player's age group — it sets safe bowling loads in the practice plan.");
+    if (!f.age_group) {
+      document.getElementById(`${uid}-age`)?.focus();
+      return setErr("Choose the player's age group — it sets safe bowling loads in the practice plan.");
+    }
     if (h !== null && (!isFinite(h) || h < 120 || h > 230)) return setErr("Height should be between 120 and 230 cm.");
     setBusy(true);
     setErr(null);

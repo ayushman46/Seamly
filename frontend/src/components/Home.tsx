@@ -398,7 +398,7 @@ function Uploader({ go, disabled, health, players, current, onChoose, onCreate, 
           </div>
         ) : (
           <select id="who-bowling" className="input" value={current ?? ""}
-            onChange={(e) => (e.target.value === "__new" ? setCreating(true) : onChoose(e.target.value || null))}>
+            onChange={(e) => (e.target.value === "__new" ? (setCreating(true), setError(null)) : onChoose(e.target.value || null))}>
             <option value="">Just this clip (no player)</option>
             {players.map((p) => <option key={p.id} value={p.id}>{p.name} · {AGE_LABEL[p.age_group]} · {STYLE_LABEL[p.style]}</option>)}
             <option value="__new">+ New player…</option>

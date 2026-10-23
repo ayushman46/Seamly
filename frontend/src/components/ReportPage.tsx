@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import type { AnalysisMeta, AnalysisResult, EventKey, Insights } from "../types";
-import { COCO_EDGES, EVENTS, EVENT_HEX, RATING_LABEL, VIEW_LABEL } from "../lib/constants";
+import { COCO_EDGES, EVENTS, EVENT_HEX, RATING_LABEL, TECHNIQUE_HELP, VIEW_LABEL } from "../lib/constants";
 import { dateTime, fmt, unitLabel } from "../lib/format";
 import { LogoMark } from "./Brand";
 import { DISCLAIMER } from "./Landing";
@@ -106,7 +106,7 @@ export default function ReportPage({ id, go }: { id: string; go: (to: string) =>
           <tbody>
             {measured.map((m) => (
               <tr key={m.key}>
-                <td>{m.label}{m.technique ? ` (${m.technique})` : m.action_type ? ` (${m.action_type})` : ""}</td>
+                <td>{m.label}{m.technique ? ` (${m.technique}${TECHNIQUE_HELP[m.technique] ? `: ${TECHNIQUE_HELP[m.technique]}` : ""})` : m.action_type ? ` (${m.action_type})` : ""}</td>
                 <td>{fmt(m.value, m.unit === "ms" || m.unit === "cm" ? 0 : 1)}{unitLabel(m.unit)}</td>
                 <td className={`rp-${m.rating}`}>{RATING_LABEL[m.rating]}</td>
                 <td className="rp-ref">{m.norm}{m.ref ? ` — ${m.ref}` : ""}</td>
