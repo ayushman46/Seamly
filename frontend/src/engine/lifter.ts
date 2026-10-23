@@ -4,7 +4,7 @@
  * Output: H36M-17 (T,17,3) in the network's normalised camera space (x right, y down, z depth).
  */
 import * as ort from "onnxruntime-web/webgpu";
-import { createSession } from "./detector";
+import { fetchModel, sessionFrom } from "./detector";
 import { interp, uniformFilter1d, median } from "./nd";
 import type { Arr2, Arr3 } from "./nd";
 
@@ -56,12 +56,43 @@ export function normalise(seq: Arr3): Arr3 {
   return seq.map((f, t) => f.map((p) => [(p[0] - cx[t]) / hs[t], (p[1] - cy[t]) / hs[t], p[2]]));
 }
 
+/** The int8 lifter runs on WebAssembly: in a worker when possible, so the page stays responsive. */
+class WorkerSession {
+  private seq = 0;
+  private pending = new Map<number, { resolve: (v: { data: Float32Array; dims: number[] }) => void; reject: (e: Error) => void }>();
+  constructor(private w: Worker) {
+    w.onmessage = (e: MessageEvent<{ id: number; ok: boolean; data?: Float32Array; dims?: number[]; error?: string }>) => {
+      const p = this.pending.get(e.data.id);
+      if (!p) return;
+      this.pending.delete(e.data.id);
+      if (e.data.ok) p.resolve({ data: e.data.data ?? new Float32Array(), dims: e.data.dims ?? [] });
+      else p.reject(new Error(e.data.error ?? "lifter failed"));
+    };
+    w.onerror = (e) => { for (const p of this.pending.values()) p.reject(new Error(e.message || "lifter worker failed")); this.pending.clear(); };
+  }
+  call(msg: Record<string, unknown>, transfer: Transferable[] = []): Promise<{ data: Float32Array; dims: number[] }> {
+    const id = ++this.seq;
+    return new Promise((resolve, reject) => {
+      this.pending.set(id, { resolve, reject });
+      this.w.postMessage({ ...msg, id }, transfer);
+    });
+  }
+}
+
 export class Lifter {
-  private constructor(private s: ort.InferenceSession) {}
+  private constructor(private s: ort.InferenceSession | null, private w: WorkerSession | null) {}
 
   static async load(onProgress?: (f: number) => void): Promise<Lifter> {
-    // int8 MatMuls run on the WebAssembly backend
-    return new Lifter(await createSession("motionbert_lite_int8.onnx", onProgress, false));
+    const bytes = await fetchModel("motionbert_lite_int8.onnx", onProgress);
+    try {
+      const w = new WorkerSession(new Worker(new URL("./lifter.worker.ts", import.meta.url), { type: "module" }));
+      const buf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+      await w.call({ type: "load", bytes: buf }, [buf]);
+      return new Lifter(null, w);
+    } catch (e) {
+      console.warn("lifter worker unavailable; running on the main thread", e);
+      return new Lifter(await sessionFrom(bytes), null);
+    }
   }
 
   private async run(batch: Arr3[]): Promise<Arr3[]> {
@@ -69,8 +100,13 @@ export class Lifter {
     const f = new Float32Array(B * T * 17 * 3);
     let o = 0;
     for (const x of batch) for (const fr of x) for (const p of fr) { f[o++] = p[0]; f[o++] = p[1]; f[o++] = p[2]; }
-    const out = await this.s.run({ x: new ort.Tensor("float32", f, [B, T, 17, 3]) });
-    const y = out.y.data as Float32Array;
+    let y: Float32Array;
+    if (this.w) {
+      y = (await this.w.call({ type: "run", data: f, dims: [B, T, 17, 3] }, [f.buffer])).data;
+    } else {
+      const out = await this.s!.run({ x: new ort.Tensor("float32", f, [B, T, 17, 3]) });
+      y = out.y.data as Float32Array;
+    }
     const res: Arr3[] = [];
     let q = 0;
     for (let b = 0; b < B; b++) {

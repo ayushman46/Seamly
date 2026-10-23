@@ -7,9 +7,10 @@ import * as ort from "onnxruntime-web/webgpu";
 import { COCO_FLIP } from "./types";
 import { setBackend } from "./common";
 
-const ORT_VERSION = "1.20.1";
+import { ORT_WASM_PATHS } from "./ortPaths";
+
 // the 22 MB WebAssembly runtime comes from the CDN (keeps the site small); models are served by the site
-ort.env.wasm.wasmPaths = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_VERSION}/dist/`;
+ort.env.wasm.wasmPaths = ORT_WASM_PATHS;
 ort.env.wasm.numThreads = typeof crossOriginIsolated !== "undefined" && crossOriginIsolated
   ? Math.min(4, navigator.hardwareConcurrency || 2) : 1;
 
@@ -95,6 +96,13 @@ export const forceWasm = () => { wasmOnly = true; };
 function forcedWasm(): boolean {
   if (wasmOnly) return true;
   try { return localStorage.getItem("seamly:backend") === "wasm"; } catch { return false; }
+}
+
+/** A WebAssembly session from already downloaded model bytes (serialised with the other session creations). */
+export function sessionFrom(bytes: Uint8Array): Promise<ort.InferenceSession> {
+  const p = sessionChain.then(() => ort.InferenceSession.create(bytes, { executionProviders: ["wasm"], graphOptimizationLevel: "all" }));
+  sessionChain = p.catch(() => undefined);
+  return p;
 }
 
 async function createFrom(bytes: Uint8Array, name: string, preferGPU: boolean, imageSize?: number): Promise<ort.InferenceSession> {
