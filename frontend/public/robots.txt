@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://seamly-cricket.vercel.app/sitemap.xml
