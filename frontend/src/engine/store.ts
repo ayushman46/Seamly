@@ -45,20 +45,29 @@ export async function get<T>(store: StoreName, key: string): Promise<T | undefin
   return wrap((await tx(store)).get(key)) as Promise<T | undefined>;
 }
 
-export async function put(store: StoreName, key: string, value: unknown): Promise<void> {
-  try {
-    await wrap((await tx(store, "readwrite")).put(value, key));
-  } catch (e) {
-    if ((e as DOMException)?.name === "QuotaExceededError") {
-      throw new Error("Your browser storage is full. Delete some old analyses and try again.");
-    }
-    throw e;
-  }
+const QUOTA = "Your browser storage is full. Delete some old analyses and try again.";
+
+/** Run one read-write transaction over several stores; resolves only once it has committed (quota errors abort the
+ *  transaction after the individual requests have already "succeeded"). */
+export async function write(stores: StoreName[], fn: (s: Record<StoreName, IDBObjectStore>) => void): Promise<void> {
+  const d = await db();
+  await new Promise<void>((resolve, reject) => {
+    const t = d.transaction(stores, "readwrite");
+    const map = {} as Record<StoreName, IDBObjectStore>;
+    for (const n of stores) map[n] = t.objectStore(n);
+    fn(map);
+    const fail = () => reject(t.error?.name === "QuotaExceededError" ? new Error(QUOTA) : (t.error ?? new Error("Saving to browser storage failed.")));
+    t.oncomplete = () => resolve();
+    t.onerror = fail;
+    t.onabort = fail;
+  });
 }
 
-export async function del(store: StoreName, key: string): Promise<void> {
-  await wrap((await tx(store, "readwrite")).delete(key));
-}
+export const put = (store: StoreName, key: string, value: unknown): Promise<void> =>
+  write([store], (s) => { s[store].put(value, key); });
+
+export const del = (store: StoreName, key: string): Promise<void> =>
+  write([store], (s) => { s[store].delete(key); });
 
 export async function all<T>(store: StoreName): Promise<T[]> {
   return wrap((await tx(store)).getAll()) as Promise<T[]>;
@@ -69,28 +78,21 @@ export async function keysWithPrefix(store: StoreName, prefix: string): Promise<
   return (await wrap((await tx(store)).getAllKeys(range))) as string[];
 }
 
-/** Write many blobs in one transaction. */
-export async function putMany(store: StoreName, entries: [string, unknown][]): Promise<void> {
-  const d = await db();
-  await new Promise<void>((resolve, reject) => {
-    const t = d.transaction(store, "readwrite");
-    const s = t.objectStore(store);
-    for (const [k, v] of entries) s.put(v, k);
-    t.oncomplete = () => resolve();
-    t.onerror = () => reject(t.error?.name === "QuotaExceededError"
-      ? new Error("Your browser storage is full. Delete some old analyses and try again.") : t.error);
-    t.onabort = () => reject(t.error ?? new Error("Saving was aborted."));
-  });
-}
+/** Write many entries in one transaction. */
+export const putMany = (store: StoreName, entries: [string, unknown][]): Promise<void> =>
+  write([store], (s) => { for (const [k, v] of entries) s[store].put(v, k); });
 
-export async function delPrefix(store: StoreName, prefix: string): Promise<void> {
-  const d = await db();
-  await new Promise<void>((resolve, reject) => {
-    const t = d.transaction(store, "readwrite");
-    t.objectStore(store).delete(IDBKeyRange.bound(prefix, prefix + "￿"));
-    t.oncomplete = () => resolve();
-    t.onerror = () => reject(t.error);
-  });
+export const delPrefix = (store: StoreName, prefix: string): Promise<void> =>
+  write([store], (s) => { s[store].delete(IDBKeyRange.bound(prefix, prefix + "\uffff")); });
+
+/** Free space the browser will still give us (bytes), if it says. */
+export async function freeSpace(): Promise<number | null> {
+  try {
+    const e = await navigator.storage?.estimate?.();
+    return e && e.quota !== undefined && e.usage !== undefined ? e.quota - e.usage : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Ask the browser not to evict our data under storage pressure (best effort). */

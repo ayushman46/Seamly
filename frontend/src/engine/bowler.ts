@@ -168,6 +168,9 @@ export function scoreTracks(tracks: Map<number, Detection[]>, shot: number, fps:
     // (Waist-up close-ups of celebrating players also wave their arms, but never show the legs.)
     const legs = sweep ? legsVisibility(dets, sweep, fps) : 0.0;
     score *= 0.15 + 0.85 * legs;
+    // a batter's swing sweeps the arms just as fast, but with both hands on the bat: wrists together through
+    // ~all of it (a club batter: 100%; a bowler filmed from behind, arms overlapping in the image: ~75%)
+    if (sweep && twoHanded(dets, sweep) > 0.9) score *= 0.3;
     out.push({ track: tid, shot, n: dets.length, first: dets[0].frame, last: dets[dets.length - 1].frame,
       median_height: medH, sweep, overhead_frames: over, score, legs_visibility: legs });
   }
@@ -186,6 +189,18 @@ export function legsVisibility(dets: Detection[], sweep: ArmSweep, fps: number):
     ok += ankles > 0.35 && knees > 0.35 ? 1 : 0;
   }
   return ok / window.length;
+}
+
+/** Share of the arm sweep with both wrists together (< 12% of height apart): both hands on a bat. */
+export function twoHanded(dets: Detection[], sweep: ArmSweep): number {
+  let n = 0, together = 0;
+  for (const d of dets) {
+    if (d.frame < sweep.start_frame || d.frame > sweep.end_frame || d.kcs[L_WR] <= 0.3 || d.kcs[R_WR] <= 0.3) continue;
+    n++;
+    const h = Math.max(d.box[3] - d.box[1], 1.0);
+    if (Math.hypot(d.kps[L_WR][0] - d.kps[R_WR][0], d.kps[L_WR][1] - d.kps[R_WR][1]) < 0.12 * h) together++;
+  }
+  return n >= 3 ? together / n : 0.0;
 }
 
 export function isDelivery(ts: TrackScore): boolean {

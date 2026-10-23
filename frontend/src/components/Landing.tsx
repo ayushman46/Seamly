@@ -338,7 +338,7 @@ export function FilmingGuide() {
     { icon: <IPlay size={16} />, title: "Slow motion if you can", text: "120–240 fps makes release and contact timings far more precise than normal 30 fps video. Tell Seamly the clip speed when you add it." },
     { icon: <IFrame size={18} />, title: "Whole action in frame", text: "From the last strides of the run-up to the follow-through, feet visible, with the bowler at least a third of the frame height." },
     { icon: <ITripod size={18} />, title: "Keep the phone still", text: "Use a tripod or prop the phone against something. Don't pan to follow the bowler and don't use digital zoom." },
-    { icon: <ISun size={18} />, title: "Good light, one ball", text: "Bright light means less motion blur. One delivery per clip works best — trim long videos to under two minutes." },
+    { icon: <ISun size={18} />, title: "Good light, one ball", text: `Bright light means less motion blur. One delivery per clip works best — trim long videos to under ${LOCAL ? "a minute" : "two minutes"}.` },
   ];
   return (
     <section className="section alt" id="filming" aria-labelledby="filming-title">

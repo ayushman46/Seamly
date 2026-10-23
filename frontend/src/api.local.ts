@@ -8,8 +8,12 @@ import * as db from "./engine/store";
 import { AnalysisError, backend, optionsFrom, type Options } from "./engine/common";
 import type { Overrides, StageA } from "./engine/pipeline";
 
-// the pipeline (and ONNX Runtime with it) is only downloaded when an analysis or an edit runs
-const engine = () => import("./engine/pipeline");
+// the pipeline (and ONNX Runtime with it) is only downloaded when an analysis or an edit runs. After a new
+// release the old chunk no longer exists on the server, so a page opened before it can't load it: say so.
+const engine = () => import("./engine/pipeline").catch((e) => {
+  const stale = /dynamically imported module|Importing a module script failed|error loading dynamically/i.test(String(e?.message ?? e));
+  throw stale ? new AnalysisError("Seamly was updated while this page was open. Reload the page, then press Retry.") : e;
+});
 import { insights as buildInsights } from "./engine/insights";
 import { frameObj } from "./engine/body";
 import { playerProgress, summarise } from "./engine/progress";
@@ -21,10 +25,31 @@ type Meta = AnalysisMeta & {
   input_type?: string;
   started?: number;
   finished?: number;
+  gen?: string;     // storage generation of the frames + mesh ("" for imported samples); replaced atomically on re-analysis
+  owner?: string;   // tab running/queueing the analysis
 };
 type StoredPlayer = Omit<Player, "analyses" | "latest_score" | "last_analysis">;
 
 const now = () => Date.now() / 1000;
+
+// Each tab holds a Web Lock for as long as it is open, so another tab can tell an analysis it is running apart from
+// one that was interrupted by a reload.
+const TAB = db.newId();
+const locks = typeof navigator !== "undefined" ? (navigator as Navigator & { locks?: LockManager }).locks : undefined;
+if (locks) void locks.request(`seamly-tab-${TAB}`, () => new Promise<void>(() => undefined)).catch(() => undefined);
+
+async function liveTabs(): Promise<Set<string>> {
+  try {
+    const q = await locks?.query();
+    return new Set((q?.held ?? []).map((l) => l.name ?? ""));
+  } catch {
+    return new Set();
+  }
+}
+
+// storage keys: frames and mesh live under the analysis' generation
+const fkey = (id: string, gen: string | undefined, f: number) => `${id}/${gen ?? ""}f/${f}`;
+const mkey = (id: string, gen: string | undefined, name: string) => `${id}/${gen ?? ""}${name}`;
 
 // ---------------- metadata cache ----------------
 const metas = new Map<string, Meta>();
@@ -35,9 +60,12 @@ function loadAll(): Promise<void> {
     loaded = (async () => {
       void db.persist();
       for (const m of await db.all<Meta>("meta")) metas.set(m.id, m);
-      // an analysis can't survive a page reload (it runs in the page): put interrupted ones back in a usable state
+      // an analysis can't survive a page reload (it runs in the page): put interrupted ones back in a usable state,
+      // unless the tab that runs it is still open
+      const live = await liveTabs();
       for (const m of metas.values()) {
         if (m.status !== "running" && m.status !== "queued") continue;
+        if (m.owner && m.owner !== TAB && live.has(`seamly-tab-${m.owner}`)) continue;
         if (m.previous) {
           await writeMeta(m.id, { status: "done", progress: 1, stage: "done", stage_label: "Complete", options: m.previous.options,
             overrides: m.previous.overrides, previous: null, notice: "The re-analysis was interrupted (the page was closed or reloaded), so the previous result is kept." });
@@ -51,11 +79,23 @@ function loadAll(): Promise<void> {
   return loaded;
 }
 
-async function writeMeta(id: string, fields: Partial<Meta>, persist = true): Promise<Meta> {
-  const m = { ...(metas.get(id) as Meta), ...fields, updated: now() } as Meta;
+/** Update an analysis' metadata (a no-op once it has been deleted). */
+async function writeMeta(id: string, fields: Partial<Meta>, persist = true): Promise<Meta | undefined> {
+  const cur = metas.get(id);
+  if (!cur) return undefined;
+  const m = { ...cur, ...fields, updated: now() } as Meta;
   metas.set(id, m);
   if (persist) await db.put("meta", id, m);
   return m;
+}
+
+/** Re-read an analysis another tab is working on (this tab's copy doesn't see its progress). */
+async function refresh(id: string): Promise<void> {
+  const m = metas.get(id);
+  if (m && (m.status === "running" || m.status === "queued") && m.owner !== TAB) {
+    const fresh = await db.get<Meta>("meta", id);
+    if (fresh) metas.set(id, fresh); else metas.delete(id);
+  }
 }
 
 const PUBLIC = ["id", "name", "created", "updated", "status", "progress", "stage", "stage_label", "error", "score", "grade", "view", "arm",
@@ -100,22 +140,23 @@ async function loadThumb(m: Meta) {
   if (m.status !== "done" || m.thumb_frame === null || m.thumb_frame === undefined) return;
   const key = `${m.id}/f/${m.thumb_frame}`;
   if (urls.has(key)) return;
-  const b = await db.get<Blob>("blob", key);
+  const b = await db.get<Blob>("blob", fkey(m.id, m.gen, m.thumb_frame));
   if (b) setUrl(key, b);
 }
 
 /** Make every file of a finished analysis addressable by a synchronous URL. */
 async function loadFiles(id: string, result: AnalysisResult) {
+  const gen = metas.get(id)?.gen;
   const need: Promise<void>[] = [];
   for (let f = result.frames.start; f < result.frames.end; f++) {
     const key = `${id}/f/${f}`;
     if (urls.has(key)) continue;
-    need.push(db.get<Blob>("blob", key).then((b) => { if (b) setUrl(key, b); }));
+    need.push(db.get<Blob>("blob", fkey(id, gen, f)).then((b) => { if (b) setUrl(key, b); }));
   }
   for (const name of ["mesh_rest.bin", "pose.bin", "input"]) {
     const key = `${id}/${name}`;
     if (urls.has(key)) continue;
-    need.push(db.get<Blob>("blob", key).then((b) => { if (b) setUrl(key, b); }));
+    need.push(db.get<Blob>("blob", name === "input" ? `${id}/input` : mkey(id, gen, name)).then((b) => { if (b) setUrl(key, b); }));
   }
   await Promise.all(need);
   setUrl(`${id}/export.json`, new Blob([JSON.stringify(result)], { type: "application/json" }));
@@ -151,7 +192,8 @@ async function loadResult(id: string): Promise<AnalysisResult | undefined> {
   const r = await db.get<AnalysisResult>("result", id);
   if (r) {
     results.set(id, r);
-    const [rest, pose] = await Promise.all([db.get<Blob>("blob", `${id}/mesh_rest.bin`), db.get<Blob>("blob", `${id}/pose.bin`)]);
+    const gen = metas.get(id)?.gen;
+    const [rest, pose] = await Promise.all([db.get<Blob>("blob", mkey(id, gen, "mesh_rest.bin")), db.get<Blob>("blob", mkey(id, gen, "pose.bin"))]);
     if (rest && pose) meshBufs.set(id, { rest: await rest.arrayBuffer(), pose: await pose.arrayBuffer() });
   }
   return r;
@@ -171,6 +213,8 @@ async function pump() {
   running = queue.shift()!;
   try {
     await runJob(running);
+  } catch (e) {
+    console.error("analysis job crashed", e);
   } finally {
     running = null;
     void pump();
@@ -189,34 +233,67 @@ async function runJob(id: string) {
   const prev = meta.previous ?? null;
   const t0 = performance.now();
   let lastWrite = 0;
-  await writeMeta(id, { status: "running", progress: 0, stage: "probe", stage_label: "Loading models & reading video", started: now(), notice: null });
+  // the new frames and mesh go under a fresh generation; the previous result stays intact until the commit below
+  const gen = `g${Date.now().toString(36)}/`;
+  const oldGen = meta.gen ?? "";
   try {
+    await writeMeta(id, { status: "running", progress: 0, stage: "probe", stage_label: "Loading models & reading video", started: now(), notice: null, owner: TAB });
     const file = await db.get<Blob>("blob", `${id}/input`);
     if (!file) throw new AnalysisError("The original video is no longer stored in this browser. Analyse it again from the start.");
-    const { analyseVideo, stageB } = await engine();
-    const { stageA, frames } = await analyseVideo(file, (meta.options ?? {}) as Partial<Options>, (p) => {
-      const t = performance.now();
-      const persist = t - lastWrite > 1500;
-      if (persist) lastWrite = t;
-      void writeMeta(id, { status: "running", progress: p.progress, stage: p.stage, stage_label: p.detail || p.label, elapsed: p.elapsed }, persist);
-    });
-    const { result, mesh } = await stageB(stageA, (meta.overrides ?? {}) as Overrides);
+    const P = await engine();
+    const overrides = (meta.overrides ?? {}) as Overrides;
+    const run = async () => {
+      // display frames are written in batches while the clip is read (240 fps windows are hundreds of frames)
+      let batch: [string, unknown][] = [];
+      const writes: Promise<void>[] = [];
+      const onFrame = (f: number, b: Blob) => {
+        batch.push([fkey(id, gen, f), b]);
+        if (batch.length >= 24) { writes.push(db.putMany("blob", batch)); batch = []; }
+      };
+      const out = await P.analyseVideo(file, (meta.options ?? {}) as Partial<Options>, (p) => {
+        const t = performance.now();
+        const persist = t - lastWrite > 1500;
+        if (persist) lastWrite = t;
+        void writeMeta(id, { status: "running", progress: p.progress, stage: p.stage, stage_label: p.detail || p.label, elapsed: p.elapsed }, persist);
+      }, undefined, onFrame);
+      if (batch.length) writes.push(db.putMany("blob", batch));
+      await Promise.all(writes);
+      return out;
+    };
+    let A;
+    try {
+      A = await run();
+    } catch (e) {
+      // a GPU backend can fail at run time (device lost, driver limits): retry once on WebAssembly
+      if (e instanceof AnalysisError || backend() !== "webgpu") throw e;
+      console.warn("WebGPU analysis failed; retrying on WebAssembly", e);
+      P.useWasmOnly();
+      A = await run();
+    }
+    const { result, mesh } = await P.stageB(A.stageA, overrides);
     result.timing_s = Math.round((performance.now() - t0) / 100) / 10;
-    // replace the stored files only now, so a failed re-analysis leaves the previous result intact
-    await db.delPrefix("blob", `${id}/f/`);
-    await db.putMany("blob", [...[...frames].map(([f, b]) => [`${id}/f/${f}`, b] as [string, unknown]),
-      [`${id}/mesh_rest.bin`, new Blob([mesh.rest])], [`${id}/pose.bin`, new Blob([mesh.pose])]]);
-    await db.put("stagea", id, stageA);
-    await db.put("result", id, result);
+    await db.putMany("blob", [[mkey(id, gen, "mesh_rest.bin"), new Blob([mesh.rest])], [mkey(id, gen, "pose.bin"), new Blob([mesh.pose])]]);
+    const c = result.coaching;
+    const cur = metas.get(id);
+    if (!cur) throw new AnalysisError("This analysis was deleted.");
+    const done = { ...cur, status: "done", progress: 1, stage: "done", stage_label: "Complete", finished: now(), score: c.score, grade: c.grade,
+      view: result.view.view, arm: result.bowling_arm.arm, thumb_frame: result.events.br.frame, timing_s: result.timing_s,
+      summary: summarise(result), error: null, previous: null, suggest: null, elapsed: result.timing_s, gen, overrides, updated: now() } as Meta;
+    // one transaction: stage A, result and the metadata pointing at the new generation commit together
+    await db.write(["stagea", "result", "meta"], (st) => { st.stagea.put(A.stageA, id); st.result.put(result, id); st.meta.put(done, id); });
+    metas.set(id, done);
     dropUrls(id);
+    for (const k of [...objCache.keys()]) if (k.startsWith(`${id}/`)) objCache.delete(k);
     results.set(id, result);
     meshBufs.set(id, mesh);
-    const c = result.coaching;
-    await writeMeta(id, { status: "done", progress: 1, stage: "done", stage_label: "Complete", finished: now(), score: c.score, grade: c.grade,
-      view: result.view.view, arm: result.bowling_arm.arm, thumb_frame: result.events.br.frame, timing_s: result.timing_s,
-      summary: summarise(result), error: null, previous: null, suggest: null, elapsed: result.timing_s });
+    if (oldGen !== gen) {
+      void db.delPrefix("blob", `${id}/${oldGen}f/`).catch(() => undefined);
+      void db.del("blob", mkey(id, oldGen, "mesh_rest.bin")).catch(() => undefined);
+      void db.del("blob", mkey(id, oldGen, "pose.bin")).catch(() => undefined);
+    }
   } catch (e) {
     console.error("analysis failed", e);
+    void db.delPrefix("blob", `${id}/${gen}`).catch(() => undefined);
     const err = e as Error | undefined;
     const known = e instanceof AnalysisError;
     const msg = known ? (e as AnalysisError).message
@@ -239,8 +316,19 @@ async function applyEdit(id: string, overrides: Overrides, latest?: EventKey[]) 
   const { stageB } = await engine();
   const { result, mesh } = await stageB(A, latest?.length ? { ...overrides, latest_events: latest } : overrides);
   result.timing_s = meta.timing_s;
-  await db.put("result", id, result);
-  await db.putMany("blob", [[`${id}/mesh_rest.bin`, new Blob([mesh.rest])], [`${id}/pose.bin`, new Blob([mesh.pose])]]);
+  const c = result.coaching;
+  const cur = metas.get(id);
+  if (!cur) throw new Error("This analysis was deleted.");
+  const m = { ...cur, overrides, score: c.score, grade: c.grade, notice: null, summary: summarise(result), arm: result.bowling_arm.arm,
+    view: result.view.view, thumb_frame: result.events.br.frame, updated: now() } as Meta;
+  // result, mesh and metadata commit together, so they can never disagree
+  await db.write(["result", "blob", "meta"], (st) => {
+    st.result.put(result, id);
+    st.blob.put(new Blob([mesh.rest]), mkey(id, cur.gen, "mesh_rest.bin"));
+    st.blob.put(new Blob([mesh.pose]), mkey(id, cur.gen, "pose.bin"));
+    st.meta.put(m, id);
+  });
+  metas.set(id, m);
   results.set(id, result);
   meshBufs.set(id, mesh);
   for (const k of [...objCache.keys()]) if (k.startsWith(`${id}/`)) objCache.delete(k);
@@ -248,9 +336,6 @@ async function applyEdit(id: string, overrides: Overrides, latest?: EventKey[]) 
   setUrl(`${id}/pose.bin`, new Blob([mesh.pose]));
   setUrl(`${id}/export.json`, new Blob([JSON.stringify(result)], { type: "application/json" }));
   setUrl(`${id}/export.csv`, new Blob([seriesCsv(result)], { type: "text/csv" }));
-  const c = result.coaching;
-  const m = await writeMeta(id, { overrides, score: c.score, grade: c.grade, notice: null, summary: summarise(result), arm: result.bowling_arm.arm,
-    view: result.view.view, thumb_frame: result.events.br.frame });
   return { meta: pub(m), result: result as AnalysisResult };
 }
 
@@ -297,7 +382,7 @@ function newMeta(id: string, name: string, size: number, opts: Partial<Options>,
   return { id, name: name.slice(0, 80), created: t, updated: t, status: "queued", progress: 0, stage: null, stage_label: null, error: null,
     score: null, grade: null, view: null, arm: null, thumb_frame: null, options: optionsFrom(opts) as unknown as AnalysisMeta["options"],
     timing_s: null, elapsed: null, size_mb: Math.round((size / 1e6) * 100) / 100, notice: null, suggest: null, player_id: playerId,
-    input_type: type } as Meta;
+    input_type: type, owner: TAB } as Meta;
 }
 
 const ALLOWED = [".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi"];
@@ -336,10 +421,11 @@ async function importSample(which: SampleName): Promise<string> {
   const t = now();
   const m = { ...newMeta(s.id, s.name, video?.size ?? 0, (bundle.meta.options ?? {}) as Partial<Options>, null, "video/mp4"),
     ...bundle.meta, id: s.id, name: s.name, created: t, updated: t, status: "done", progress: 1, stage: "done", stage_label: "Complete",
-    error: null, notice: null, player_id: null } as Meta;
+    error: null, notice: null, player_id: null, gen: "" } as Meta;
   metas.set(s.id, m);
   await db.put("meta", s.id, m);
   results.delete(s.id); meshBufs.delete(s.id); dropUrls(s.id);
+  for (const k of [...objCache.keys()]) if (k.startsWith(`${s.id}/`)) objCache.delete(k);
   return s.id;
 }
 
@@ -353,6 +439,7 @@ export const api = {
   },
   get: async (id: string): Promise<{ meta: AnalysisMeta; result?: AnalysisResult }> => {
     await loadAll();
+    await refresh(id);
     const m = requireMeta(id);
     if (m.status === "done") {
       const r = await loadResult(id);
@@ -363,17 +450,21 @@ export const api = {
     }
     return { meta: pub(m) };
   },
-  status: async (id: string) => { await loadAll(); return pub(requireMeta(id)); },
-  remove: async (id: string) => {
+  status: async (id: string) => { await loadAll(); await refresh(id); return pub(requireMeta(id)); },
+  remove: (id: string) => serial(id, async () => {
     await loadAll();
+    await refresh(id);
     const m = requireMeta(id);
     if (m.status === "running") throw new Error("Can't delete while the analysis is running");
     const qi = queue.indexOf(id);
     if (qi >= 0) queue.splice(qi, 1);
-    await Promise.all([db.del("meta", id), db.del("result", id), db.del("stagea", id), db.delPrefix("blob", `${id}/`)]);
     metas.delete(id); results.delete(id); meshBufs.delete(id); dropUrls(id);
+    await db.write(["meta", "result", "stagea", "blob"], (st) => {
+      st.meta.delete(id); st.result.delete(id); st.stagea.delete(id);
+      st.blob.delete(IDBKeyRange.bound(`${id}/`, `${id}/\uffff`));
+    });
     return { deleted: id };
-  },
+  }),
   recompute: (id: string, body: { events?: Partial<Record<EventKey, number | null>>; bowling_arm?: string; height_m?: number; view?: string; slowmo_factor?: number; gender?: number }) =>
     serial(id, async () => {
       await loadAll();
@@ -404,8 +495,9 @@ export const api = {
     const keep: Overrides = eventsOnly ? Object.fromEntries(Object.entries(meta.overrides ?? {}).filter(([k]) => k !== "events")) : {};
     return applyEdit(id, keep);
   }),
-  rerun: async (id: string, body: { candidate?: number; bowling_arm?: string; height_m?: number; slowmo_factor?: number }) => {
+  rerun: (id: string, body: { candidate?: number; bowling_arm?: string; height_m?: number; slowmo_factor?: number }) => serial(id, async () => {
     await loadAll();
+    await refresh(id);
     const meta = requireMeta(id);
     if (meta.status === "queued" || meta.status === "running") throw new Error("Analysis is already running");
     // corrections made in Settings (height, bowling arm) carry over; event markers belong to the old window
@@ -419,10 +511,10 @@ export const api = {
     if ("slowmo_factor" in req && req.slowmo_factor !== oldOpts.slowmo_factor && !("candidate" in req)) opts.candidate = null;
     const keep: Overrides = prev.gender !== undefined ? { gender: prev.gender } : {};
     const previous = meta.status === "done" ? { options: oldOpts, overrides: prev } : null;
-    await writeMeta(id, { options: optionsFrom(opts) as unknown as AnalysisMeta["options"], overrides: keep, error: null, previous, status: "queued", progress: 0, stage: null, suggest: null });
+    await writeMeta(id, { options: optionsFrom(opts) as unknown as AnalysisMeta["options"], overrides: keep, error: null, previous, status: "queued", progress: 0, stage: null, suggest: null, owner: TAB });
     submit(id);
     return { id };
-  },
+  }),
   /** See a sample analysis right away (precomputed). */
   demo: async (which: SampleName = "club") => {
     await loadAll();
@@ -452,7 +544,7 @@ export const api = {
       if (body.player_id) await requirePlayer(body.player_id).catch(() => { throw new Error("Unknown player."); });
       f.player_id = body.player_id ?? null;
     }
-    return pub(Object.keys(f).length ? await writeMeta(id, f) : requireMeta(id));
+    return pub((Object.keys(f).length ? await writeMeta(id, f) : undefined) ?? requireMeta(id));
   },
   insights: async (id: string): Promise<Insights> => {
     await loadAll();
@@ -502,6 +594,11 @@ export const api = {
     if (!(opts.slowmo_factor >= 1 && opts.slowmo_factor <= 20)) throw new Error("Clip speed must be between 1x and 20x slow motion.");
     if (file.size === 0) throw new Error("The chosen file is empty.");
     if (file.size > 600e6) throw new Error("This file is larger than 600 MB. Trim the clip around the delivery first.");
+    // the clip, its display frames and the 3D data are kept in this browser
+    const free = await db.freeSpace();
+    if (free !== null && free < file.size + 150e6) {
+      throw new Error("Your browser is short of storage space for this clip. Delete some old analyses, or trim the clip around the delivery.");
+    }
     let playerId: string | null = null;
     if (opts.player_id) { await requirePlayer(opts.player_id).catch(() => { throw new Error("Unknown player."); }); playerId = opts.player_id; }
     const id = db.newId();

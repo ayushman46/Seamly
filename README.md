@@ -1,6 +1,6 @@
 # Seamly: your pocket bowling coach
 
-**Live app:** _deployment link below once published_
+**Live app: [seamly-cricket.vercel.app](https://seamly-cricket.vercel.app)**
 
 Film one delivery on your phone. Seamly finds the bowler and marks the key moments on your own video: back-foot contact, front-foot contact, release and follow-through. It rebuilds the action in 3D, measures your angles against published research, and gives you a plain-English summary, a back-health check and a two-week practice plan.
 
@@ -40,10 +40,11 @@ Film one delivery on your phone. Seamly finds the bowler and marks the key momen
 ```
 video ─► exact frame times from the container (MP4/MOV via mp4box), frame-accurate seeking
       ─► YOLO11n-pose on every frame (ONNX Runtime Web: WebGPU, or WebAssembly as a fallback)
-      ─► multi-person tracker: camera-motion compensation (block-matched background, people and static
+      ─► multi-person tracker: camera-motion compensation (coarse-to-fine block matching on the background, people and static
          overlays masked), constant-velocity prediction, colour appearance, pose similarity, Hungarian
          assignment, same-person duplicate boxes merged
       ─► bowler selection: the track whose arm makes a fast ~270-360° sweep with legs in view
+         (a batter's two-handed swing is discounted)
       ─► YOLO11s-pose on bowler crops with flip test-time augmentation
       ─► 2D clean-up: Hampel outliers, left/right swap repair (whole arm, then forearm), gap filling, Butterworth
       ─► MotionBERT-Lite 3D lifting (int8 ONNX), resampled to its 50 fps training rate
@@ -83,7 +84,14 @@ pnpm build               # static site in frontend/dist (deploy anywhere: Vercel
 
 ### Deploy
 
-The site is static. On Vercel, set the root directory to `frontend` (framework: Vite), or run `vercel deploy frontend/dist --prod` after a build. `frontend/public/vercel.json` sets the cache and security headers. For a sub-path such as GitHub Pages, build with `VITE_BASE=/<repo>/ pnpm build`.
+The site is static. The live deployment is the Vercel project `seamly`, at https://seamly-cricket.vercel.app. Build with the site URL for social previews, then deploy the output:
+
+```bash
+cd frontend && VITE_SITE_URL=https://seamly-cricket.vercel.app/ pnpm build
+vercel deploy dist --prod --project seamly
+```
+
+Alternatively, connect the repository in Vercel with root directory `frontend` (framework: Vite). `frontend/public/vercel.json` sets the cache and security headers. For a sub-path such as GitHub Pages, build with `VITE_BASE=/<repo>/ pnpm build`.
 
 ## Self-hosted server (optional, more accurate 3D)
 

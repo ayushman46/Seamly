@@ -8,7 +8,7 @@
  */
 import type { Arr2, Arr3 } from "./nd";
 import { clip } from "./nd";
-import { PoseModels, type RefinedPose } from "./detector";
+import { PoseModels, forceWasm, type RefinedPose } from "./detector";
 import { Lifter, cocoToH36m } from "./lifter";
 import { FrameSource, repeatedFraction, segmentShots, signature, sigDistance, videoInfoDict,
   type Signature, type VideoInfo } from "./video";
@@ -182,10 +182,35 @@ function select(info: VideoInfo, perShot: Map<number, Detection[]>, opts: Option
   return [uniq, uniq[idx]];
 }
 
+/** Refuse clips with too few distinct frames per second (frame-repeat slow motion or frame-rate conversion). */
+function checkRepeats(info: VideoInfo, f0: number, f1: number, realFps: number, opts: Options) {
+  const rep = repeatedFraction(info, f0, f1);
+  const distinct = realFps * (1 - rep);
+  if (distinct < MIN_FPS - 0.5) {
+    const k = 1 / Math.max(1e-3, 1 - rep);
+    const factor = SLOWMO_CHOICES.reduce((a, c) => (Math.abs(c - k) < Math.abs(a - k) ? c : a), SLOWMO_CHOICES[0]);
+    if (k >= 1.5 && factor > opts.slowmo_factor) {
+      throw new AnalysisError(`Most frames in this clip are repeats (each shown ~${k.toFixed(1)}x), leaving only `
+        + `~${distinct.toFixed(0)} distinct frames per second. If the clip was slowed down, analyse it again with the clip speed set to ${factor}x; otherwise film at 30 fps or more.`,
+        { slowmo_factor: factor });
+    }
+    throw new AnalysisError(`This clip has only ~${distinct.toFixed(0)} distinct frames per second (many frames are repeats). `
+      + `A delivery stride lasts about 0.2 s, so at least ${MIN_FPS} fps is needed; film at 30 fps or more.`);
+  }
+}
+
 export interface StageAOut { stageA: StageA; frames: Map<number, Blob> }
 
 /** Stage A on a video file. */
-export async function analyseVideo(file: Blob, options: Partial<Options>, onProgress?: ProgressCb, abort?: AbortSignal): Promise<StageAOut> {
+/** Stop using WebGPU (it failed at run time): the next analysis reloads the models on WebAssembly. */
+export function useWasmOnly() {
+  forceWasm();
+  modelsP = null;
+}
+
+/** onFrame: receives each display frame as it is encoded (otherwise they are returned in `frames`). */
+export async function analyseVideo(file: Blob, options: Partial<Options>, onProgress?: ProgressCb, abort?: AbortSignal,
+  onFrame?: (frame: number, jpeg: Blob) => void): Promise<StageAOut> {
   const opts = optionsFrom(options);
   const prog = new Progress(onProgress);
   const t0 = performance.now();
@@ -199,13 +224,14 @@ export async function analyseVideo(file: Blob, options: Partial<Options>, onProg
     throw new AnalysisError((e as Error).message);
   }
   try {
-    return await stageA(src, opts, models, prog, t0, abort);
+    return await stageA(src, opts, models, prog, t0, abort, onFrame);
   } finally {
     src.close();
   }
 }
 
-async function stageA(src: FrameSource, opts: Options, models: Models, prog: Progress, t0: number, abort?: AbortSignal): Promise<StageAOut> {
+async function stageA(src: FrameSource, opts: Options, models: Models, prog: Progress, t0: number, abort?: AbortSignal,
+  onFrame?: (frame: number, jpeg: Blob) => void): Promise<StageAOut> {
   const info = src.info;
   if (info.frameCount < 12) throw new AnalysisError("Video is too short to analyse.");
   const realFps = info.fps * opts.slowmo_factor;
@@ -228,6 +254,8 @@ async function stageA(src: FrameSource, opts: Options, models: Models, prog: Pro
     hd.push(h); pd.push(p);
   }
   info.shots = segmentShots(hd, pd, scanFrames, n, info.fps);
+  // a stride-1 scan has seen consecutive frames: the repeated-frame check can run before the expensive 2D pass
+  if (scanStride === 1) scanFrames.slice(1).forEach((f, i) => info.frameDiff.set(f, pd[i]));
   const usable = info.shots.map((s, i) => [i, s] as const).filter(([, s]) => s.end - s.start >= Math.max(10, Math.trunc(0.4 * info.fps)));
   const perShot = new Map<number, Detection[]>();
   const motions = new Map<number, number[][]>();
@@ -282,6 +310,8 @@ async function stageA(src: FrameSource, opts: Options, models: Models, prog: Pro
     }
   }
 
+  if (scanStride === 1) checkRepeats(info, f0, f1, realFps, opts);
+
   // ---------------- top-down 2D on crops + display frames ----------------
   const { width: W, height: H } = info;
   const ds = Math.min(1, FRAME_JPEG_MAX_SIDE / Math.max(W, H));
@@ -301,24 +331,13 @@ async function stageA(src: FrameSource, opts: Options, models: Models, prog: Pro
     if (prevSig) info.frameDiff.set(fr, sigDistance(prevSig, sg)[1]);
     prevSig = sg;
     dctx.drawImage(v, 0, 0, disp.width, disp.height);
-    frames.set(fr, jpeg(disp, FRAME_JPEG_QUALITY));
+    const jp = jpeg(disp, FRAME_JPEG_QUALITY);
+    if (onFrame) onFrame(fr, jp); else frames.set(fr, jp);
     const b = boxes.get(fr);
     refined.push(b ? await models.pose.refineCrop(v, W, H, b, fr) : null);
     prog.stage("pose2d", (fr - f0 + 1) / nWin);
   }
-  const rep = repeatedFraction(info, f0, f1);
-  const distinct = realFps * (1 - rep);
-  if (distinct < MIN_FPS - 0.5) {
-    const k = 1 / Math.max(1e-3, 1 - rep);
-    const factor = SLOWMO_CHOICES.reduce((a, c) => (Math.abs(c - k) < Math.abs(a - k) ? c : a), SLOWMO_CHOICES[0]);
-    if (k >= 1.5 && factor > opts.slowmo_factor) {
-      throw new AnalysisError(`Most frames in this clip are repeats (each shown ~${k.toFixed(1)}x), leaving only `
-        + `~${distinct.toFixed(0)} distinct frames per second. If the clip was slowed down, analyse it again with the clip speed set to ${factor}x; otherwise film at 30 fps or more.`,
-        { slowmo_factor: factor });
-    }
-    throw new AnalysisError(`This clip has only ~${distinct.toFixed(0)} distinct frames per second (many frames are repeats). `
-      + `A delivery stride lasts about 0.2 s, so at least ${MIN_FPS} fps is needed; film at 30 fps or more.`);
-  }
+  checkRepeats(info, f0, f1, realFps, opts);
   const refinedList = refined.filter((r): r is RefinedPose => r !== null);
   let [kp, kc] = assemble(refinedList, detByFrame, f0, f1);
   const fps = realFps;   // filters and the lifter work in real time
@@ -357,7 +376,7 @@ async function stageA(src: FrameSource, opts: Options, models: Models, prog: Pro
         peak_speed_dps: chosen.sweep!.peak_speed },
       candidates: candidates.map(trackScoreDict), pose3d: "motionbert",
       quality: { lr_swaps_fixed: nSwaps, mean_kp_conf: round(meanKc, 3), frames_refined: refinedList.length, frames_total: f1 - f0,
-        repeated_frames: round(rep, 3) },
+        repeated_frames: round(repeatedFraction(info, f0, f1), 3) },
       timing_stage_a_s: round((performance.now() - t0) / 1000, 1),
     },
   };

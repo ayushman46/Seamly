@@ -11,6 +11,9 @@ const dropOrtWasm: Plugin = {
   },
 };
 
+// VITE_SITE_URL: absolute site URL (trailing slash) for social preview images in index.html; relative by default
+process.env.VITE_SITE_URL ??= "/";
+
 // VITE_BASE: sub-path the site is served from (e.g. "/Seamly/" on GitHub Pages); "/" on Vercel.
 export default defineConfig({
   base: process.env.VITE_BASE || "/",

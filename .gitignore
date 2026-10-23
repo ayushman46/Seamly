@@ -98,3 +98,4 @@ frontend/dist/
 !frontend/public/samples/*.mp4
 frontend/.vercel/
 .vercel/
+frontend/_local/

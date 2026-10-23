@@ -154,6 +154,10 @@ def score_tracks(tracks: dict[int, list[Detection]], shot: int, fps: float, fram
         # (Waist-up close-ups of celebrating players also wave their arms, but never show the legs.)
         legs = _legs_visibility(dets, sweep, fps) if sweep else 0.0
         score *= 0.15 + 0.85 * legs
+        # a batter's swing sweeps the arms just as fast, but with both hands on the bat: wrists together through
+        # ~all of it (a club batter: 100%; a bowler filmed from behind, arms overlapping in the image: ~75%)
+        if sweep and _two_handed(dets, sweep) > 0.9:
+            score *= 0.3
         out.append(TrackScore(tid, shot, len(dets), dets[0].frame, dets[-1].frame, float(np.median(hs)),
                               sweep, over, score, legs))
     return sorted(out, key=lambda t: -t.score)
@@ -171,6 +175,18 @@ def _legs_visibility(dets: list[Detection], sweep: ArmSweep, fps: float) -> floa
         knees = max(d.kc[13], d.kc[14])
         ok += 1 if (ankles > 0.35 and knees > 0.35) else 0
     return ok / len(window)
+
+
+def _two_handed(dets: list[Detection], sweep: ArmSweep) -> float:
+    """Share of the arm sweep with both wrists together (< 12% of height apart): both hands on a bat."""
+    n = together = 0
+    for d in dets:
+        if not (sweep.start_frame <= d.frame <= sweep.end_frame) or d.kc[L_WR] <= 0.3 or d.kc[R_WR] <= 0.3:
+            continue
+        n += 1
+        h = max(d.box[3] - d.box[1], 1.0)
+        together += float(np.linalg.norm(d.kp[L_WR] - d.kp[R_WR])) < 0.12 * h
+    return together / n if n >= 3 else 0.0
 
 
 def is_delivery(ts: TrackScore) -> bool:

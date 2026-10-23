@@ -78,32 +78,47 @@ async function finish(buf: Uint8Array, got: number, first: Uint8Array, reader: R
 // ONNX Runtime initialises its WebAssembly once and rejects concurrent first calls: create sessions one at a time
 let sessionChain: Promise<unknown> = Promise.resolve();
 
-export async function createSession(name: string, onProgress?: (f: number) => void, preferGPU = true): Promise<ort.InferenceSession> {
+/** imageSize: square input size of a detector (checked with a warm-up run on WebGPU). */
+export async function createSession(name: string, onProgress?: (f: number) => void, preferGPU = true,
+  imageSize?: number): Promise<ort.InferenceSession> {
   const bytes = await fetchModel(name, onProgress);   // downloads still run in parallel
-  const p = sessionChain.then(() => createFrom(bytes, name, preferGPU));
+  const p = sessionChain.then(() => createFrom(bytes, name, preferGPU, imageSize));
   sessionChain = p.catch(() => undefined);
   return p;
 }
 
+let wasmOnly = false;
+/** Use WebAssembly from now on (WebGPU failed at run time). */
+export const forceWasm = () => { wasmOnly = true; };
+
 /** localStorage "seamly:backend" = "wasm" forces the WebAssembly backend (for testing the no-WebGPU path). */
 function forcedWasm(): boolean {
+  if (wasmOnly) return true;
   try { return localStorage.getItem("seamly:backend") === "wasm"; } catch { return false; }
 }
 
-async function createFrom(bytes: Uint8Array, name: string, preferGPU: boolean): Promise<ort.InferenceSession> {
+async function createFrom(bytes: Uint8Array, name: string, preferGPU: boolean, imageSize?: number): Promise<ort.InferenceSession> {
   const gpu = preferGPU && !forcedWasm() && (await hasWebGPU());
   if (gpu) {
     try {
       const s = await ort.InferenceSession.create(bytes, { executionProviders: ["webgpu"], graphOptimizationLevel: "all" });
-      setBackend("webgpu");
+      if (imageSize) { await warmUp(s, imageSize); setBackend("webgpu"); }
       return s;
     } catch (e) {
       console.warn("WebGPU unavailable for", name, e);
     }
   }
   const s = await ort.InferenceSession.create(bytes, { executionProviders: ["wasm"], graphOptimizationLevel: "all" });
-  setBackend("wasm");
+  if (imageSize) setBackend("wasm");   // the detectors decide what the UI reports (the lifter always runs on wasm)
   return s;
+}
+
+/** A WebGPU session can be created yet fail (or return NaN) at run time on some GPUs/browsers: run it once on a
+ *  blank image so a broken backend is caught at load time and the WebAssembly one is used instead. */
+async function warmUp(s: ort.InferenceSession, size: number): Promise<void> {
+  const out = await s.run({ images: new ort.Tensor("float32", new Float32Array(3 * size * size).fill(0.45), [1, 3, size, size]) });
+  const d = out[s.outputNames[0]].data as Float32Array;
+  for (let i = 0; i < d.length; i += 97) if (!Number.isFinite(d[i])) throw new Error("WebGPU returned non-finite output");
 }
 
 function canvas(w: number, h: number): OffscreenCanvas | HTMLCanvasElement {
@@ -173,8 +188,8 @@ export class PoseModels {
     let a = 0, b = 0;
     const report = () => onProgress?.(0.25 * a + 0.75 * b);
     const [scan, refine] = await Promise.all([
-      createSession("yolo11n-pose.onnx", (f) => { a = f; report(); }),
-      createSession("yolo11s-pose.onnx", (f) => { b = f; report(); }),
+      createSession("yolo11n-pose.onnx", (f) => { a = f; report(); }, true, PoseModels.SCAN),
+      createSession("yolo11s-pose.onnx", (f) => { b = f; report(); }, true, PoseModels.REFINE),
     ]);
     return new PoseModels(scan, refine, canvas(PoseModels.SCAN, PoseModels.SCAN), canvas(PoseModels.REFINE, PoseModels.REFINE));
   }
@@ -192,7 +207,8 @@ export class PoseModels {
     const out = await this.scan.run({ images: toTensor(ctx, S) });
     const det = decode(out.output0, conf);
     const ox = Math.round(px - 0.1), oy = Math.round(py - 0.1);
-    const back = (x: number, y: number) => [(x - ox) / r, (y - oy) / r];
+    // like ultralytics: scale back to source pixels, then clip boxes and keypoints to the image
+    const back = (x: number, y: number) => [Math.min(w, Math.max(0, (x - ox) / r)), Math.min(h, Math.max(0, (y - oy) / r))];
     return {
       boxes: det.boxes.map((b) => { const p = back(b[0], b[1]), q = back(b[2], b[3]); return [p[0], p[1], q[0], q[1]]; }),
       confs: det.confs,
@@ -234,12 +250,16 @@ export class PoseModels {
       });
       return best && (best as { iou: number }).iou >= 0.2 ? best as { box: number[]; kps: number[][]; kcs: number[]; iou: number } : null;
     };
-    const r1 = decode((await this.refine.run({ images: toTensor(ctx, S) })).output0, 0.15);
+    const clipTo = (d: PersonDets): PersonDets => {   // predictions are clipped to the crop, as ultralytics does
+      const c = (v: number) => Math.min(S, Math.max(0, v));
+      return { ...d, boxes: d.boxes.map((b) => b.map(c)), kps: d.kps.map((k) => k.map(([x, y]) => [c(x), c(y)])) };
+    };
+    const r1 = clipTo(decode((await this.refine.run({ images: toTensor(ctx, S) })).output0, 0.15));
     const best = pick(r1, false);
     if (!best) return null;
     let { kps, kcs } = best;
     if (flipTTA) {
-      const r2 = decode((await this.refine.run({ images: toTensor(ctx, S, true) })).output0, 0.15);
+      const r2 = clipTo(decode((await this.refine.run({ images: toTensor(ctx, S, true) })).output0, 0.15));
       const bf = pick(r2, true);
       if (bf && iou(bf.box, best.box) > 0.6) {
         const kpf = COCO_FLIP.map((j) => bf.kps[j]), kcf = COCO_FLIP.map((j) => bf.kcs[j]);

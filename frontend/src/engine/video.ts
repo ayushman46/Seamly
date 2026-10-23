@@ -121,25 +121,41 @@ export class FrameSource {
     v.style.cssText = "position:fixed;left:0;top:0;width:2px;height:2px;opacity:0;pointer-events:none;z-index:-1";
     document.body.appendChild(v);
     v.src = url;
-    try {
-      await new Promise<void>((resolve, reject) => {
-        v.onloadeddata = () => resolve();
-        v.onerror = () => reject(new VideoError("This browser couldn't open the video. Try an MP4 (H.264) file, or open Seamly in Chrome or Safari."));
-        setTimeout(() => reject(new VideoError("The video took too long to load.")), 30000);
-        v.load();
-      });
-      // a muted play() primes the decoder on iOS; failure is harmless elsewhere
-      await v.play().then(() => v.pause(), () => undefined);
-    } catch (e) {
+    const fail = (e: unknown) => {
       v.remove();
       URL.revokeObjectURL(url);
       throw e;
+    };
+    const decodeError = () => new VideoError("This browser can't decode this video. iPhone clips are often HEVC: open Seamly in Safari, "
+      + "or set Settings > Camera > Formats > Most Compatible before filming. Otherwise try an MP4 (H.264) file in Chrome.");
+    try {
+      // metadata first; iOS may not fetch any frame data until play() is called, so prime with a muted play()
+      await new Promise<void>((resolve, reject) => {
+        v.onloadedmetadata = () => resolve();
+        v.onerror = () => reject(decodeError());
+        setTimeout(() => reject(new VideoError("The video took too long to load.")), 30000);
+        v.load();
+      });
+      await v.play().then(() => v.pause(), () => undefined);
+      if (v.readyState < 2) {
+        await new Promise<void>((resolve, reject) => {
+          v.onloadeddata = () => resolve();
+          v.oncanplay = () => resolve();
+          v.onerror = () => reject(decodeError());
+          setTimeout(() => (v.readyState >= 2 ? resolve() : reject(new VideoError("The video took too long to load."))), 20000);
+        });
+      }
+      if (!v.videoWidth || !v.videoHeight) throw new VideoError("The video contains no decodable frames.");
+      if (!Number.isFinite(v.duration)) {
+        throw new VideoError("This video has no duration in its file (e.g. a screen or browser recording). Re-save it as an MP4 and try again.");
+      }
+      if (v.duration > maxSeconds + 0.5) {
+        throw new VideoError(`Video is ${v.duration.toFixed(0)}s long; please trim it to under ${maxSeconds.toFixed(0)}s around the delivery.`);
+      }
+    } catch (e) {
+      fail(e);
     }
     const fs = new FrameSource(v, url);
-    if (!v.videoWidth || !v.videoHeight || !Number.isFinite(v.duration)) throw new VideoError("The video contains no decodable frames.");
-    if (v.duration > maxSeconds + 0.5) {
-      throw new VideoError(`Video is ${v.duration.toFixed(0)}s long; please trim it to under ${maxSeconds.toFixed(0)}s around the delivery.`);
-    }
     let ts = await sampleTimes(file);
     let fps: number;
     if (ts && ts.length >= 3) {

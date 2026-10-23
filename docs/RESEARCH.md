@@ -102,6 +102,8 @@ The test suite renders a scripted delivery with the Anny body model (`tools/synt
 |---|---|---|
 | Person detection and pose | YOLO11m-pose (tracking pass) + YOLO11x-pose on bowler crops with flip TTA | YOLO11x is COCO-pose 69.5 mAP. YOLO26 needs ultralytics 8.4. RTMPose-x Halpe26 was evaluated (72 ms/crop) and agreed with YOLO11x within 2–3% of body height on the wrists, but added no measurable benefit on this footage. Ultralytics' NMS time limit is lifted: when a batch exceeds about 2.4 s (a busy machine, or MPS warm-up), it otherwise returns no detections for the rest of the batch. |
 | Tracking | Custom: SORT + global motion compensation, appearance and pose similarity; same-person duplicate boxes dropped before association | The pinned ultralytics trackers swap IDs between near-equal-confidence detections even with nobody moving. This was reproduced on CPU and MPS. At release the detector can return two boxes for the bowler (with and without the outstretched arm, IoU ≈ 0.68, which survives NMS at 0.7); the spare started a new track that took over the bowler and cut the analysis at release. Duplicates share their keypoints (median distance < 8% of height) while overlapping players differ by ≥ 20%, so the spare is dropped. |
+| Bowler vs batter | A batter's swing sweeps the arms as fast as a bowling arm (352° at 1,680°/s on a club clip filmed from behind the batter), but with both hands on the bat. A track whose arm sweep has the wrists within 12% of body height of each other for more than 60% of the sweep is scored ×0.3. | On a front-on club clip the batter in the foreground had been picked as the bowler; after the rule the far-end bowler is the only candidate. A bowler's hands come together only briefly, at the gather. |
+| Forearm swap repair | Left/right swap repair also runs on the forearms alone (elbows + wrists) after the whole-arm chain. When the arms cross at release a detector can swap the elbows and wrists but not the shoulders, which the whole-arm chain can't repair. | With the browser's YOLO11s on crops, this put release on the true frame (55) of the synthetic delivery instead of 2 frames early, and the arm vote went from 0.2 to 0.7 confidence. |
 | Camera view | The planted stride's foreshortening: median horizontal ankle-to-ankle distance from FFC to just after release, in leg lengths (depth-free). Above 0.7 → side-on, below 0.4 → behind/front-on; in between, the run-up hip-width ratio, then the 3D direction of travel. Without a run-up in the clip, the direction of travel is the FFC stride vector (the hips have already turned at release). | Behind-view clips measure 0.03–0.29, side-on 1.04–1.10. A real club-match clip (handheld zoom panning with the bowler, no run-up in frame) had been read as "behind" (47° from the 3D hip line at release) and withheld every side-on metric; it now reads side-on at 78°. |
 | 2D → 3D | MotionBERT-Lite (H36M, 243 frames, Apache-2.0, 64 MB), with flip TTA and resampling to its 50 fps training rate | Strong temporal lifter with a non-gated checkpoint. MotionAGFormer-B is a candidate for an A/B test. |
 | Metric skeleton | Weak-perspective fit with: symmetric bone lengths that match the 2D keypoints' own conventions (robust p95 of projected length ÷ image scale; anthropometric lengths folded limbs because YOLO keypoint segments are ~13% shorter than joint-centre segments); a confidence-weighted 2D reprojection; lifter depth; temporal smoothness; a knee hinge constraint; a weak "least bend consistent with the image" elbow prior; and a second pass with physics priors (planted front foot stays ahead of its knee and the pelvis from FFC to just after BR). | Bone-length CV drops from ~12% (raw lifter) to below 1%. On the synthetic side-on clip, the 3D front knee is 163/173° vs truth 165/170° (was 121° at BR), and the bowling elbow at BR is 15° vs truth 6° (was 42°). On real behind-view clips, elbow flexion at BR is 8–17° (was ~100°) and the front knee at BR is 143–180°. |
@@ -126,3 +128,35 @@ The ECB's fast-bowling directives circulate in several conflicting versions (200
 - **Cricket action products** such as Pitchwolf and DineticQ PaceFlow deliver *static* reports, often overnight. **Interactive cricket apps** such as Fulltrack AI track the ball only. Nobody offers instant, interactive 3D bowling analysis tied to delivery events.
 - **What works.** One headline score, three priorities, and for each priority: why it matters, the evidence level, a cue and a drill. Editable event markers with live recompute. Confidence on every number. A kinogram of the key positions. Synced 3D views with cricket-specific camera presets. Clear disclaimers on legality and injury.
 - **Filming guidance.** Film side-on (10–15 m away, hip height) and/or from behind the stumps. Use 120–240 fps where possible. Keep the whole action in frame and the camera on a tripod.
+
+## 6. The in-browser engine (Seamly web app)
+
+The web app runs the whole pipeline in the visitor's browser. It is a TypeScript port in `frontend/src/engine/`. Every stage after pose detection is checked against fixtures recorded from the Python pipeline:
+
+- Events, view, arm, metrics, coaching, insights, progress and the body mesh match exactly or to floating-point precision.
+- The skeleton fit (L-BFGS with analytic gradients) matches to about 1 mm.
+
+The detection models are smaller than the server's:
+
+| Stage | Server | Browser |
+|---|---|---|
+| Tracking | YOLO11m-pose | YOLO11n-pose @ 640 |
+| Crops | YOLO11x-pose | YOLO11s-pose @ 384 |
+| Lifter | MotionBERT-Lite fp32 | MotionBERT-Lite int8 (root-relative error vs fp32 ≈ 0.5% of body height) |
+
+| Clip | Ground truth or server | Browser |
+|---|---|---|
+| Synthetic side-on, 60 fps: BFC / FFC / BR | truth 36 / 48 / 55; server 35 / 47 / 55 | 35 / 47 / 55 |
+| Synthetic: front knee at FFC; trunk flexion; release height | 165° / 32° / 105% (server 168.5° / 30.4° / 114%) | 164.1° / 31.8° / 109% |
+| Club match, side-on, 25 fps | server BFC / FFC / BR 52 / 57 / 60 | 51 / 56 / 59 (±1 frame at 25 fps) |
+| Broadcast, behind (Shami) | server events 22 / 28 / 31 / 32 / 40 | identical |
+| Broadcast, behind (Bumrah) | server BFC / FFC / BR 37 / 43 / 47 | 38 / 43 / 47 |
+
+Speed on an M4 laptop, with the models already downloaded:
+
+| Backend | Synthetic clip (87 frames) | Club clip (130 frames) |
+|---|---|---|
+| WebGPU | 12 s | 15–18 s |
+| WebAssembly fallback (single thread) | 51 s | — |
+
+Both backends give the same events.

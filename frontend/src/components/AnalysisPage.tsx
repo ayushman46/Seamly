@@ -188,7 +188,7 @@ function Processing({ meta, go }: { meta: AnalysisMeta; go: (to: string) => void
             )}
             <p>
               {MODE === "browser"
-                ? "How long it takes depends on your device and the clip: a recent phone or laptop is quickest, and long or high-speed (240 fps) clips take longer. The estimate above updates as it goes."
+                ? "A short clip of one delivery usually takes 15–40 seconds on a recent laptop; phones, older devices and long or high-speed (240 fps) clips take longer. The first analysis also downloads the analysis models (about 70 MB, once). The estimate above updates as it goes."
                 : "A short clip of one delivery takes about 30–60 seconds; long or high-speed (240 fps) clips up to about two minutes."}
             </p>
           </div>
@@ -227,7 +227,7 @@ function Failed({ meta, go, onRetry }: { meta: AnalysisMeta; go: (to: string) =>
           <ul className="fail-tips">
             <li>Make sure the bowler's whole body (including feet) is visible from run-up to follow-through.</li>
             <li>Film side-on or from behind the bowler; avoid heavy zoom and fast panning.</li>
-            <li>Trim long videos to the delivery (under 2 minutes).</li>
+            <li>Trim long videos to the delivery (under {MODE === "browser" ? "a minute" : "2 minutes"}).</li>
           </ul>
           <div className="row wrap" style={{ gap: 10 }}>
             <button className="btn" onClick={() => go("/")}><IBack size={16} /> Back</button>

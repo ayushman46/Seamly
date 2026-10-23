@@ -39,4 +39,4 @@ export function optionsFrom(d: Partial<Options> | null | undefined): Options {
 let backendName: "webgpu" | "wasm" | null = null;
 /** Which ONNX Runtime backend the models run on (set once the models are loaded). */
 export const backend = () => backendName;
-export const setBackend = (b: "webgpu" | "wasm") => { if (!backendName || b === "webgpu") backendName = b; };
+export const setBackend = (b: "webgpu" | "wasm") => { backendName = b; };

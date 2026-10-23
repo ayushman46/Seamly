@@ -125,10 +125,51 @@ export class MotionEstimator {
   }
 }
 
+/** Global translation b - a on a 4x-downsampled image (masked mean abs diff over +-R4 coarse px): the coarse level
+ *  of the search, so pans of up to ~15% of the frame per step (strided scans, fast broadcast pans) are found. */
+function coarseShift(a: Grey, b: Grey, mask: Uint8Array): [number, number] {
+  const F = 4, R4 = 12;
+  const w = Math.floor(a.w / F), h = Math.floor(a.h / F);
+  const down = (g: Grey) => {
+    const o = new Float32Array(w * h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      let s = 0;
+      for (let dy = 0; dy < F; dy++) for (let dx = 0; dx < F; dx++) s += g.px[(y * F + dy) * g.w + x * F + dx];
+      o[y * w + x] = s / (F * F);
+    }
+    return o;
+  };
+  const A = down(a), Bm = down(b);
+  const M = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    let ok = 1;
+    for (let dy = 0; dy < F && ok; dy++) for (let dx = 0; dx < F; dx++) if (!mask[(y * F + dy) * a.w + x * F + dx]) { ok = 0; break; }
+    M[y * w + x] = ok;
+  }
+  let best = Infinity, bx = 0, by = 0;
+  for (let oy = -R4; oy <= R4; oy++) for (let ox = -R4; ox <= R4; ox++) {
+    let s = 0, n = 0;
+    for (let y = Math.max(0, -oy); y < Math.min(h, h - oy); y++) {
+      const ra = y * w, rb = (y + oy) * w + ox;
+      for (let x = Math.max(0, -ox); x < Math.min(w, w - ox); x++) {
+        if (!M[ra + x]) continue;
+        s += Math.abs(A[ra + x] - Bm[rb + x]);
+        n++;
+      }
+    }
+    if (n < 0.15 * w * h) continue;
+    const c = s / n + 0.02 * (Math.abs(ox) + Math.abs(oy));   // tiny prior towards small motion on flat images
+    if (c < best) { best = c; bx = ox; by = oy; }
+  }
+  return [bx * F, by * F];
+}
+
 /** Robust similarity fit (scale, tx, ty) between two grey frames from block-matched patches. */
 function estimateSimilarity(a: Grey, b: Grey, mask: Uint8Array): [number, number, number] | null {
   const { w, h } = a;
-  const P = 6, R = 12, STEP = 14;   // patch half-size, search radius (px at FLOW_SIZE), grid step
+  const P = 6, STEP = 14;   // patch half-size, grid step (px at FLOW_SIZE)
+  const [gx0, gy0] = coarseShift(a, b, mask);
+  const R = 6 + Math.max(Math.abs(gx0), Math.abs(gy0));   // patches are searched around the coarse shift
   const src: [number, number][] = [], dst: [number, number][] = [];
   for (let y = P + R; y < h - P - R; y += STEP) {
     for (let x = P + R; x < w - P - R; x += STEP) {
@@ -152,7 +193,7 @@ function estimateSimilarity(a: Grey, b: Grey, mask: Uint8Array): [number, number
         }
         return s;
       };
-      for (let oy = -R; oy <= R; oy += 2) for (let ox = -R; ox <= R; ox += 2) {
+      for (let oy = gy0 - 6; oy <= gy0 + 6; oy += 2) for (let ox = gx0 - 6; ox <= gx0 + 6; ox += 2) {
         const s = sad(ox, oy);
         if (s < best) { best = s; bx = ox; by = oy; }
       }
