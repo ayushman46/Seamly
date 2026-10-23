@@ -41,21 +41,57 @@ async function tx(store: StoreName, mode: IDBTransactionMode = "readonly"): Prom
   return (await db()).transaction(store, mode).objectStore(store);
 }
 
+// WebKit's private browsing (Safari Private, some in-app browsers) refuses to keep a Blob in IndexedDB but takes an
+// ArrayBuffer: there, Blobs are stored as { $blob: bytes, type } and turned back into Blobs when read.
+type Packed = { $blob: ArrayBuffer; type: string };
+const isPacked = (v: unknown): v is Packed => !!v && typeof v === "object" && (v as Packed).$blob instanceof ArrayBuffer;
+const unpack = <T>(v: unknown): T => (isPacked(v) ? new Blob([v.$blob], { type: v.type }) : v) as T;
+
+let blobsOk: Promise<boolean> | null = null;
+function canStoreBlobs(d: IDBDatabase): Promise<boolean> {
+  if (!blobsOk) {
+    blobsOk = new Promise((resolve) => {
+      try {
+        const t = d.transaction("blob", "readwrite");
+        t.objectStore("blob").put(new Blob([new Uint8Array([0])]), "\u0000probe");
+        t.oncomplete = () => { d.transaction("blob", "readwrite").objectStore("blob").delete("\u0000probe"); resolve(true); };
+        t.onerror = () => resolve(false);
+        t.onabort = () => resolve(false);
+      } catch {
+        resolve(false);
+      }
+    });
+  }
+  return blobsOk;
+}
+
 export async function get<T>(store: StoreName, key: string): Promise<T | undefined> {
-  return wrap((await tx(store)).get(key)) as Promise<T | undefined>;
+  return unpack<T | undefined>(await wrap((await tx(store)).get(key)));
 }
 
 const QUOTA = "Your browser storage is full. Delete some old analyses and try again.";
 
+export interface Writer { put(value: unknown, key: string): void; delete(key: string | IDBKeyRange): void }
+type Op = { store: StoreName; put: boolean; value?: unknown; key: string | IDBKeyRange };
+
 /** Run one read-write transaction over several stores; resolves only once it has committed (quota errors abort the
  *  transaction after the individual requests have already "succeeded"). */
-export async function write(stores: StoreName[], fn: (s: Record<StoreName, IDBObjectStore>) => void): Promise<void> {
+export async function write(stores: StoreName[], fn: (s: Record<StoreName, Writer>) => void): Promise<void> {
   const d = await db();
+  // record the writes first: Blobs may need converting (async) before the transaction opens
+  const ops: Op[] = [];
+  const rec = {} as Record<StoreName, Writer>;
+  for (const n of stores) rec[n] = { put: (value, key) => { ops.push({ store: n, put: true, value, key }); }, delete: (key) => { ops.push({ store: n, put: false, key }); } };
+  fn(rec);
+  if (ops.some((o) => o.value instanceof Blob) && !(await canStoreBlobs(d))) {
+    for (const o of ops) if (o.value instanceof Blob) o.value = { $blob: await o.value.arrayBuffer(), type: o.value.type } satisfies Packed;
+  }
   await new Promise<void>((resolve, reject) => {
     const t = d.transaction(stores, "readwrite");
-    const map = {} as Record<StoreName, IDBObjectStore>;
-    for (const n of stores) map[n] = t.objectStore(n);
-    fn(map);
+    for (const o of ops) {
+      if (o.put) t.objectStore(o.store).put(o.value, o.key as string);
+      else t.objectStore(o.store).delete(o.key);
+    }
     const fail = () => reject(t.error?.name === "QuotaExceededError" ? new Error(QUOTA) : (t.error ?? new Error("Saving to browser storage failed.")));
     t.oncomplete = () => resolve();
     t.onerror = fail;
@@ -70,7 +106,7 @@ export const del = (store: StoreName, key: string): Promise<void> =>
   write([store], (s) => { s[store].delete(key); });
 
 export async function all<T>(store: StoreName): Promise<T[]> {
-  return wrap((await tx(store)).getAll()) as Promise<T[]>;
+  return ((await wrap((await tx(store)).getAll())) as unknown[]).map((v) => unpack<T>(v));
 }
 
 export async function keysWithPrefix(store: StoreName, prefix: string): Promise<string[]> {
@@ -83,7 +119,7 @@ export async function entriesWithPrefix<T>(store: StoreName, prefix: string): Pr
   const s = await tx(store);
   const range = IDBKeyRange.bound(prefix, prefix + "￿");
   const [keys, values] = await Promise.all([wrap(s.getAllKeys(range)), wrap(s.getAll(range))]);
-  return (keys as string[]).map((k, i) => [k, values[i] as T]);
+  return (keys as string[]).map((k, i) => [k, unpack<T>(values[i])]);
 }
 
 /** Write many entries in one transaction. */

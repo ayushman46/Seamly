@@ -118,6 +118,7 @@ These are surfaced in the app rather than hidden:
 - **25–30 fps** limits release and timing precision to ±1 frame (33–40 ms). Elbow extension needs side-on video at 100 fps or more, and it is a screening estimate only.
 - **Analysis pauses while its tab is in the background.** Browsers throttle hidden tabs and can hand back stale video frames, so Seamly waits and carries on when you come back, rather than measuring the wrong frames. Keep the tab open on screen until it finishes.
 - **Analyses live in the browser that made them** (IndexedDB). Nothing is uploaded, so a link only opens on that device. Clearing site data deletes them, so use **Download backup** in your workspace to keep a copy or move players and analyses to another device (Restore a backup), and the PDF report to share one.
+- **Browsers decode video slightly differently** (Safari's colours are a few percent brighter than Chrome's), so the same clip can land a foot contact a frame apart in different browsers. Release, upper-arm-horizontal and follow-through matched exactly in our Safari-engine (WebKit) test.
 - **The browser engine uses smaller models than the server** (YOLO11n/s instead of m/x, and int8 MotionBERT), so it can differ from the server by a frame on fast arm movements.
 
 ## Project layout
