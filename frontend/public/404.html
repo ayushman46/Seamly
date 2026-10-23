@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>Page not found · Seamly</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <script>
+    // Seamly's pages live after a "#" (/#/a/<id>). A link that lost it (/a/<id>) is sent to the right page.
+    (function () {
+      var p = location.pathname.replace(/\/+$/, "");
+      if (/^\/(a|r|p|compare)\/[A-Za-z0-9_\/-]+$/.test(p)) location.replace("/#" + p);
+    })();
+  </script>
+  <style>
+    :root { color-scheme: dark; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #07090f; color: #e6ebf2;
+      font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; padding: 24px; box-sizing: border-box; }
+    main { max-width: 420px; text-align: center; }
+    h1 { font-size: 22px; margin: 16px 0 8px; }
+    p { color: #9aa6b8; margin: 0 0 22px; }
+    a { display: inline-block; background: #f4efe3; color: #0b0f17; font-weight: 650; text-decoration: none; padding: 10px 18px; border-radius: 10px; }
+    a:focus-visible { outline: 2px solid #3ddc97; outline-offset: 3px; }
+  </style>
+</head>
+<body>
+  <main>
+    <img src="/favicon.svg" width="40" height="40" alt="" />
+    <h1>This page doesn't exist</h1>
+    <p>The link may be mistyped or out of date.</p>
+    <a href="/">Go to Seamly</a>
+  </main>
+</body>
+</html>

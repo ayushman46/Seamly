@@ -18,7 +18,7 @@ export default function Inspector({ result, frame, onSetEvent, busy }: { result:
     <div className="stack" style={{ gap: 16 }}>
       <div className="row wrap">
         <span className="chip">Frame {frame}</span>
-        <span className="chip">{time >= 0 ? "+" : ""}{(time * 1000).toFixed(0)} ms from release</span>
+        <span className="chip">{Math.round(time * 1000) === 0 ? "At ball release" : `${time > 0 ? "+" : "−"}${Math.abs(Math.round(time * 1000))} ms from release`}</span>
         <span className="chip">Tracking confidence {Math.round(meanConf * 100)}%</span>
         <div className="grow" />
         <span className="faint" style={{ fontSize: 12 }}>Set this frame as:</span>

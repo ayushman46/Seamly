@@ -51,9 +51,9 @@ NORMS = {
                                       norm=">= 30° is the common mixed-action criterion (stronger evidence in juniors)",
                                       ref="Portus 2004; Elliott & Foster 1989; Ranson 2008; Alway 2021"),
     "release_height_pct": dict(unit="% height", good=(108, None), watch=(104, 108), risk=None,
-                               norm="Elite men 113 ± 4 % of standing height (guide range)", ref="Felton 2019"),
+                               norm="Elite men 113 ± 4% of standing height (guide range)", ref="Felton 2019"),
     "stride_length_pct": dict(unit="% height", good=(70, 87), watch=(64, 93), risk=None,
-                              norm="Elite men 79 ± 7 % of standing height (guide range)", ref="Felton 2019"),
+                              norm="Elite men 79 ± 7% of standing height (guide range)", ref="Felton 2019"),
     "ffc_to_br_ms": dict(unit="ms", good=(None, 125), watch=(125, None), risk=None,
                          norm="Elite men 103 ± 11 ms; juniors 126 ± 37 ms", ref="Felton 2019; Andrews 2024"),
     "bfc_to_ffc_ms": dict(unit="ms", norm="Elite men 192 ± 31 ms; juniors 197 ± 59 ms", ref="Felton 2019; Andrews 2024"),
@@ -150,7 +150,7 @@ def _metric(key, label, value, *, event=None, source="3d", confidence=0.5, decim
         # angles that can be far off (e.g. a 170° front knee read as 96° from behind), and nothing tells a
         # good estimate from a bad one, so the value is withheld (kept as estimate_3d in the JSON export).
         reliability = "estimate"
-        note = ("Not measurable from this camera view - film " + " or ".join(VIEW_LABEL[x] for x in needs)
+        note = ("Not measurable from this camera view — film " + " or ".join(VIEW_LABEL[x] for x in needs)
                 + " to measure it.")
         rating = "unrated"
         conf = min(conf, 0.3)
@@ -360,20 +360,20 @@ def compute(c: Ctx) -> dict:
         conf = 0.25 if low_fps else 0.45
         conf *= _conf2d(c, br, [s.c_sh, s.c_el, s.c_wr])
         metrics.append(_metric(
-            "elbow_extension", "Elbow extension (UAH -> release)", ext, event="uah-br", source="3d", confidence=conf,
+            "elbow_extension", "Elbow extension (UAH → release)", ext, event="uah-br", source="3d", confidence=conf,
             needs=("side_on",), view=view, min_fps=100, fps=fps_eff,
             explain="Straightening of the bowling elbow between the arm passing horizontal and release, computed "
                     "the ICC way (maximum flexion minus the following minimum). A single camera cannot replace an "
-                    "accredited ICC test - use this only as a screening estimate.",
+                    "accredited ICC test — use this only as a screening estimate.",
             extra={"flexion_at_uah": round(float(flex[uah]), 1), "flexion_at_br": round(float(flex[br]), 1),
                    "max_flexion": round(float(win.max()), 1),
                    "precision_note": "insufficient precision below ~120 fps" if low_fps else None}))
         if metrics[-1]["reliability"] == "estimate":
             # a legality-adjacent number that can't be measured reliably is withheld, not shown greyed out
             if view != "side_on":
-                why = "Elbow extension needs a side-on clip at 120-240 fps"
+                why = "Elbow extension needs a side-on clip at 120–240 fps"
             elif fps_eff < 100:
-                why = f"Elbow extension needs 120-240 fps slow motion (this clip has ~{fps_eff:.0f} distinct fps)"
+                why = f"Elbow extension needs 120–240 fps slow motion (this clip has ~{fps_eff:.0f} distinct fps)"
             else:
                 why = "The bowling arm was tracked with low confidence around release (motion blur?)"
             metrics[-1].update(value=None, estimate_3d=None, flexion_at_uah=None, flexion_at_br=None, max_flexion=None,
@@ -436,11 +436,11 @@ def compute(c: Ctx) -> dict:
                            explain="How far the trunk is pitched towards the batter at release. Fast bowlers "
                                    "flex strongly through the delivery stride."))
     if ffc is not None and br > ffc:
-        metrics.append(_metric("trunk_flexion_ffc_br", "Trunk flexion FFC -> release", float(tf_use[br] - tf_use[ffc]),
+        metrics.append(_metric("trunk_flexion_ffc_br", "Trunk flexion FFC → release", float(tf_use[br] - tf_use[ffc]),
                                event="ffc-br", source=tsrc,
                                confidence=tconf * 0.9 * min(_conf2d(c, ffc, [5, 6, 11, 12]), _conf2d(c, br, [5, 6, 11, 12])),
                                needs=SIDE, view=view,
-                               explain="Trunk flexion produced during the delivery stride - a key contributor to "
+                               explain="Trunk flexion produced during the delivery stride — a key contributor to "
                                        "ball speed."))
     tl3 = np.array(ts["trunk_lateral_flexion"])
     if rear_view:

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import type { AnalysisMeta, AnalysisResult, EventKey, Insights } from "../types";
 import { COCO_EDGES, EVENTS, EVENT_HEX, RATING_LABEL, VIEW_LABEL } from "../lib/constants";
-import { fmt, unitLabel } from "../lib/format";
+import { dateTime, fmt, unitLabel } from "../lib/format";
 import { LogoMark } from "./Brand";
 import { DISCLAIMER } from "./Landing";
 
@@ -14,6 +14,13 @@ export default function ReportPage({ id, go }: { id: string; go: (to: string) =>
     api.get(id).then((r) => (r.result ? setData({ meta: r.meta, result: r.result }) : setError("This analysis isn't finished yet."))).catch((e) => setError(e.message));
     api.insights(id).then(setIns).catch(() => setIns(null));
   }, [id]);
+  // the PDF a browser saves is named after the page title
+  useEffect(() => {
+    if (!data) return;
+    const before = document.title;
+    document.title = `Seamly report - ${data.meta.name}`;
+    return () => { document.title = before; };
+  }, [data]);
   if (error) {
     return (
       <div className="report">
@@ -38,7 +45,8 @@ export default function ReportPage({ id, go }: { id: string; go: (to: string) =>
           <div className="rp-brand"><LogoMark size={20} /> Seamly · Bowling action report</div>
           <h1>{meta.name}</h1>
           <div className="rp-sub">
-            {new Date(meta.created * 1000).toLocaleString()} · {VIEW_LABEL[r.view.view]} · {r.bowling_arm.arm === "right" ? "Right-arm" : "Left-arm"} ·{" "}
+            {dateTime(meta.created)} · {VIEW_LABEL[r.view.view]} · {r.bowling_arm.arm === "right" ? "Right-arm" : "Left-arm"}
+            {r.bowling_arm.source !== "user" && r.bowling_arm.confidence < 0.7 ? " (detected, not certain)" : ""} ·{" "}
             {fmt(r.fps_real)} fps · stature {r.skeleton.stature_m.toFixed(2)} m ({r.skeleton.height_source === "user" ? "entered" : "assumed"})
           </div>
         </div>
@@ -81,7 +89,7 @@ export default function ReportPage({ id, go }: { id: string; go: (to: string) =>
         <ol className="rp-prio">
           {c.priorities.map((p) => (
             <li key={p.key}>
-              <b>{p.headline}</b> <em>({RATING_LABEL[p.rating]} · {p.evidence})</em>
+              <b>{p.headline}</b> <em>({p.borderline ? "Borderline" : RATING_LABEL[p.rating]} · {p.evidence})</em>
               <div>{p.why}</div>
               <div className="rp-cue">Cue: “{p.drill.cue}”</div>
               <ul>{p.drill.drills.map((d) => <li key={d}>{d}</li>)}</ul>

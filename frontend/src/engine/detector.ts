@@ -8,6 +8,7 @@ import { COCO_FLIP } from "./types";
 import { setBackend } from "./common";
 
 import { ORT_WASM_PATHS } from "./ortPaths";
+import { MODEL_CACHE } from "../lib/modelCache";
 
 // the 22 MB WebAssembly runtime comes from the CDN (keeps the site small); models are served by the site
 ort.env.wasm.wasmPaths = ORT_WASM_PATHS;
@@ -31,9 +32,7 @@ async function hasWebGPU(): Promise<boolean> {
   }
 }
 
-// models are kept in Cache Storage after the first download (the HTTP cache alone can drop 40 MB files);
-// bump the name when a model file changes
-const MODEL_CACHE = "seamly-models-v1";
+// models are kept in Cache Storage after the first download (the HTTP cache alone can drop 40 MB files)
 
 /** Download with progress (the models are tens of MB), served from Cache Storage after the first time. */
 export async function fetchModel(name: string, onProgress?: (f: number) => void): Promise<Uint8Array> {

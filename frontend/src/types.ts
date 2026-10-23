@@ -46,6 +46,7 @@ export interface Priority {
   category: "pace" | "load" | "accuracy" | "legality";
   severity: number;
   rating: Rating;
+  borderline?: boolean;   // within one measurement step of the target: ranked below clear misses
   headline: string;
   evidence: string;
   why: string;
@@ -122,10 +123,11 @@ export interface AnalysisMeta {
   timing_s: number | null;
   elapsed: number | null;
   size_mb: number | null;
+  input_type?: string | null;   // MIME type of the uploaded video
   queue_position?: number | null;
   notice?: string | null;   // e.g. a failed re-analysis that fell back to the previous result
-  suggest?: { slowmo_factor?: number } | null;
-  player_id?: string | null;   // option change that would make a failed analysis work
+  suggest?: { slowmo_factor?: number } | null;   // option change that would make a failed analysis work
+  player_id?: string | null;
 }
 
 // ---------------- players, progress, insights ----------------

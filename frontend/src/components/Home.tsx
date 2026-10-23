@@ -4,6 +4,7 @@ import type { AnalysisMeta, Player } from "../types";
 import { AGE_LABEL, STYLE_LABEL, getCurrentPlayer, setCurrentPlayer } from "../lib/player";
 import PlayerForm from "./PlayerForm";
 import { BackupPanel, RestoreLink } from "./Backup";
+import { modelsCached } from "../lib/modelCache";
 import { ago, fmt } from "../lib/format";
 import { VIEW_LABEL, SLOWMO_OPTIONS } from "../lib/constants";
 import Header, { scrollToId } from "./Header";
@@ -96,7 +97,7 @@ export default function Home({ go }: { go: (to: string) => void }) {
   return (
     <>
       <Header go={go} nav>
-        <button type="button" className="btn primary sm" onClick={toUploader}><IVideo size={15} /> <span className="btn-label">Analyse a delivery</span><span className="btn-label-sm" aria-hidden="true">Analyse</span></button>
+        <button type="button" className="btn primary sm" onClick={toUploader} aria-label="Analyse a delivery"><IVideo size={15} /> <span className="btn-label">Analyse a delivery</span><span className="btn-label-sm" aria-hidden="true">Analyse</span></button>
       </Header>
       <main id="main" tabIndex={-1}>
         {returning ? (
@@ -320,6 +321,9 @@ function Uploader({ go, disabled, health, players, current, onChoose, onCreate, 
     setHeight(player?.height_cm ? String(Math.round(player.height_cm)) : "");
   }, [player?.id, player?.arm, player?.height_cm]);
   const [slowmo, setSlowmo] = useState("1");
+  // the "big first download" note only matters until the models are in this browser
+  const [cached, setCached] = useState(false);
+  useEffect(() => { if (MODE === "browser") void modelsCached().then(setCached); }, []);
   const [busy, setBusy] = useState(false);
   const [prog, setProg] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -458,7 +462,7 @@ function Uploader({ go, disabled, health, players, current, onChoose, onCreate, 
             <button type="button" className="btn primary lg block" disabled={!file || disabled} onClick={submit}>
               Analyse delivery
             </button>
-            {MODE === "browser" && (
+            {MODE === "browser" && !cached && (
               <span className="faint" style={{ fontSize: 12, textAlign: "center" }}>
                 The first analysis downloads the analysis models (about 70 MB, once) — Wi-Fi is best.
               </span>

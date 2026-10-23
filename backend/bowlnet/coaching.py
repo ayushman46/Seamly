@@ -13,67 +13,67 @@ DRILLS = {
         "title": "Brace the front leg",
         "cue": "Land tall, push the ground away - 'stand up' through the front leg as the arm comes over.",
         "drills": [
-            "Standing brace: front foot planted, bowl from a static delivery-stride position, focus on a firm knee (3 x 6).",
-            "Walk-through then jog-through deliveries, adding speed only while the knee stays firm (3 x 6).",
-            "Gather-and-bound drill onto a mat, freezing at front-foot contact to feel the brace (2 x 8).",
+            "Standing brace: front foot planted, bowl from a static delivery-stride position, focus on a firm knee (3 × 6).",
+            "Walk-through then jog-through deliveries, adding speed only while the knee stays firm (3 × 6).",
+            "Gather-and-bound drill onto a mat, freezing at front-foot contact to feel the brace (2 × 8).",
         ],
     },
     "trunk_flexion": {
         "title": "Drive the chest through",
-        "cue": "Chest over the front knee - finish with your bowling shoulder pointing at the batter.",
+        "cue": "Chest over the front knee — finish with your bowling shoulder pointing at the batter.",
         "drills": [
-            "Kneeling throws: front knee down, pull the trunk down and through towards a target (3 x 8).",
-            "Med-ball slam from the delivery stride position (17+ only) (3 x 6).",
-            "Follow-through line drill: finish with the chest past the front knee on a chalk line (2 x 8).",
+            "Kneeling throws: front knee down, pull the trunk down and through towards a target (3 × 8).",
+            "Med-ball slam from the delivery stride position (17+ only) (3 × 6).",
+            "Follow-through line drill: finish with the chest past the front knee on a chalk line (2 × 8).",
         ],
     },
     "side_bend": {
         "title": "Stay tall at release",
         "cue": "Head over the front foot, front arm drives towards the target rather than yanking down.",
         "drills": [
-            "Chalk-line run-ups: run and land on a straight line so the body isn't forced to lean (3 x 6).",
-            "Front-arm drive drill: hand reaches towards the target and finishes near the chest (2 x 10).",
-            "Wall drill: bowl alongside a wall/net on the non-bowling side to discourage falling away (2 x 8).",
+            "Chalk-line run-ups: run and land on a straight line so the body isn't forced to lean (3 × 6).",
+            "Front-arm drive drill: hand reaches towards the target and finishes near the chest (2 × 10).",
+            "Wall drill: bowl alongside a wall/net on the non-bowling side to discourage falling away (2 × 8).",
         ],
     },
     "mixed_action": {
         "title": "Line up hips and shoulders",
-        "cue": "Back foot and shoulders tell the same story - choose side-on or front-on and commit.",
+        "cue": "Back foot and shoulders tell the same story — choose side-on or front-on and commit.",
         "drills": [
-            "Chalk the crease: mark back-foot and front-foot positions and match shoulders to the back-foot line (3 x 6).",
-            "Mirror/phone checks at back-foot contact from behind; fix the shoulders first (2 x 8).",
-            "Slow-motion walk-throughs freezing at back-foot contact to rehearse alignment (2 x 6).",
+            "Chalk the crease: mark back-foot and front-foot positions and match shoulders to the back-foot line (3 × 6).",
+            "Mirror/phone checks at back-foot contact from behind; fix the shoulders first (2 × 8).",
+            "Slow-motion walk-throughs freezing at back-foot contact to rehearse alignment (2 × 6).",
         ],
     },
     "release_height": {
         "title": "Get taller at release",
-        "cue": "Tall at the crease - bowling arm brushes the ear, release at the top.",
+        "cue": "Tall at the crease — bowling arm brushes the ear, release at the top.",
         "drills": [
-            "High-target drill: release over a raised rope/bar 1 m in front of the crease (3 x 6).",
-            "Standing-start bowling focusing on reaching up through the bowling arm (3 x 6).",
+            "High-target drill: release over a raised rope/bar 1 m in front of the crease (3 × 6).",
+            "Standing-start bowling focusing on reaching up through the bowling arm (3 × 6).",
         ],
     },
     "stride": {
         "title": "Find your stride",
-        "cue": "Bound up, not along - land with a stride that lets you stay tall.",
+        "cue": "Bound up, not along — land with a stride that lets you stay tall.",
         "drills": [
-            "Stride markers: mark a target front-foot position at ~75-80% of your height from the back foot (3 x 6).",
-            "Bound and stick: bound into the delivery stride and hold balance for two seconds (2 x 8).",
+            "Stride markers: mark a target front-foot position at ~75–80% of your height from the back foot (3 × 6).",
+            "Bound and stick: bound into the delivery stride and hold balance for two seconds (2 × 8).",
         ],
     },
     "rhythm": {
         "title": "Quicker through the crease",
-        "cue": "Land and go - front foot down, arm over, no pause.",
+        "cue": "Land and go — front foot down, arm over, no pause.",
         "drills": [
-            "Short run-up (5 steps) focusing on the time from front-foot landing to release (3 x 6).",
-            "Metronome / clap timing: the release follows the front-foot 'thud' immediately (2 x 8).",
+            "Short run-up (5 steps) focusing on the time from front-foot landing to release (3 × 6).",
+            "Metronome / clap timing: the release follows the front-foot 'thud' immediately (2 × 8).",
         ],
     },
     "elbow": {
         "title": "Check the elbow with a proper test",
         "cue": "Keep the arm long and relaxed from horizontal to release.",
         "drills": [
-            "Film side-on at 120-240 fps from 10 m and re-analyse; if the estimate stays high, book an accredited biomechanics test.",
+            "Film side-on at 120–240 fps from 10 m and re-analyse; if the estimate stays high, book an accredited biomechanics test.",
         ],
     },
 }
@@ -99,13 +99,13 @@ RULES = [
     ("release_height_pct", ("watch",), "pace", "release_height", 0.6,
      "Release point is low ({v:.0f}% of height)", "Descriptive"),
     ("stride_length_pct", ("watch",), "pace", "stride", 0.4,
-     "{side} delivery stride ({v:.0f}% of height; typical 70-87%)", "Weak evidence"),
+     "{side} delivery stride ({v:.0f}% of height; typical 70–87%)", "Weak evidence"),
     ("ffc_to_br_ms", ("watch",), "pace", "rhythm", 0.4,
      "Slow from front-foot contact to release ({v:.0f} ms)", "Low confidence"),
     ("head_offset_br", ("watch", "risk"), "accuracy", "side_bend", 0.6,
      "Head falls {v:.0f} cm outside the front foot", "Coaching heuristic"),
     ("elbow_extension", ("watch", "risk"), "legality", "elbow", 0.8,
-     "Estimated elbow extension {v:.0f}°", "Screening only - not an ICC test"),
+     "Estimated elbow extension {v:.0f}°", "Screening only — not an ICC test"),
 ]
 
 POSITIVES = {
@@ -135,6 +135,8 @@ SCORE_WEIGHTS = {
     "back_knee_bfc": 0.5, "ffc_to_br_ms": 0.3, "head_offset_br": 0.5, "trunk_forward_br": 0.4,
 }
 RATING_POINTS = {"good": 1.0, "watch": 0.55, "risk": 0.15}
+# a "watch" reading within one measurement step of its target is borderline: still listed, but ranked below clear misses
+BORDER_STEP = {"deg": 3.0, "% height": 3.0, "cm": 5.0}
 MIN_SCORED = 3
 
 
@@ -166,10 +168,17 @@ def coach(metrics: list[dict], view: str, fps: float) -> dict:
             continue
         sev = (1.5 if m["rating"] == "risk" else 1.0) * w * (0.4 + 0.6 * m["confidence"])
         # {side}: which way a two-sided band was missed (a beginner needs "short", not "outside the range")
-        lo = (NORMS.get(key, {}).get("good") or (None,))[0]
-        side = "Short" if lo is not None and m["value"] < lo else "Long"
+        good = NORMS.get(key, {}).get("good") or (None, None)
+        lo, hi = good[0], good[1]
+        v = m["value"]
+        side = "Short" if lo is not None and v < lo else "Long"
+        gap = (lo - v) if lo is not None and v < lo else (v - hi) if hi is not None and v > hi else 0.0
+        step = 1000.0 / fps if m.get("unit") == "ms" and fps else BORDER_STEP.get(m.get("unit"), 0.0)
+        borderline = m["rating"] == "watch" and 0 < gap <= step
+        if borderline:
+            sev *= 0.5
         issues.append({
-            "key": key, "category": cat, "severity": round(sev, 2), "rating": m["rating"],
+            "key": key, "category": cat, "severity": round(sev, 2), "rating": m["rating"], "borderline": borderline,
             "headline": head.format(v=abs(m["value"]), side=side), "evidence": evidence,
             "why": m.get("explain", ""), "metric": key, "confidence": m["confidence"],
             "drill": DRILLS[drill], "drill_key": drill, "event": m.get("event"),
@@ -192,8 +201,8 @@ def coach(metrics: list[dict], view: str, fps: float) -> dict:
     # ---------- capture quality advice ----------
     capture = []
     if fps < 90:
-        capture.append(f"Filmed at {fps:.0f} fps - the arm moves ~{min(80, 2000 / fps):.0f}° between frames at "
-                       "release. Use 120-240 fps slow motion for precise release and elbow measurements.")
+        capture.append(f"Filmed at {fps:.0f} fps — the arm moves ~{min(80, 2000 / fps):.0f}° between frames at "
+                       "release. Use 120–240 fps slow motion for precise release and elbow measurements.")
     if view in ("behind", "front_on"):
         capture.append("Filmed from behind/in front: side-bend, arm slot and alignment are measured well, but knee, "
                        "trunk-flexion and stride can't be measured from this angle. Add a side-on clip for those.")

@@ -26,7 +26,9 @@ export default function CoachingPanel({ result, onJump }: { result: AnalysisResu
               <div className="num">{i + 1}</div>
               <div>
                 <div className="row wrap" style={{ gap: 6, marginBottom: 6 }}>
-                  <span className={`chip ${p.rating}`}>{RATING_LABEL[p.rating]}</span>
+                  <span className={`chip ${p.rating}`} title={p.borderline ? "Just outside the target range, within what one camera can measure: worth a look, not a priority" : undefined}>
+                    {p.borderline ? "Borderline" : RATING_LABEL[p.rating]}
+                  </span>
                   <span className={`chip ${cat.cls}`}>{cat.icon} {cat.label}</span>
                   <span className="chip unrated" title="Strength of the published evidence">{p.evidence}</span>
                   {ev && <button className="btn sm ghost" onClick={() => onJump(ev)}><IPlay size={11} /> Show in video</button>}

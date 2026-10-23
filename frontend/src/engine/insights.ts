@@ -60,15 +60,15 @@ const WHY_BY_METRIC: Record<string, string> = {
 };
 
 const STRENGTH: Record<string, string[]> = {
-  front_leg: ["Single-leg step-downs from a low step, slow on the way down (3 x 8 each leg)", "Glute bridges (3 x 12)"],
-  trunk_flexion: ["Dead bugs (3 x 10)", "Hip-hinge with a broomstick on your back (3 x 10)"],
-  side_bend: ["Side planks (3 x 30 s each side)", "Bird dogs (3 x 10 each side)"],
-  mixed_action: ["Anti-rotation hold with a band or partner (3 x 20 s each side)", "Side planks (3 x 30 s each side)"],
-  release_height: ["Thoracic rotations on all fours (2 x 10 each side)", "Wall slides, arms overhead (3 x 10)"],
-  stride: ["Split squats (3 x 8 each leg)", "Lateral bound and stick (3 x 6 each side)"],
-  rhythm: ["Skipping or ankle hops (3 x 20)", "Fast-feet cone drill (3 x 20 s)"],
+  front_leg: ["Single-leg step-downs from a low step, slow on the way down (3 × 8 each leg)", "Glute bridges (3 × 12)"],
+  trunk_flexion: ["Dead bugs (3 × 10)", "Hip-hinge with a broomstick on your back (3 × 10)"],
+  side_bend: ["Side planks (3 × 30 s each side)", "Bird dogs (3 × 10 each side)"],
+  mixed_action: ["Anti-rotation hold with a band or partner (3 × 20 s each side)", "Side planks (3 × 30 s each side)"],
+  release_height: ["Thoracic rotations on all fours (2 × 10 each side)", "Wall slides, arms overhead (3 × 10)"],
+  stride: ["Split squats (3 × 8 each leg)", "Lateral bound and stick (3 × 6 each side)"],
+  rhythm: ["Skipping or ankle hops (3 × 20)", "Fast-feet cone drill (3 × 20 s)"],
 };
-const GENERAL_STRENGTH = ["Plank (3 x 30 s)", "Bodyweight squats (3 x 12)", "Hip-flexor and hamstring stretches (2 x 30 s)"];
+const GENERAL_STRENGTH = ["Plank (3 × 30 s)", "Bodyweight squats (3 × 12)", "Hip-flexor and hamstring stretches (2 × 30 s)"];
 
 const GRADE_PHRASE: Record<string, string> = {
   Excellent: "Excellent action", Elite: "Excellent action", Strong: "Strong action", Developing: "A good base",
@@ -137,7 +137,7 @@ export function summary(result: InsightsResult, player: InsightsPlayer | null = 
     unlock.push("Film from behind the stumps to also measure side-bend, alignment and whether you fall away.");
   }
   if ((result.fps_real ?? 30) < 90) {
-    unlock.push("Use your phone's slow-motion mode (120-240 fps) to time release and foot contacts precisely.");
+    unlock.push("Use your phone's slow-motion mode (120–240 fps) to time release and foot contacts precisely.");
   }
   const notes: string[] = [];
   if (JUNIOR.includes(age) && style !== "spin") {
@@ -169,7 +169,7 @@ export function backHealth(result: InsightsResult, player: InsightsPlayer | null
   type Check = NonNullable<Insights["back_health"]>["checks"][number];
   const checks: Check[] = [];
   let [s, m] = status("trunk_lateral_br");
-  checks.push({ key: "side_bend", label: "Side-bend at release", status: s, value: m ? m.value ?? null : null, unit: "deg",
+  checks.push({ key: "side_bend", label: "Side-bend at release", status: s, value: m && s !== "unknown" ? m.value ?? null : null, unit: "deg",
     text: {
       ok: "Within the range seen in uninjured junior bowlers.",
       watch: "Higher than typical; worth reducing with the 'stay tall' drills.",
@@ -188,7 +188,7 @@ export function backHealth(result: InsightsResult, player: InsightsPlayer | null
       unknown: m1?.note || m2?.note || "Not measurable in this clip; film from behind the stumps.",
     }[s] });
   [s, m] = status("back_knee_bfc");
-  checks.push({ key: "back_knee", label: "Back leg at back-foot contact", status: s, value: m ? m.value ?? null : null, unit: "deg",
+  checks.push({ key: "back_knee", label: "Back leg at back-foot contact", status: s, value: m && s !== "unknown" ? m.value ?? null : null, unit: "deg",
     text: {
       ok: "The back leg stays firm when it lands.",
       watch: "The back leg bends a little more than ideal when it lands.",
@@ -260,7 +260,7 @@ const PLAN_DRILLS: Record<string, PlanDrill[]> = {
     d("Standing-start deliveries, reaching up tall through the bowling arm", 3, 6, true),
   ],
   stride: [
-    d("Stride markers: mark a front-foot spot about 75-80% of your height from the back foot and bowl to it", 3, 6, true),
+    d("Stride markers: mark a front-foot spot about 75–80% of your height from the back foot and bowl to it", 3, 6, true),
     d("Bound and stick (no ball): bound into the delivery stride and hold your balance for two seconds", 2, 8, false),
   ],
   rhythm: [
@@ -268,7 +268,7 @@ const PLAN_DRILLS: Record<string, PlanDrill[]> = {
     d("Clap timing: a partner claps as your front foot lands and the release follows immediately", 2, 8, true),
   ],
   elbow: [
-    d("Film side-on in slow motion (120-240 fps) from about 10 m; if the estimate stays high, book an accredited biomechanics test", 1, 1, false),
+    d("Film side-on in slow motion (120–240 fps) from about 10 m; if the estimate stays high, book an accredited biomechanics test", 1, 1, false),
   ],
 };
 const MAINTAIN_DRILLS = [
@@ -382,7 +382,7 @@ export function practicePlan(result: InsightsResult, player: InsightsPlayer | nu
     for (const day of ["Tue", "Thu"]) {
       days.push({ day, kind: "strength", title: "Strength & mobility (no bowling)",
         items: [...strength.map((text) => ({ text })),
-          ...(["u11", "u13", "u15"].includes(age) ? [{ text: "Bodyweight only at your age - no heavy weights needed." }] : [])] });
+          ...(["u11", "u13", "u15"].includes(age) ? [{ text: "Bodyweight only at your age — no heavy weights needed." }] : [])] });
     }
     let sat: string;
     if (young) {

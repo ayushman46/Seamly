@@ -38,8 +38,8 @@ export const SERIES_INFO: Record<string, { label: string; unit: string; plane: "
 };
 
 // angles of the 3D model only: on the video the same joints are measured directly (front_knee_2d,
-// elbow_flexion_2d), so these are always shown as estimates
-const MODEL_ONLY = new Set(["knee_front", "knee_back", "elbow_flexion_bowling", "elbow_flexion_front"]);
+// elbow_flexion_2d, trunk_angle_2d, which the metrics use), so these are always shown as estimates
+const MODEL_ONLY = new Set(["knee_front", "knee_back", "elbow_flexion_bowling", "elbow_flexion_front", "trunk_forward_flexion", "trunk_lateral_flexion"]);
 
 /** Measured for this view (shown by default) or a 3D estimate (shown on request, clearly labelled). */
 export function measuredForView(key: string, plane: string, view: View): boolean {
@@ -57,7 +57,8 @@ export function physical(key: string, v: number): number {
 export function reliableForView(plane: string, view: View): boolean {
   if (plane === "any") return true;
   if (plane === "sagittal") return view === "side_on";
-  if (plane === "frontal") return view !== "side_on";
+  // hip and shoulder rotation turns towards / away from a side-on camera: only behind or front-on shows it
+  if (plane === "frontal" || plane === "transverse") return view !== "side_on";
   return true;
 }
 

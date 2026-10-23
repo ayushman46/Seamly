@@ -21,7 +21,11 @@ function db(): Promise<IDBDatabase> {
       req.onupgradeneeded = () => {
         for (const s of STORES) if (!req.result.objectStoreNames.contains(s)) req.result.createObjectStore(s);
       };
-      req.onsuccess = () => resolve(req.result);
+      req.onsuccess = () => {
+        // another tab deleting or upgrading the database must not wait for this one: let go, reopen on next use
+        req.result.onversionchange = () => { req.result.close(); dbP = null; blobsOk = null; };
+        resolve(req.result);
+      };
       req.onerror = () => reject(req.error ?? new Error("Could not open the browser database."));
       req.onblocked = () => reject(new Error("Seamly is open in another tab that is blocking the database upgrade. Close other tabs and reload."));
     });

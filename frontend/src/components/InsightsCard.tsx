@@ -65,7 +65,7 @@ export function BackHealthCard({ ins }: { ins: Insights }) {
   if (!b) return null;
   const headline = b.overall === "ok" && b.measured < b.total
     ? `No red flags in what we could measure (${b.measured} of ${b.total} checks)`
-    : b.overall === "unknown" ? "Couldn't check from this camera angle" : STATUS_TEXT[b.overall];
+    : b.overall === "unknown" ? "Couldn't check in this clip" : STATUS_TEXT[b.overall];
   return (
     <div className="card card-pad">
       <div className="row wrap" style={{ marginBottom: 12, gap: 8 }}>

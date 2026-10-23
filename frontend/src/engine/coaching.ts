@@ -13,67 +13,67 @@ export const DRILLS: Record<string, Drill> = {
     title: "Brace the front leg",
     cue: "Land tall, push the ground away - 'stand up' through the front leg as the arm comes over.",
     drills: [
-      "Standing brace: front foot planted, bowl from a static delivery-stride position, focus on a firm knee (3 x 6).",
-      "Walk-through then jog-through deliveries, adding speed only while the knee stays firm (3 x 6).",
-      "Gather-and-bound drill onto a mat, freezing at front-foot contact to feel the brace (2 x 8).",
+      "Standing brace: front foot planted, bowl from a static delivery-stride position, focus on a firm knee (3 × 6).",
+      "Walk-through then jog-through deliveries, adding speed only while the knee stays firm (3 × 6).",
+      "Gather-and-bound drill onto a mat, freezing at front-foot contact to feel the brace (2 × 8).",
     ],
   },
   trunk_flexion: {
     title: "Drive the chest through",
-    cue: "Chest over the front knee - finish with your bowling shoulder pointing at the batter.",
+    cue: "Chest over the front knee — finish with your bowling shoulder pointing at the batter.",
     drills: [
-      "Kneeling throws: front knee down, pull the trunk down and through towards a target (3 x 8).",
-      "Med-ball slam from the delivery stride position (17+ only) (3 x 6).",
-      "Follow-through line drill: finish with the chest past the front knee on a chalk line (2 x 8).",
+      "Kneeling throws: front knee down, pull the trunk down and through towards a target (3 × 8).",
+      "Med-ball slam from the delivery stride position (17+ only) (3 × 6).",
+      "Follow-through line drill: finish with the chest past the front knee on a chalk line (2 × 8).",
     ],
   },
   side_bend: {
     title: "Stay tall at release",
     cue: "Head over the front foot, front arm drives towards the target rather than yanking down.",
     drills: [
-      "Chalk-line run-ups: run and land on a straight line so the body isn't forced to lean (3 x 6).",
-      "Front-arm drive drill: hand reaches towards the target and finishes near the chest (2 x 10).",
-      "Wall drill: bowl alongside a wall/net on the non-bowling side to discourage falling away (2 x 8).",
+      "Chalk-line run-ups: run and land on a straight line so the body isn't forced to lean (3 × 6).",
+      "Front-arm drive drill: hand reaches towards the target and finishes near the chest (2 × 10).",
+      "Wall drill: bowl alongside a wall/net on the non-bowling side to discourage falling away (2 × 8).",
     ],
   },
   mixed_action: {
     title: "Line up hips and shoulders",
-    cue: "Back foot and shoulders tell the same story - choose side-on or front-on and commit.",
+    cue: "Back foot and shoulders tell the same story — choose side-on or front-on and commit.",
     drills: [
-      "Chalk the crease: mark back-foot and front-foot positions and match shoulders to the back-foot line (3 x 6).",
-      "Mirror/phone checks at back-foot contact from behind; fix the shoulders first (2 x 8).",
-      "Slow-motion walk-throughs freezing at back-foot contact to rehearse alignment (2 x 6).",
+      "Chalk the crease: mark back-foot and front-foot positions and match shoulders to the back-foot line (3 × 6).",
+      "Mirror/phone checks at back-foot contact from behind; fix the shoulders first (2 × 8).",
+      "Slow-motion walk-throughs freezing at back-foot contact to rehearse alignment (2 × 6).",
     ],
   },
   release_height: {
     title: "Get taller at release",
-    cue: "Tall at the crease - bowling arm brushes the ear, release at the top.",
+    cue: "Tall at the crease — bowling arm brushes the ear, release at the top.",
     drills: [
-      "High-target drill: release over a raised rope/bar 1 m in front of the crease (3 x 6).",
-      "Standing-start bowling focusing on reaching up through the bowling arm (3 x 6).",
+      "High-target drill: release over a raised rope/bar 1 m in front of the crease (3 × 6).",
+      "Standing-start bowling focusing on reaching up through the bowling arm (3 × 6).",
     ],
   },
   stride: {
     title: "Find your stride",
-    cue: "Bound up, not along - land with a stride that lets you stay tall.",
+    cue: "Bound up, not along — land with a stride that lets you stay tall.",
     drills: [
-      "Stride markers: mark a target front-foot position at ~75-80% of your height from the back foot (3 x 6).",
-      "Bound and stick: bound into the delivery stride and hold balance for two seconds (2 x 8).",
+      "Stride markers: mark a target front-foot position at ~75–80% of your height from the back foot (3 × 6).",
+      "Bound and stick: bound into the delivery stride and hold balance for two seconds (2 × 8).",
     ],
   },
   rhythm: {
     title: "Quicker through the crease",
-    cue: "Land and go - front foot down, arm over, no pause.",
+    cue: "Land and go — front foot down, arm over, no pause.",
     drills: [
-      "Short run-up (5 steps) focusing on the time from front-foot landing to release (3 x 6).",
-      "Metronome / clap timing: the release follows the front-foot 'thud' immediately (2 x 8).",
+      "Short run-up (5 steps) focusing on the time from front-foot landing to release (3 × 6).",
+      "Metronome / clap timing: the release follows the front-foot 'thud' immediately (2 × 8).",
     ],
   },
   elbow: {
     title: "Check the elbow with a proper test",
     cue: "Keep the arm long and relaxed from horizontal to release.",
     drills: [
-      "Film side-on at 120-240 fps from 10 m and re-analyse; if the estimate stays high, book an accredited biomechanics test.",
+      "Film side-on at 120–240 fps from 10 m and re-analyse; if the estimate stays high, book an accredited biomechanics test.",
     ],
   },
 };
@@ -102,13 +102,13 @@ export const RULES: Rule[] = [
   ["release_height_pct", ["watch"], "pace", "release_height", 0.6,
     "Release point is low ({v:.0f}% of height)", "Descriptive"],
   ["stride_length_pct", ["watch"], "pace", "stride", 0.4,
-    "{side} delivery stride ({v:.0f}% of height; typical 70-87%)", "Weak evidence"],
+    "{side} delivery stride ({v:.0f}% of height; typical 70–87%)", "Weak evidence"],
   ["ffc_to_br_ms", ["watch"], "pace", "rhythm", 0.4,
     "Slow from front-foot contact to release ({v:.0f} ms)", "Low confidence"],
   ["head_offset_br", ["watch", "risk"], "accuracy", "side_bend", 0.6,
     "Head falls {v:.0f} cm outside the front foot", "Coaching heuristic"],
   ["elbow_extension", ["watch", "risk"], "legality", "elbow", 0.8,
-    "Estimated elbow extension {v:.0f}°", "Screening only - not an ICC test"],
+    "Estimated elbow extension {v:.0f}°", "Screening only — not an ICC test"],
 ];
 
 export const POSITIVES: Record<string, string> = {
@@ -151,6 +151,9 @@ function formatStr(tpl: string, vals: Record<string, number | string>): string {
 }
 const has = (o: object, k: string): boolean => Object.prototype.hasOwnProperty.call(o, k);
 
+// a "watch" reading within one measurement step of its target is borderline: still listed, but ranked below clear misses
+const BORDER_STEP: Record<string, number> = { deg: 3.0, "% height": 3.0, cm: 5.0 };
+
 export function coach(metrics: Metric[], view: string, fps: number): CoachingOut {
   const by: Record<string, Metric> = {};
   for (const m of metrics) by[m.key] = m;
@@ -178,13 +181,18 @@ export function coach(metrics: Metric[], view: string, fps: number): CoachingOut
   for (const [key, trig, cat, drill, w, head, evidence] of RULES) {
     const m = by[key];
     if (!m || m.value === null || !trig.includes(m.rating) || m.confidence < 0.3) continue;
-    const sev = (m.rating === "risk" ? 1.5 : 1.0) * w * (0.4 + 0.6 * m.confidence);
+    let sev = (m.rating === "risk" ? 1.5 : 1.0) * w * (0.4 + 0.6 * m.confidence);
     // {side}: which way a two-sided band was missed (a beginner needs "short", not "outside the range")
     const good = NORMS[key]?.good;
-    const lo = good ? good[0] : null;
-    const side = lo !== null && m.value < lo ? "Short" : "Long";
+    const lo = good ? good[0] : null, hi = good ? good[1] : null;
+    const v = m.value;
+    const side = lo !== null && v < lo ? "Short" : "Long";
+    const gap = lo !== null && v < lo ? lo - v : hi !== null && v > hi ? v - hi : 0.0;
+    const step = m.unit === "ms" && fps ? 1000.0 / fps : BORDER_STEP[m.unit] ?? 0.0;
+    const borderline = m.rating === "watch" && gap > 0 && gap <= step;
+    if (borderline) sev *= 0.5;
     issues.push({
-      key, category: cat, severity: pyRound(sev, 2), rating: m.rating,
+      key, category: cat, severity: pyRound(sev, 2), rating: m.rating, borderline,
       headline: formatStr(head, { v: Math.abs(m.value), side }), evidence,
       why: "explain" in m ? m.explain : "", metric: key, confidence: m.confidence,
       drill: DRILLS[drill], drill_key: drill, event: m.event ?? null,
@@ -208,8 +216,8 @@ export function coach(metrics: Metric[], view: string, fps: number): CoachingOut
   // ---------- capture quality advice ----------
   const capture: string[] = [];
   if (fps < 90) {
-    capture.push(`Filmed at ${pyFormat(fps, 0)} fps - the arm moves ~${pyFormat(pyMin(80, 2000 / fps), 0)}° between frames at `
-      + "release. Use 120-240 fps slow motion for precise release and elbow measurements.");
+    capture.push(`Filmed at ${pyFormat(fps, 0)} fps — the arm moves ~${pyFormat(pyMin(80, 2000 / fps), 0)}° between frames at `
+      + "release. Use 120–240 fps slow motion for precise release and elbow measurements.");
   }
   if (view === "behind" || view === "front_on") {
     capture.push("Filmed from behind/in front: side-bend, arm slot and alignment are measured well, but knee, "

@@ -1,10 +1,10 @@
 import type { AnalysisResult, EventKey } from "../types";
-import { EVENTS, EVENT_HEX, SERIES_INFO, reliableForView } from "../lib/constants";
+import { EVENTS, EVENT_HEX, SERIES_INFO, measuredForView } from "../lib/constants";
 import { fmt, realSec, unitLabel } from "../lib/format";
 import { IChevronRight } from "./Icons";
 
 const KEYS_SIDE = ["front_knee_2d", "elbow_flexion_2d", "trunk_angle_2d", "bowling_arm_elevation"];
-const KEYS_REAR = ["trunk_lateral_flexion", "bowling_arm_elevation", "hip_shoulder_separation", "bowling_wrist_height_pct"];
+const KEYS_REAR = ["trunk_angle_2d", "bowling_arm_elevation", "hip_shoulder_separation", "bowling_wrist_height_pct"];
 
 export default function FrameCard({ result, frame, onOpen, onConfirm, busy }: {
   result: AnalysisResult; frame: number; onOpen: () => void; onConfirm: (k: EventKey, f: number) => void; busy: boolean;
@@ -40,7 +40,7 @@ export default function FrameCard({ result, frame, onOpen, onConfirm, busy }: {
       <div className="frame-mini">
         {keys.filter((k) => result.series[k]).map((k) => {
           const info = SERIES_INFO[k];
-          const ok = reliableForView(info.plane, result.view.view);
+          const ok = measuredForView(k, info.plane, result.view.view);
           return (
             <div key={k} className="fm" style={{ opacity: ok ? 1 : 0.6 }} title={info.help + (ok ? "" : " (3D estimate for this camera view)")}>
               <div className="fm-v">{fmt(result.series[k][t], 0)}<small>{unitLabel(info.unit)}</small></div>

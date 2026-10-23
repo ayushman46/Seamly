@@ -176,7 +176,7 @@ def analyse(video_path: str, out_dir: Path, opts: Options | None = None,
     real_fps = info.fps * opts.slowmo_factor
     if real_fps < MIN_FPS - 0.5:
         raise AnalysisError(f"This clip has only {real_fps:.0f} frames per second. A delivery stride lasts about 0.2 s, so "
-                            f"at least {MIN_FPS:.0f} fps is needed. Phones film at 30 fps or more; 120-240 fps slow motion "
+                            f"at least {MIN_FPS:.0f} fps is needed. Phones film at 30 fps or more; 120–240 fps slow motion "
                             "is best. (If the clip plays in slow motion, set its clip speed.)")
 
     # ---------------- detect + track every usable shot ----------------

@@ -100,7 +100,7 @@ async function refresh(id: string): Promise<void> {
 }
 
 const PUBLIC = ["id", "name", "created", "updated", "status", "progress", "stage", "stage_label", "error", "score", "grade", "view", "arm",
-  "thumb_frame", "options", "timing_s", "elapsed", "size_mb", "notice", "suggest", "player_id"] as const;
+  "thumb_frame", "options", "timing_s", "elapsed", "size_mb", "notice", "suggest", "player_id", "input_type"] as const;
 
 function pub(m: Meta): AnalysisMeta {
   const out = {} as Record<string, unknown>;
@@ -410,7 +410,7 @@ export const SAMPLES = {
 };
 export type SampleName = keyof typeof SAMPLES;
 // bump when the bundled sample analyses are regenerated, so a browser that imported an older copy gets the new one
-const SAMPLE_VERSION = 3;
+const SAMPLE_VERSION = 4;
 
 /** Import a precomputed sample analysis (opens instantly: no models to download). */
 async function importSample(which: SampleName): Promise<string> {

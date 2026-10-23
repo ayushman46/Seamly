@@ -63,6 +63,7 @@ export default function Timeline({ id, result, frame, onSeek, onSetEvent, edited
   // the flag being dragged is also kept in a ref: a fast drag moves before React re-renders with the new state,
   // and those first moves must move the flag, not scrub the playhead
   const dragRef = useRef<{ key: EventKey; frame: number } | null>(null);
+  const wantRef = useRef<{ key: EventKey; frame: number } | null>(null);   // last marker frame asked for with the keyboard
   const onTrackMove = (e: React.PointerEvent) => {
     const d = dragRef.current;
     if (d) {
@@ -122,11 +123,14 @@ export default function Timeline({ id, result, frame, onSeek, onSetEvent, edited
               aria-valuenow={f}
               aria-valuetext={`frame ${f}`}
               onKeyDown={(ke) => {
-                // keyboard: arrows move the marker a frame (shift: 5)
-                if (busy || (ke.key !== "ArrowLeft" && ke.key !== "ArrowRight")) return;
+                // keyboard: arrows move the marker a frame (shift: 5). Presses made while the last move is still being
+                // applied add up (they start from the frame asked for, not the one still on screen).
+                if (ke.key !== "ArrowLeft" && ke.key !== "ArrowRight") return;
                 ke.preventDefault();
                 ke.stopPropagation();
-                const to = Math.max(f0, Math.min(f1 - 1, info.frame + (ke.key === "ArrowRight" ? 1 : -1) * (ke.shiftKey ? 5 : 1)));
+                const from = busy && wantRef.current?.key === e.key ? wantRef.current.frame : info.frame;
+                const to = Math.max(f0, Math.min(f1 - 1, from + (ke.key === "ArrowRight" ? 1 : -1) * (ke.shiftKey ? 5 : 1)));
+                wantRef.current = { key: e.key, frame: to };
                 onSeek(to);
                 onSetEvent(e.key, to);
               }}
@@ -148,7 +152,7 @@ export default function Timeline({ id, result, frame, onSeek, onSetEvent, edited
       </div>
       <div className="row faint tl-help">
         <span>Tap or drag to scrub · drag a flag to correct it (or use "Set this frame as" in the Frame tab)<span className="tl-keys"> · keys <kbd>←</kbd> <kbd>→</kbd> (shift ×5), <kbd>space</kbd>, <kbd>1</kbd>–<kbd>5</kbd> jump to events</span></span>
-        <span className="mono">{f0}–{f1 - 1}</span>
+        <span className="mono" style={{ whiteSpace: "nowrap" }} title="Frames of the analysis window">{f0}–{f1 - 1}</span>
       </div>
       <div className="tl-legend faint">
         {EVENTS.map((e) => <span key={e.key}><b style={{ color: EVENT_HEX[e.key] }}>{e.short}</b> {e.label.toLowerCase()}</span>)}

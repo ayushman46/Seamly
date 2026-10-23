@@ -3,7 +3,7 @@ import { lazyPage } from "../lib/lazy";
 import { MODE, api } from "../api";
 import type { AnalysisMeta, AnalysisResult, EventKey, Insights } from "../types";
 import { EVENTS, SLOWMO_OPTIONS, VIEW_LABEL } from "../lib/constants";
-import { fmt, realSec } from "../lib/format";
+import { dateTime, fmt, realSec } from "../lib/format";
 import Header from "./Header";
 import FramePlayer from "./FramePlayer";
 import Timeline from "./Timeline";
@@ -244,9 +244,9 @@ function Failed({ meta, go, onRetry }: { meta: AnalysisMeta; go: (to: string) =>
           <div className="notice warn" style={{ marginTop: 20 }}><IAlert size={16} /> <div>{meta.error || "Unknown error"}</div></div>
           {kind === "detect" && (
             <ul className="fail-tips">
-              <li>Make sure the bowler's whole body (including feet) is visible from run-up to follow-through.</li>
-              <li>Film side-on or from behind the bowler; avoid heavy zoom and fast panning.</li>
-              <li>Trim long videos to the delivery (under {MODE === "browser" ? "a minute" : "2 minutes"}).</li>
+              <li>The bowler should fill at least a third of the frame's height: stand closer, or zoom in before you start recording (not during it).</li>
+              <li>Keep the camera still. A tripod, or a phone propped on a bag, works; panning to follow the bowler makes the action hard to track.</li>
+              <li>One delivery per clip works best: trim long videos to the delivery (under {MODE === "browser" ? "a minute" : "2 minutes"}).</li>
             </ul>
           )}
           <div className="row wrap" style={{ gap: 10, marginTop: 16 }}>
@@ -261,7 +261,8 @@ function Failed({ meta, go, onRetry }: { meta: AnalysisMeta; go: (to: string) =>
                 </select>
               </label>
             )}
-            {kind !== "file" && (
+            {/* the analysis is deterministic: retrying a clip with no delivery in it gives the same answer */}
+            {kind !== "file" && kind !== "detect" && (
               <button className="btn primary" disabled={busy} onClick={retry}>{busy ? <div className="spinner sm" /> : <IRefresh size={16} />} {Number(slowmo) !== cur ? "Retry at this clip speed" : "Retry"}</button>
             )}
           </div>
@@ -271,6 +272,12 @@ function Failed({ meta, go, onRetry }: { meta: AnalysisMeta; go: (to: string) =>
       <SiteFooter compact />
     </>
   );
+}
+
+/** Time of window frame i from ball release, as the Frame tab shows it: "−120 ms", "release", "+640 ms". */
+function relMs(r: AnalysisResult, i: number): string {
+  const ms = Math.round(realSec(r.frames.times[i] - (r.events.br?.time ?? r.frames.times[0]), r.options.slowmo_factor) * 1000);
+  return ms === 0 ? "release" : `${ms > 0 ? "+" : "−"}${Math.abs(ms)} ms`;
 }
 
 type Tab = "coach" | "plan" | "metrics" | "charts" | "frame" | "settings";
@@ -345,7 +352,8 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
   const armLabel = result.bowling_arm.arm === "right" ? "Right-arm" : "Left-arm";
   const armUnsure = result.bowling_arm.source !== "user" && result.bowling_arm.confidence < 0.7;
   const fileBase = `seamly-${(meta.name || "delivery").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "delivery"}`;
-  const videoName = `${fileBase}-original.mp4`;
+  const ext = ({ "video/quicktime": "mov", "video/webm": "webm", "video/x-matroska": "mkv", "video/x-msvideo": "avi", "video/avi": "avi", "video/x-m4v": "m4v" } as Record<string, string>)[meta.input_type ?? ""] ?? "mp4";
+  const videoName = `${fileBase}-original.${ext}`;
   const uploadRetest = () => {
     if (ins?.player) setCurrentPlayer(ins.player.id);
     go("/");
@@ -438,7 +446,10 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
     return () => window.removeEventListener("keydown", onKey);
   }, [f0, f1, result.events]);
 
+  // edits queue up (the data layer applies them in order): stay busy until the last one has landed
+  const pending = useRef(0);
   const recompute = useCallback(async (body: Parameters<typeof api.recompute>[1], message: string) => {
+    pending.current++;
     setBusy(true);
     try {
       const r = await api.recompute(id, body);
@@ -448,7 +459,7 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
     } catch (e) {
       flash((e as Error).message, true);
     } finally {
-      setBusy(false);
+      if (--pending.current === 0) setBusy(false);
     }
   }, [id, setResult, setMeta, flash]);
 
@@ -524,7 +535,7 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
             {others.length > 0 && (
               <select className="input" value="" onChange={(e) => e.target.value && go(`/compare/${id}/${e.target.value}`)} aria-label="Compare this delivery with another analysis" title="Compare this delivery with another analysis">
                 <option value="">Compare with…</option>
-                {others.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                {others.map((m) => <option key={m.id} value={m.id}>{m.name} · {dateTime(m.created, false)}{m.score !== null ? ` · ${m.score}/100` : ""}</option>)}
               </select>
             )}
             <button className="btn" onClick={() => go(`/r/${id}`)}><IFile size={15} /> Report</button>
@@ -587,7 +598,7 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
                     <button className={overlay.angles ? "on" : ""} aria-pressed={overlay.angles} onClick={() => setOverlay((o) => ({ ...o, angles: !o.angles }))}>Angles</button>
                     <button className={overlay.trail ? "on" : ""} aria-pressed={overlay.trail} onClick={() => setOverlay((o) => ({ ...o, trail: !o.trail }))}>Wrist trail</button>
                   </div>
-                  <span className="frame-readout" title={(result.options.slowmo_factor || 1) > 1 ? "Real (filmed) time" : undefined}>f {frame} · {fmt(realSec(result.frames.times[i] - (result.frames.times[0] ?? 0), result.options.slowmo_factor), 3)} s</span>
+                  <span className="frame-readout" title={`Time from ball release${(result.options.slowmo_factor || 1) > 1 ? " (real, filmed time)" : ""}`}>f {frame} · {relMs(result, i)}</span>
                 </div>
               </div>
               <Timeline result={result} frame={frame} onSeek={(f) => { setPlaying(false); setFrame(f); }} onSetEvent={setEvent} edited={edited} id={id} busy={busy} />

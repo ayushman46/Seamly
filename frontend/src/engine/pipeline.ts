@@ -242,7 +242,7 @@ async function stageA(src: FrameSource, opts: Options, models: Models, prog: Pro
   const realFps = info.fps * opts.slowmo_factor;
   if (realFps < MIN_FPS - 0.5) {
     throw new AnalysisError(`This clip has only ${realFps.toFixed(0)} frames per second. A delivery stride lasts about 0.2 s, so `
-      + `at least ${MIN_FPS} fps is needed. Phones film at 30 fps or more; 120-240 fps slow motion is best. (If the clip plays in slow motion, set its clip speed.)`);
+      + `at least ${MIN_FPS} fps is needed. Phones film at 30 fps or more; 120–240 fps slow motion is best. (If the clip plays in slow motion, set its clip speed.)`);
   }
   // ---------------- scan: detect + track (adaptive stride: ~350 scanned frames find the delivery) ----------------
   const n = info.frameCount;

@@ -52,17 +52,17 @@ WHY_BY_METRIC = {
 }
 
 STRENGTH = {
-    "front_leg": ["Single-leg step-downs from a low step, slow on the way down (3 x 8 each leg)",
-                  "Glute bridges (3 x 12)"],
-    "trunk_flexion": ["Dead bugs (3 x 10)", "Hip-hinge with a broomstick on your back (3 x 10)"],
-    "side_bend": ["Side planks (3 x 30 s each side)", "Bird dogs (3 x 10 each side)"],
-    "mixed_action": ["Anti-rotation hold with a band or partner (3 x 20 s each side)",
-                     "Side planks (3 x 30 s each side)"],
-    "release_height": ["Thoracic rotations on all fours (2 x 10 each side)", "Wall slides, arms overhead (3 x 10)"],
-    "stride": ["Split squats (3 x 8 each leg)", "Lateral bound and stick (3 x 6 each side)"],
-    "rhythm": ["Skipping or ankle hops (3 x 20)", "Fast-feet cone drill (3 x 20 s)"],
+    "front_leg": ["Single-leg step-downs from a low step, slow on the way down (3 × 8 each leg)",
+                  "Glute bridges (3 × 12)"],
+    "trunk_flexion": ["Dead bugs (3 × 10)", "Hip-hinge with a broomstick on your back (3 × 10)"],
+    "side_bend": ["Side planks (3 × 30 s each side)", "Bird dogs (3 × 10 each side)"],
+    "mixed_action": ["Anti-rotation hold with a band or partner (3 × 20 s each side)",
+                     "Side planks (3 × 30 s each side)"],
+    "release_height": ["Thoracic rotations on all fours (2 × 10 each side)", "Wall slides, arms overhead (3 × 10)"],
+    "stride": ["Split squats (3 × 8 each leg)", "Lateral bound and stick (3 × 6 each side)"],
+    "rhythm": ["Skipping or ankle hops (3 × 20)", "Fast-feet cone drill (3 × 20 s)"],
 }
-GENERAL_STRENGTH = ["Plank (3 x 30 s)", "Bodyweight squats (3 x 12)", "Hip-flexor and hamstring stretches (2 x 30 s)"]
+GENERAL_STRENGTH = ["Plank (3 × 30 s)", "Bodyweight squats (3 × 12)", "Hip-flexor and hamstring stretches (2 × 30 s)"]
 
 GRADE_PHRASE = {"Excellent": "Excellent action", "Elite": "Excellent action","Strong": "Strong action", "Developing": "A good base",
                 "Needs work": "Plenty to gain"}
@@ -96,7 +96,7 @@ def summary(result: dict, player: dict | None = None) -> dict:
     else:
         unlock.append("Film from behind the stumps to also measure side-bend, alignment and whether you fall away.")
     if result.get("fps_real", 30) < 90:
-        unlock.append("Use your phone's slow-motion mode (120-240 fps) to time release and foot contacts precisely.")
+        unlock.append("Use your phone's slow-motion mode (120–240 fps) to time release and foot contacts precisely.")
     notes = []
     if age in JUNIOR and style != "spin":
         notes.append("At your age, a safe action and sensible bowling loads matter more than pace; the pace comes later.")
@@ -130,7 +130,7 @@ def back_health(result: dict, player: dict | None = None) -> dict | None:
     checks = []
     s, m = status("trunk_lateral_br")
     checks.append({"key": "side_bend", "label": "Side-bend at release", "status": s,
-                   "value": m.get("value") if m else None, "unit": "deg",
+                   "value": m.get("value") if m and s != "unknown" else None, "unit": "deg",
                    "text": {"ok": "Within the range seen in uninjured junior bowlers.",
                             "watch": "Higher than typical; worth reducing with the 'stay tall' drills.",
                             "flag": "In the range linked to later back injury in junior fast bowlers.",
@@ -148,7 +148,7 @@ def back_health(result: dict, player: dict | None = None) -> dict | None:
                                        or "Not measurable in this clip; film from behind the stumps."}[s]})
     s, m = status("back_knee_bfc")
     checks.append({"key": "back_knee", "label": "Back leg at back-foot contact", "status": s,
-                   "value": m.get("value") if m else None, "unit": "deg",
+                   "value": m.get("value") if m and s != "unknown" else None, "unit": "deg",
                    "text": {"ok": "The back leg stays firm when it lands.",
                             "watch": "The back leg bends a little more than ideal when it lands.",
                             "flag": "The back leg folds on landing, which was linked to back injuries in one study.",
@@ -214,7 +214,7 @@ PLAN_DRILLS = {
         _d("Standing-start deliveries, reaching up tall through the bowling arm", 3, 6, True),
     ],
     "stride": [
-        _d("Stride markers: mark a front-foot spot about 75-80% of your height from the back foot and bowl to it", 3, 6, True),
+        _d("Stride markers: mark a front-foot spot about 75–80% of your height from the back foot and bowl to it", 3, 6, True),
         _d("Bound and stick (no ball): bound into the delivery stride and hold your balance for two seconds", 2, 8, False),
     ],
     "rhythm": [
@@ -222,7 +222,7 @@ PLAN_DRILLS = {
         _d("Clap timing: a partner claps as your front foot lands and the release follows immediately", 2, 8, True),
     ],
     "elbow": [
-        _d("Film side-on in slow motion (120-240 fps) from about 10 m; if the estimate stays high, book an accredited biomechanics test", 1, 1, False),
+        _d("Film side-on in slow motion (120–240 fps) from about 10 m; if the estimate stays high, book an accredited biomechanics test", 1, 1, False),
     ],
 }
 MAINTAIN_DRILLS = [
@@ -327,7 +327,7 @@ def practice_plan(result: dict, player: dict | None = None) -> dict:
         for day in ("Tue", "Thu"):
             days.append({"day": day, "kind": "strength", "title": "Strength & mobility (no bowling)",
                          "items": [{"text": s} for s in strength] +
-                                  ([{"text": "Bodyweight only at your age - no heavy weights needed."}] if age in ("u11", "u13", "u15") else [])})
+                                  ([{"text": "Bodyweight only at your age — no heavy weights needed."}] if age in ("u11", "u13", "u15") else [])})
         if young:
             sat = ("Playing a match? It counts as a bowling day: make Friday a rest day instead." if w == 1 else
                    "Playing a match? Move Friday's test day to the Monday after, so you never bowl two days in a row.")

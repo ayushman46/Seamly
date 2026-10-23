@@ -1083,10 +1083,10 @@ button:focus:not(:focus-visible) { outline: none; }
 .chip.warn { border-color: rgba(251, 191, 36, 0.55); color: #fde68a; cursor: pointer; }
 
 /* 3D viewer: inactive until clicked/tapped, so it never traps page scrolling */
-.viewer-activate { position: absolute; inset: 0; z-index: 2; display: flex; align-items: flex-start; justify-content: flex-end; padding: 12px; background: transparent; border: 0; cursor: pointer; color: var(--c-text-2, #c7d2e0); font: inherit; font-size: 12px; }
-.viewer-activate span { background: rgba(5, 8, 13, 0.72); border: 1px solid rgba(255, 255, 255, 0.12); padding: 5px 10px; border-radius: 999px; margin-top: 34px; }
+.viewer-activate { position: absolute; inset: 0; z-index: 2; display: flex; align-items: flex-start; justify-content: flex-start; padding: 12px; background: transparent; border: 0; cursor: pointer; color: var(--c-text-2, #c7d2e0); font: inherit; font-size: 12px; }
+.viewer-activate span { background: rgba(5, 8, 13, 0.72); border: 1px solid rgba(255, 255, 255, 0.12); padding: 5px 10px; border-radius: 999px; }
 .viewer-activate .touch { display: none; }
-.viewer-done { position: absolute; right: 12px; top: 46px; z-index: 3; }
+.viewer-done { position: absolute; left: 12px; top: 12px; z-index: 3; }
 @media (hover: none) and (pointer: coarse) {
   .viewer-activate .mouse { display: none; }
   .viewer-activate .touch { display: inline; }
@@ -1102,3 +1102,21 @@ button:focus:not(:focus-visible) { outline: none; }
 .backup-text { flex: 1 1 360px; min-width: 0; }
 .backup-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .link-btn:disabled { opacity: 0.6; cursor: default; text-decoration: none; }
+
+/* phones: segmented controls wrap instead of hiding options off the edge */
+@media (max-width: 560px) {
+  .seg { flex-wrap: wrap; flex-shrink: 1; }
+}
+
+/* phones: each compare row becomes a small card (metric, then A / B / change side by side) */
+@media (max-width: 560px) {
+  table.cmp { min-width: 0; }
+  table.cmp thead { display: none; }
+  table.cmp tr { display: grid; grid-template-columns: 1fr 1fr 1fr; column-gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--c-line); }
+  table.cmp td { border: 0; padding: 2px 0; white-space: normal; }
+  table.cmp td.cmp-name { grid-column: 1 / -1; color: var(--c-text); padding-bottom: 6px; }
+  table.cmp td[data-label]::before { content: attr(data-label); display: block; font-size: var(--fs-2xs); color: var(--c-text-3); text-transform: uppercase; letter-spacing: 0.08em; font-family: inherit; }
+  table.cmp td.cmp-verdict { grid-column: 1 / -1; }
+  table.cmp td.cmp-verdict:empty { display: none; }
+  table.cmp td .chip { margin-left: 0 !important; margin-top: 4px; }
+}

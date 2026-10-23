@@ -3,10 +3,13 @@ import type { AnalysisResult } from "../types";
 import { EVENTS, EVENT_HEX, SERIES_INFO, measuredForView, physical } from "../lib/constants";
 import { fmt, unitLabel } from "../lib/format";
 
-const DEFAULT = ["bowling_arm_elevation", "trunk_lateral_flexion", "front_knee_2d", "knee_front", "trunk_forward_flexion", "hip_shoulder_separation", "shoulder_alignment", "elbow_flexion_bowling", "bowling_wrist_height_pct"];
+const DEFAULT = ["bowling_arm_elevation", "front_knee_2d", "trunk_angle_2d", "elbow_flexion_2d", "bowling_wrist_height_pct", "trunk_lateral_flexion", "knee_front",
+  "trunk_forward_flexion", "hip_shoulder_separation", "shoulder_alignment", "elbow_flexion_bowling"];
 
 export default function Charts({ result, frame, onSeek }: { result: AnalysisResult; frame: number; onSeek: (f: number) => void }) {
-  const keys = DEFAULT.filter((k) => result.series[k]);
+  // the elbow moves 25-80° between frames below ~90 fps: its curve would only join a few far-apart points
+  const distinctFps = result.fps_real * (1 - (result.quality.repeated_frames ?? 0));
+  const keys = DEFAULT.filter((k) => result.series[k] && (k !== "elbow_flexion_2d" || distinctFps >= 90));
   const measured = keys.filter((k) => measuredForView(k, (SERIES_INFO[k] ?? { plane: "any" }).plane, result.view.view));
   const estimates = keys.filter((k) => !measured.includes(k));
   const [showEst, setShowEst] = useState(false);
@@ -46,12 +49,16 @@ function Chart({ k, result, frame, onSeek }: { k: string; result: AnalysisResult
     let lo = Math.min(...v), hi = Math.max(...v);
     const pad = Math.max(2, (hi - lo) * 0.08);
     lo -= pad; hi += pad;
+    // a straight knee can't pass 180° nor an elbow bend go below 0°: keep the axis labels possible too
+    if (k.startsWith("knee_") || k === "front_knee_2d") hi = Math.min(hi, 180);
+    if (k.startsWith("elbow_flexion")) lo = Math.max(lo, 0);
+    if (hi - lo < 1) hi = lo + 1;
     const n = data.length;
     const x = (i: number) => P.l + (i / Math.max(1, n - 1)) * (W - P.l - P.r);
     const y = (val: number) => P.t + (1 - (val - lo) / (hi - lo)) * (H - P.t - P.b);
     const path = data.map((val, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(val).toFixed(1)}`).join("");
     return { lo, hi, path };
-  }, [data]);
+  }, [data, k]);
   const n = data.length;
   const x = (i: number) => P.l + (i / Math.max(1, n - 1)) * (W - P.l - P.r);
   const y = (val: number) => P.t + (1 - (val - lo) / (hi - lo)) * (H - P.t - P.b);

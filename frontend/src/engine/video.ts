@@ -126,8 +126,7 @@ export class FrameSource {
       URL.revokeObjectURL(url);
       throw e;
     };
-    const decodeError = () => new VideoError("This browser can't decode this video. iPhone clips are often HEVC: open Seamly in Safari, "
-      + "or set Settings > Camera > Formats > Most Compatible before filming. Otherwise try an MP4 (H.264) file in Chrome.");
+    const decodeError = () => Object.assign(new VideoError("decode"), { decode: true });
     try {
       // metadata first; iOS may not fetch any frame data until play() is called, so prime with a muted play()
       await new Promise<void>((resolve, reject) => {
@@ -154,6 +153,13 @@ export class FrameSource {
         throw new VideoError(`Video is ${v.duration.toFixed(0)}s long; please trim it to under ${maxSeconds.toFixed(0)}s around the delivery.`);
       }
     } catch (e) {
+      if ((e as { decode?: boolean }).decode) {
+        fail(new VideoError(await isHevc(file)
+          ? "This browser can't decode this video: it is HEVC, as iPhone clips often are. Open Seamly in Safari, or set Settings > Camera > "
+            + "Formats > Most Compatible before filming. Otherwise convert it to an MP4 (H.264) file."
+          : "This browser couldn't decode this video. The file may be damaged or cut short (for example still copying, or only partly "
+            + "downloaded). Save or share the clip again as an MP4 and try once more."));
+      }
       fail(e);
     }
     const fs = new FrameSource(v, url);
@@ -221,6 +227,18 @@ export class FrameSource {
     this.video.load();
     this.video.remove();
     URL.revokeObjectURL(this.url);
+  }
+}
+
+/** Whether an MP4/MOV holds an HEVC track (its sample description names the codec "hvc1" or "hev1"). */
+async function isHevc(file: Blob): Promise<boolean> {
+  try {
+    const part = async (a: number, b: number) => new TextDecoder("latin1").decode(await file.slice(a, b).arrayBuffer());
+    const N = 4 << 20;   // the movie header sits at the start or the end of the file
+    const text = await part(0, N) + (file.size > N ? await part(Math.max(N, file.size - N), file.size) : "");
+    return text.includes("hvc1") || text.includes("hev1");
+  } catch {
+    return false;
   }
 }
 

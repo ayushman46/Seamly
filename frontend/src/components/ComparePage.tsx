@@ -166,19 +166,19 @@ function Row({ a, b, fps }: { a?: Metric; b?: Metric; fps: number }) {
   if (comparable && Math.abs(d!) >= resolution(m, fps) && a!.rating in ORDER && b!.rating in ORDER && ORDER[a!.rating] <= 2 && ORDER[b!.rating] <= 2) {
     verdict = ORDER[b!.rating] < ORDER[a!.rating] ? "better" : ORDER[b!.rating] > ORDER[a!.rating] ? "worse" : "same";
   }
-  const cell = (x?: Metric) => (
-    <td className={!x || x.reliability === "estimate" ? "faint" : ""}>
+  const cell = (x: Metric | undefined, side: "A" | "B") => (
+    <td className={!x || x.reliability === "estimate" ? "faint" : ""} data-label={side}>
       {x && x.value !== null ? `${fmt(x.value, x.unit === "ms" || x.unit === "cm" ? 0 : 1)}${unitLabel(x.unit)}` : "–"}
       {x && x.rating !== "unrated" && x.rating !== "info" && <span className={`chip ${x.rating}`} style={{ marginLeft: 8, height: 20, fontSize: 11 }}>{RATING_LABEL[x.rating]}</span>}
     </td>
   );
   return (
     <tr>
-      <td className="muted" style={{ fontWeight: 600 }}>{m.label}</td>
-      {cell(a)}
-      {cell(b)}
-      <td className="mono">{d === null ? <span className="faint">not comparable</span> : `${d > 0 ? "+" : ""}${fmt(d, Math.abs(d) < 10 ? 1 : 0)}${unitLabel(m.unit)}`}</td>
-      <td>{verdict && verdict !== "same" && <span className={`chip ${verdict === "better" ? "good" : "risk"}`}>{verdict === "better" ? "Improved" : "Worse"}</span>}</td>
+      <td className="muted cmp-name" style={{ fontWeight: 600 }}>{m.label}</td>
+      {cell(a, "A")}
+      {cell(b, "B")}
+      <td className="mono" data-label="Change">{d === null ? <span className="faint">not comparable</span> : `${d > 0 ? "+" : ""}${fmt(d, Math.abs(d) < 10 ? 1 : 0)}${unitLabel(m.unit)}`}</td>
+      <td className="cmp-verdict">{verdict && verdict !== "same" && <span className={`chip ${verdict === "better" ? "good" : "risk"}`}>{verdict === "better" ? "Improved" : "Worse"}</span>}</td>
     </tr>
   );
 }

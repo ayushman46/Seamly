@@ -244,20 +244,28 @@ export default function Viewer3D({ id, result, frame }: { id: string; result: An
     s.controls.enabled = active;
     s.renderer.domElement.style.touchAction = active ? "none" : "pan-y";
     if (!active) return;
+    doneRef.current?.focus({ preventScroll: true });
     const out = (e: PointerEvent) => { if (host.current && !host.current.contains(e.target as Node)) setActive(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") release(); };
     document.addEventListener("pointerdown", out);
-    return () => document.removeEventListener("pointerdown", out);
+    document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("pointerdown", out); document.removeEventListener("keydown", esc); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);
+  // hand keyboard focus back to the "explore" button once the viewer is released
+  const doneRef = useRef<HTMLButtonElement>(null);
+  const activateRef = useRef<HTMLButtonElement>(null);
+  const release = () => { setActive(false); requestAnimationFrame(() => activateRef.current?.focus({ preventScroll: true })); };
 
   return (
     <div className="card viewer">
       <div className="viewer-stage" ref={host}>
         {!active && status === "ready" && (
-          <button type="button" className="viewer-activate" onClick={() => setActive(true)} aria-label="Explore the 3D body: rotate and zoom">
+          <button type="button" ref={activateRef} className="viewer-activate" onClick={() => setActive(true)} aria-label="Explore the 3D body: rotate and zoom">
             <span className="mouse">Click to rotate and zoom</span><span className="touch">Tap to rotate and zoom</span>
           </button>
         )}
-        {active && <button type="button" className="btn sm viewer-done" onClick={() => setActive(false)}>Done</button>}
+        {active && <button type="button" ref={doneRef} className="btn sm viewer-done" onClick={release} aria-label="Done exploring the 3D body (Esc)">Done</button>}
         {status === "loading" && <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center" }}><div className="spinner" /></div>}
         {status === "error" && <div className="notice warn" style={{ position: "absolute", left: 12, right: 12, top: 12 }}>3D body model unavailable for this analysis.</div>}
         <div className="viewer-legend"><span className="mouse">Drag to orbit · scroll to zoom · right-drag to pan</span><span className="touch">Drag to orbit · pinch to zoom · two-finger drag to pan</span></div>
