@@ -188,9 +188,10 @@ export class FrameSource {
       v.addEventListener("seeked", on);
       v.currentTime = t;
     });
-    // make sure the decoded frame is the one presented (Chrome/Safari)
+    // Safari can still paint the previous frame right after "seeked": wait (briefly) until the new one is presented.
+    // Chrome and Firefox draw the seeked frame already.
     const rvfc = (v as HTMLVideoElement & { requestVideoFrameCallback?: (cb: () => void) => number }).requestVideoFrameCallback;
-    if (rvfc && v.readyState < 2) await new Promise<void>((r) => rvfc.call(v, () => r()));
+    if (rvfc && IS_SAFARI) await new Promise<void>((r) => { rvfc.call(v, () => r()); setTimeout(r, 80); });
   }
 
   close() {
@@ -201,6 +202,9 @@ export class FrameSource {
     URL.revokeObjectURL(this.url);
   }
 }
+
+// WebKit outside desktop/Android Chrome: Safari, and every browser on iOS (they all use WebKit there)
+const IS_SAFARI = typeof navigator !== "undefined" && /AppleWebKit/.test(navigator.userAgent) && !/Chrome\/|Chromium\/|Edg\//.test(navigator.userAgent);
 
 function snapFps(f: number): number {
   for (const c of [23.976, 24, 25, 29.97, 30, 48, 50, 59.94, 60, 100, 119.88, 120, 239.76, 240]) if (Math.abs(f - c) / c < 0.03) return c;
