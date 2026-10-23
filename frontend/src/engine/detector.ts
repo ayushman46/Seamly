@@ -34,9 +34,14 @@ async function hasWebGPU(): Promise<boolean> {
 
 // models are kept in Cache Storage after the first download (the HTTP cache alone can drop 40 MB files)
 
+// Where the models are downloaded from, in order. A CDN copy (when set) keeps the ~70 MB first download off the
+// site's own bandwidth; the site's copy is the fallback. Files over 20 MB are stored in parts (the CDN's limit).
+export const MODEL_SOURCES: string[] = [MODEL_BASE];
+const MODEL_PARTS: Record<string, string[]> = { "yolo11s-pose.onnx": ["yolo11s-pose.onnx.part1", "yolo11s-pose.onnx.part2"] };
+
 /** Download with progress (the models are tens of MB), served from Cache Storage after the first time. */
 export async function fetchModel(name: string, onProgress?: (f: number) => void): Promise<Uint8Array> {
-  const url = new URL(MODEL_BASE + name, location.href).href;
+  const url = new URL(MODEL_BASE + name, location.href).href;   // the cache key, whichever source it came from
   try {
     const hit = await (await caches.open(MODEL_CACHE)).match(url);
     if (hit) {
@@ -45,10 +50,33 @@ export async function fetchModel(name: string, onProgress?: (f: number) => void)
       return b;
     }
   } catch { /* Cache Storage unavailable (e.g. some private windows): download normally */ }
-  const bytes = await download(url, name, onProgress);
+  let bytes: Uint8Array | null = null;
+  for (const [i, base] of MODEL_SOURCES.entries()) {
+    try {
+      bytes = await downloadParts(base, MODEL_PARTS[name] ?? [name], name, onProgress);
+      break;
+    } catch (e) {
+      if (i === MODEL_SOURCES.length - 1) throw e;
+      console.warn(`Model source ${base} failed, trying the next one`, e);
+    }
+  }
+  if (!bytes) throw new Error(`Could not download the analysis model (${name}).`);
   void caches.open(MODEL_CACHE).then((c) => c.put(url, new Response(bytes, { headers: { "Content-Type": "application/octet-stream" } })))
     .catch(() => undefined);
   return bytes;
+}
+
+/** Download a model's parts from one source and join them. */
+async function downloadParts(base: string, parts: string[], name: string, onProgress?: (f: number) => void): Promise<Uint8Array> {
+  const chunks: Uint8Array[] = [];
+  for (const [i, part] of parts.entries()) {
+    chunks.push(await download(new URL(base + part, location.href).href, name, (f) => onProgress?.((i + f) / parts.length)));
+  }
+  if (chunks.length === 1) return chunks[0];
+  const out = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0));
+  let at = 0;
+  for (const c of chunks) { out.set(c, at); at += c.length; }
+  return out;
 }
 
 async function download(url: string, name: string, onProgress?: (f: number) => void): Promise<Uint8Array> {
