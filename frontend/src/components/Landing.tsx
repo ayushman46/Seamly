@@ -4,7 +4,7 @@ import { LogoMark, Wordmark } from "./Brand";
 import { REPO_URL } from "./Header";
 import {
   IAngle, ICalendar, IChat, ICheck, IChevronDown, IColumns, ICube, IFile, IFilm, IFrame, IGithub, ILock, IPhone,
-  IShield, ISun, ITrend, ITripod, IUsers, IVideo, ICpu, IArrowRight, IPlay,
+  IShield, ISun, ITrend, ITripod, IUsers, IVideo, ICpu, IArrowRight, IPlay, IWifiOff,
 } from "./Icons";
 
 /* ------------------------------------------------------------------ hero */
@@ -35,6 +35,7 @@ export function Hero({ onAnalyse, onDemo, demoBusy, demoError, disabled }: {
           <ul className="hero-trust">
             <li><ILock size={15} /> {LOCAL ? "Your video stays on your device" : "Your video stays on your server"}</li>
             <li><ICheck size={15} /> No sign-up</li>
+            {LOCAL && <li><IWifiOff size={15} /> Works offline</li>}
             <li><IGithub size={14} /> Open source</li>
           </ul>
         </div>
@@ -222,7 +223,7 @@ export function Features() {
     { icon: <ICalendar size={20} />, title: "Two-week practice plan", text: "Drills for your top fix, strength days and a re-test, with bowling loads kept within Cricket Australia's junior workload guidelines for the player's age." },
     { icon: <IUsers size={20} />, title: "Player profiles & progress", text: "Keep a profile for yourself, your child or each bowler you coach. See scores and key angles session by session, personal bests and what changed since last time." },
     { icon: <IColumns size={20} />, title: "Side-by-side compare", text: "Put two deliveries next to each other at the same moment of the action, with a metric-by-metric table of what changed between them." },
-    { icon: <IFile size={20} />, title: "Report & exports", text: "Print a one-page coaching report or save it as a PDF for a coach or parent. Export the joint angles (CSV), the full analysis (JSON) or a 3D frame (OBJ)." },
+    { icon: <IFile size={20} />, title: "Report & exports", text: "Print a one-page coaching report or save it as a PDF for a coach or parent. Export the joint angles (CSV), the full analysis (JSON) or a 3D frame (OBJ), or back everything up in one file." },
   ];
   return (
     <section className="section alt" id="features" aria-labelledby="features-title">
@@ -266,7 +267,7 @@ export function Privacy() {
               : <li><span className="pi"><IVideo size={18} /></span><div><b>Your server only</b><span>Clips are processed by your own Seamly server and nowhere else.</span></div></li>}
             <li><span className="pi"><IUsers size={18} /></span><div><b>No account</b><span>No email, no password, no sign-up. Just open the page and analyse.</span></div></li>
             {LOCAL
-              ? <li><span className="pi"><IPhone size={18} /></span><div><b>Saved on this device</b><span>Analyses and player profiles are kept in this browser only. Clearing your browser data removes them, so export anything you want to keep.</span></div></li>
+              ? <li><span className="pi"><IPhone size={18} /></span><div><b>Saved on this device</b><span>Analyses and player profiles are kept in this browser only. Clearing your browser data removes them, so download a backup to keep a copy or move to a new phone.</span></div></li>
               : <li><span className="pi"><IPhone size={18} /></span><div><b>Saved on your server</b><span>Analyses and player profiles are kept by your Seamly server, so every device that uses it sees them.</span></div></li>}
             <li><span className="pi"><IGithub size={17} /></span><div><b>Open source</b><span>Don't take our word for it — <a href={REPO_URL} target="_blank" rel="noreferrer">read the code on GitHub</a>.</span></div></li>
           </ul>

@@ -46,6 +46,7 @@ export const IArrowRight = (p: P) => <S {...p}><line x1="5" y1="12" x2="19" y2="
 export const IChevronDown = (p: P) => <S {...p}><polyline points="6 9 12 15 18 9" /></S>;
 export const IChevronRight = (p: P) => <S {...p}><polyline points="9 6 15 12 9 18" /></S>;
 export const IVideo = (p: P) => <S {...p}><rect x="2" y="6" width="14" height="12" rx="2" /><path d="M22 8l-6 4 6 4z" /></S>;
+export const IWifiOff = (p: P) => <S {...p}><line x1="2" y1="2" x2="22" y2="22" /><path d="M16.7 11.1A11 11 0 0 1 19 12.6" /><path d="M5 12.6a11 11 0 0 1 5.2-2.4" /><path d="M10.7 5A16 16 0 0 1 22.6 9" /><path d="M1.4 9a16 16 0 0 1 4.7-2.9" /><path d="M8.5 16.1a6 6 0 0 1 7 0" /><line x1="12" y1="20" x2="12.01" y2="20" /></S>;
 export const IOffline = (p: P) => <S {...p}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><polyline points="9 12 11 14 15 10" /></S>;
 export const ISpark = (p: P) => <S {...p}><path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M5.6 18.4l2.8-2.8M15.6 8.4l2.8-2.8" /></S>;
 export const ISun = (p: P) => <S {...p}><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></S>;
