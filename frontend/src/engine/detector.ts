@@ -34,9 +34,12 @@ async function hasWebGPU(): Promise<boolean> {
 
 // models are kept in Cache Storage after the first download (the HTTP cache alone can drop 40 MB files)
 
-// Where the models are downloaded from, in order. A CDN copy (when set) keeps the ~70 MB first download off the
-// site's own bandwidth; the site's copy is the fallback. Files over 20 MB are stored in parts (the CDN's limit).
-export const MODEL_SOURCES: string[] = [MODEL_BASE];
+// Where the models are downloaded from, in order. jsDelivr serves them straight from the public GitHub repo, pinned
+// to the commit that added them (so the files never change under a URL), which keeps the ~70 MB first download off
+// the site's own bandwidth; the site's copy is the fallback. Files over 20 MB are stored in parts (jsDelivr's limit).
+// When a model file changes, point MODEL_CDN at a commit that contains the new file (or drop it until then).
+const MODEL_CDN = "https://cdn.jsdelivr.net/gh/ayushman46/Seamly@8c7b916642ef10edd25713339d99c18ec225be3e/frontend/public/models/";
+export const MODEL_SOURCES: string[] = [MODEL_CDN, MODEL_BASE];
 const MODEL_PARTS: Record<string, string[]> = { "yolo11s-pose.onnx": ["yolo11s-pose.onnx.part1", "yolo11s-pose.onnx.part2"] };
 
 /** Download with progress (the models are tens of MB), served from Cache Storage after the first time. */

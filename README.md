@@ -95,6 +95,10 @@ vercel deploy dist --prod --project seamly
 
 Alternatively, connect the repository in Vercel with root directory `frontend` (framework: Vite). `frontend/public/vercel.json` sets the cache and security headers. For a sub-path such as GitHub Pages, build with `VITE_BASE=/<repo>/ pnpm build`.
 
+**Bandwidth.** The analysis models (about 70 MB, downloaded once per browser) are fetched from jsDelivr, straight from this public repository at a pinned commit (`MODEL_CDN` in `frontend/src/engine/detector.ts`); the site's own copy in `public/models/` is the fallback. jsDelivr serves files up to 20 MB, so the 40 MB detector is stored as `yolo11s-pose.onnx.part1/2` and joined in the browser. A first visit therefore costs the host only the app itself (~2 MB). If a model file changes, push it, then point `MODEL_CDN` at that commit.
+
+**Offline.** `vite.config.ts` generates `sw.js`, a service worker that precaches the built app; with the models in Cache Storage, Seamly works without a connection after the first analysis.
+
 ## Self-hosted server (optional, more accurate 3D)
 
 `backend/` is the original Python engine (FastAPI). It runs YOLO11m/x-pose and can use **SAM 3D Body**, an image-based 3D model that needs about 8 GB of RAM. To use it:
