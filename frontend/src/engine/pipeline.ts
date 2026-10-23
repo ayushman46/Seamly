@@ -275,7 +275,19 @@ async function stageA(src: FrameSource, opts: Options, models: Models, prog: Pro
     const w1 = Math.min(shot.end, bowlerDets[bowlerDets.length - 1].frame + 1, pk0 + Math.trunc(1.2 * realFps));
     const wf: number[] = [];
     for (let f = w0; f < w1; f++) wf.push(f);
-    const fds = await detectFrames(src, models, wf, (i) => prog.stage("detect", scanWeight + (1 - scanWeight) * (i + 1) / wf.length), undefined, abort);
+    const wsigs = new Map<number, Signature>();
+    let fds = await detectFrames(src, models, wf, (i) => prog.stage("detect", scanWeight + (1 - scanWeight) * (i + 1) / wf.length), wsigs, abort);
+    // the strided scan only places a cut to within `stride` frames: re-check the window at full rate and keep the
+    // shot that contains the delivery (a replay or close-up right after the follow-through must not join it)
+    const whd: number[] = [], wpd: number[] = [];
+    for (let i = 1; i < wf.length; i++) {
+      const [h, p] = sigDistance(wsigs.get(wf[i - 1])!, wsigs.get(wf[i])!);
+      whd.push(h); wpd.push(p);
+      info.frameDiff.set(wf[i], p);
+    }
+    const sub = segmentShots(whd, wpd, wf, w1, info.fps).find((x) => x.start <= pk0 && pk0 < x.end);
+    const lo = Math.max(w0, sub?.start ?? w0), hi = Math.min(w1, sub?.end ?? w1);
+    if (lo > w0 || hi < w1) fds = fds.filter((fd) => fd.frame >= lo && fd.frame < hi);
     fds[0] = { ...fds[0], motion: IDENTITY };
     const full = detectionsByTrack(track(fds, info.fps));
     for (const fd of fds) motions.set(fd.frame, fd.motion);
@@ -288,7 +300,10 @@ async function stageA(src: FrameSource, opts: Options, models: Models, prog: Pro
     for (const v of full.values()) { const o = overlap(v); if (o > bo) { bo = o; best = v; } }
     if (best && bo > 0.3) {
       const got = new Set(best.map((d) => d.frame));
-      bowlerDets = [...best, ...bowlerDets.filter((d) => !got.has(d.frame) && d.frame >= w0 && d.frame < w1)].sort((a, b) => a.frame - b.frame);
+      bowlerDets = [...best, ...bowlerDets.filter((d) => !got.has(d.frame) && d.frame >= lo && d.frame < hi)].sort((a, b) => a.frame - b.frame);
+    } else if (lo > w0 || hi < w1) {
+      const inShot = bowlerDets.filter((d) => d.frame >= lo && d.frame < hi);
+      if (inShot.length) bowlerDets = inShot;
     }
   }
   // analysis window: from up to 2.5 s (real time) before release to 1.2 s after, inside the track
