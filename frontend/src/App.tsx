@@ -43,7 +43,17 @@ function Missing({ go }: { go: (to: string) => void }) {
 export default function App() {
   const [route, setRoute] = useState(parseRoute());
   useEffect(() => {
-    const onHash = () => setRoute(parseRoute());
+    const onHash = () => {
+      setRoute(parseRoute());
+      // a new page: move focus to its heading so screen readers announce it (pages load lazily, so wait for it)
+      let tries = 0;
+      const focusHeading = () => {
+        const h = document.querySelector<HTMLElement>("main h1");
+        if (h) { h.tabIndex = -1; h.focus({ preventScroll: true }); }
+        else if (tries++ < 20) window.setTimeout(focusHeading, 100);
+      };
+      window.setTimeout(focusHeading, 50);
+    };
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);

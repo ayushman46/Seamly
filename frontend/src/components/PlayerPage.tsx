@@ -84,7 +84,7 @@ export default function PlayerPage({ pid, go }: { pid: string; go: (to: string) 
         <div className="card profile-card">
           {editing ? (
             <>
-              <div className="card-title">Edit profile</div>
+              <div role="heading" aria-level={2} className="card-title">Edit profile</div>
               <PlayerForm initial={p} submitLabel="Save profile" onSave={save} onCancel={() => setEditing(false)} />
             </>
           ) : (
@@ -138,12 +138,12 @@ export default function PlayerPage({ pid, go }: { pid: string; go: (to: string) 
 
             <div className="player-grid">
               <div className="card card-pad">
-                <div className="card-title">Action score over time</div>
+                <div role="heading" aria-level={2} className="card-title">Action score over time</div>
                 {scorePts.length ? <Trend points={scorePts} band={[70, 100]} onPick={(id) => go(`/a/${id}`)} /> : <div className="faint">No scores yet (clips need a few reliable measurements for a score).</div>}
                 <div className="faint" style={{ fontSize: 12, marginTop: 6 }}>Scores only compare fairly between clips filmed from the same angle.</div>
               </div>
               <div className="card card-pad">
-                <div className="card-title">Since last time</div>
+                <div role="heading" aria-level={2} className="card-title">Since last time</div>
                 {data.sessions.length < 2 ? (
                   <div className="faint">Analyse another delivery to see what changed.</div>
                 ) : !data.compared_to ? (
@@ -170,7 +170,7 @@ export default function PlayerPage({ pid, go }: { pid: string; go: (to: string) 
 
             {data.focus && (
               <div className="card card-pad focus-card">
-                <div className="card-title">Your focus right now</div>
+                <div role="heading" aria-level={2} className="card-title">Your focus right now</div>
                 <div className="row wrap" style={{ gap: 14 }}>
                   <div className="grow">
                     <div style={{ fontSize: 18, fontWeight: 700 }}>{data.focus.title}</div>
@@ -186,7 +186,7 @@ export default function PlayerPage({ pid, go }: { pid: string; go: (to: string) 
 
             {Object.keys(data.trends).length > 0 && (
               <section>
-                <div className="card-title section-label">Key measurements</div>
+                <div role="heading" aria-level={2} className="card-title section-label">Key measurements</div>
                 <div className="trend-grid">
                   {Object.entries(data.trends).map(([k, t]) => {
                     const last = t.points[t.points.length - 1];
@@ -201,7 +201,11 @@ export default function PlayerPage({ pid, go }: { pid: string; go: (to: string) 
                         <Trend points={t.points.map((pt) => ({ value: pt.value, label: dateOf(pt.created), id: pt.id, rating: pt.rating }))}
                           band={t.good} height={70} format={(v) => fmt(v, d)} onPick={(id) => go(`/a/${id}`)} />
                         <div className="faint" style={{ fontSize: 12 }}>
-                          {t.better && (BETTER_TEXT[t.better] ?? `best inside ${t.better}`)}
+                          {/* the target range, not "higher is better" (which would invite a locked, hyperextended knee) */}
+                          {t.good && (t.good[0] !== null || t.good[1] !== null)
+                            ? (t.good[0] !== null && t.good[1] !== null ? `aim for ${fmt(t.good[0], 0)}–${fmt(t.good[1], 0)}${unitLabel(t.unit)}`
+                              : t.good[0] !== null ? `aim for ${fmt(t.good[0], 0)}${unitLabel(t.unit)} or more` : `aim for ${fmt(t.good[1], 0)}${unitLabel(t.unit)} or less`)
+                            : t.better && (BETTER_TEXT[t.better] ?? `best inside ${t.better}`)}
                           {best && t.points.length > 1 && <> · personal best {fmt(best.value, d)}{unitLabel(t.unit)} ({dateOf(best.created)})</>}
                         </div>
                       </div>
@@ -213,7 +217,7 @@ export default function PlayerPage({ pid, go }: { pid: string; go: (to: string) 
             )}
 
             <section>
-              <div className="card-title section-label">Sessions</div>
+              <div role="heading" aria-level={2} className="card-title section-label">Sessions</div>
               <div className="stack" style={{ gap: 8 }}>
                 {[...data.sessions].reverse().map((x) => (
                   <div key={x.id} className="card session-row" role="link" tabIndex={0} aria-label={`Open ${x.name}`} onClick={() => go(`/a/${x.id}`)}

@@ -9,7 +9,7 @@ export function SummaryCard({ ins, onJump, onPlan }: { ins: Insights; onJump: (k
   return (
     <div className="card card-pad summary-card">
       <div className="row wrap" style={{ gap: 10, marginBottom: 8 }}>
-        <div className="card-title" style={{ margin: 0 }}><IChat size={14} /> Your delivery in plain words</div>
+        <div role="heading" aria-level={2} className="card-title" style={{ margin: 0 }}><IChat size={14} /> Your delivery in plain words</div>
         {ins.player && <span className="chip info">{ins.player.name}</span>}
         <div className="grow" />
         <button className="btn sm primary" onClick={onPlan}><ICalendar size={14} /> Your 2-week practice plan</button>
@@ -27,7 +27,7 @@ export function SummaryCard({ ins, onJump, onPlan }: { ins: Insights; onJump: (k
                   <div className="row" style={{ gap: 8 }}>
                     <span className="fix-n">{i + 1}</span>
                     <b className="grow">{f.title}</b>
-                    {ev && label && <button className="btn sm ghost" onClick={() => onJump(ev)} title={`Jump to ${label}`}><IPlay size={11} /> Show me</button>}
+                    {ev && label && <button className="btn sm ghost" onClick={() => onJump(ev)} title={`Jump to ${label}`} aria-label={`Show me: ${f.title}, at ${label.toLowerCase()}`}><IPlay size={11} /> Show me</button>}
                   </div>
                   <div className="muted" style={{ fontSize: 13 }}>{f.what}.</div>
                   <div style={{ fontSize: 13 }}>{f.why}</div>
@@ -63,19 +63,22 @@ const STATUS_TEXT = { ok: "No red flags", watch: "Worth watching", flag: "Discus
 export function BackHealthCard({ ins }: { ins: Insights }) {
   const b = ins.back_health;
   if (!b) return null;
-  const headline = b.overall === "ok" && b.measured < b.total
-    ? `No red flags in what we could measure (${b.measured} of ${b.total} checks)`
+  // a partial screen isn't an all-clear: side-bend and mixed action (the main junior risks) need a clip from behind
+  const partial = b.overall === "ok" && b.measured < b.total;
+  const headline = partial
+    ? `No red flags in the ${b.measured} of ${b.total} checks this clip allows`
     : b.overall === "unknown" ? "Couldn't check in this clip" : STATUS_TEXT[b.overall];
   return (
     <div className="card card-pad">
       <div className="row wrap" style={{ marginBottom: 12, gap: 8 }}>
-        <div className="card-title grow" style={{ margin: 0 }}><IShield size={14} /> Back-health check</div>
-        <span className={`chip multi ${b.overall === "ok" ? "good" : b.overall === "watch" ? "watch" : b.overall === "flag" ? "risk" : ""}`}>{headline}</span>
+        <div role="heading" aria-level={2} className="card-title grow" style={{ margin: 0 }}><IShield size={14} /> Back-health check</div>
+        <span className={`chip multi ${b.overall === "ok" && !partial ? "good" : b.overall === "watch" ? "watch" : b.overall === "flag" ? "risk" : ""}`}>{headline}</span>
       </div>
       <div className="stack" style={{ gap: 10 }}>
         {b.checks.map((c) => (
           <div key={c.key} className="row" style={{ gap: 8, alignItems: "flex-start" }}>
-            <span className={`dot ${c.status}`} style={{ marginTop: 6 }} />
+            <span className={`dot ${c.status}`} style={{ marginTop: 6 }} aria-hidden="true" />
+            <span className="sr-only">{STATUS_TEXT[c.status as keyof typeof STATUS_TEXT]}: </span>
             <div className="grow">
               <b style={{ fontSize: 13 }}>{c.label}</b>{c.value !== null && <span className="faint"> · {fmt(c.value)}°</span>}
               <div className="faint" style={{ fontSize: 12.5 }}>{c.text}</div>

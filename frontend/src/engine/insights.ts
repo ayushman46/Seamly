@@ -203,7 +203,7 @@ export function backHealth(result: InsightsResult, player: InsightsPlayer | null
     advice.push("Lower-back stress injuries are most common in teenage fast bowlers, especially in the two to "
       + "three years after a growth spurt. Stick to the bowling limits in your plan.");
   }
-  advice.push("If you get lower back pain while bowling, stop and see a sports doctor or physiotherapist "
+  advice.push("If you get lower back pain while bowling (or any pain that changes how you bowl or lasts to the next day), stop and see a sports doctor or physiotherapist "
     + "before bowling again.");
   return { overall, checks, advice, measured: measured.length, total: checks.length,
     disclaimer: "A technique screen from one video, not a medical assessment." };
@@ -225,7 +225,7 @@ function limitsFor(age: string, style: string): PlanLimits | null {
   }
   if (style === "spin") return null;
   return { ...ADULT_LIMITS, age_group: "adult", label: AGE_LABEL.adult,
-    source: "general guidance (the official limits are for juniors)", between_spells_min: 20, preseason_weeks: null };
+    source: "general guidance; the official limits are for juniors", between_spells_min: 20, preseason_weeks: null };
 }
 
 interface PlanDrill { text: string; sets: number; reps: number; balls: boolean; adult_only: boolean }
@@ -268,7 +268,7 @@ const PLAN_DRILLS: Record<string, PlanDrill[]> = {
     d("Clap timing: a partner claps as your front foot lands and the release follows immediately", 2, 8, true),
   ],
   elbow: [
-    d("Film side-on in slow motion (120–240 fps) from about 10 m; if the estimate stays high, book an accredited biomechanics test", 1, 1, false),
+    d("Film side-on in slow motion (120–240 fps) from about 10 m; if the estimate stays high, talk to your coach", 1, 1, false),
   ],
 };
 const MAINTAIN_DRILLS = [
@@ -342,14 +342,15 @@ export function practicePlan(result: InsightsResult, player: InsightsPlayer | nu
     }
     const left = budget - warm - drillBalls;
     const overs = Math.min(spellOvers, Math.floor(left / 6));
-    const second = w === 2 ? Math.min(spellOvers, Math.floor((left - overs * 6) / 6)) : 0;
+    let second = w === 2 ? Math.min(spellOvers, Math.floor((left - overs * 6) / 6)) : 0;
+    if (second < 2) second = 0;   // a one-over "second spell" isn't worth the rest and re-warm-up
     if (overs >= 1) {
       const ov = (n: number) => `${n} over${n > 1 ? "s" : ""}`;
       if (w === 1) {
         items.push({ text: `Short run-up (5–7 steps): ${ov(overs)} focusing only on “${cue}”.` });
       } else {
         let txt = `Full run-up: ${ov(overs)} at about 80% effort, keeping “${cue}”.`;
-        if (second >= 1) txt += ` Rest at least 20 minutes, then an optional second spell of up to ${ov(second)}.`;
+        if (second) txt += ` Rest at least 20 minutes, then an optional second spell of up to ${ov(second)}.`;
         items.push({ text: txt });
       }
     }
@@ -404,7 +405,7 @@ export function practicePlan(result: InsightsResult, player: InsightsPlayer | nu
         if (!("detail" in it)) it.detail = null;
       }
     }
-    weeks.push({ title: w === 1 ? "Week 1: learn the movement" : "Week 2: take it to full pace",
+    weeks.push({ title: w === 1 ? "Week 1: learn the movement" : "Week 2: build towards full pace",
       days: days as Insights["plan"]["weeks"][number]["days"] });
   }
   const notes: string[] = [];
@@ -417,10 +418,14 @@ export function practicePlan(result: InsightsResult, player: InsightsPlayer | nu
     if (lim.preseason_weeks) {
       notes.push(`Coming back after a break? Build up over about ${lim.preseason_weeks} weeks before bowling flat out.`);
     }
+    if (JUNIOR.includes(age)) {
+      notes.push("At training, bowl for no more than about 30 minutes at a time, then rest for as long. Plan a lighter "
+        + "week every 4–6 weeks, and after a growth spurt bowl shorter spells or less often for a while.");
+    }
   } else {
     notes.push("Spin bowling loads are lower than pace; still keep at least one full rest day a week.");
   }
-  notes.push("Stop and see a physio or sports doctor if you get lower back pain while bowling.");
+  notes.push("Stop bowling and see a physio or sports doctor if you get lower back pain, or any pain that changes how you bowl or is still there the next day.");
   return { focus, weeks, limits: lim, notes };
 }
 

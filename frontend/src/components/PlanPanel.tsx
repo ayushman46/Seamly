@@ -50,7 +50,7 @@ export default function PlanPanel({ id, ins, onUpload }: { id: string; ins: Insi
 
       {plan.weeks.map((w) => (
         <div key={w.title}>
-          <div className="card-title">{w.title}</div>
+          <div role="heading" aria-level={3} className="card-title">{w.title}</div>
           <div className="plan-week">
             {w.days.map((d) => (
               <div key={d.day} className={`plan-day ${d.kind}`}>
@@ -86,7 +86,7 @@ export default function PlanPanel({ id, ins, onUpload }: { id: string; ins: Insi
       ))}
 
       <div className="card card-pad" style={{ background: "var(--bg-2)" }}>
-        <div className="card-title">Bowling load</div>
+        <div role="heading" aria-level={3} className="card-title">Bowling load</div>
         <ul className="plain">{plan.notes.map((n) => <li key={n}>{n}</li>)}</ul>
         {plan.limits && <div className="faint" style={{ fontSize: 12 }}>Source: {plan.limits.source}.</div>}
       </div>

@@ -176,7 +176,7 @@ export default function Home({ go }: { go: (to: string) => void }) {
                   {uploader}
                   <div className="start-side">
                     <div className="card card-pad" style={{ padding: 24 }}>
-                      <div className="card-title"><ICamera size={14} /> Before you film</div>
+                      <div role="heading" aria-level={2} className="card-title"><ICamera size={14} /> Before you film</div>
                       <ul className="checklist">
                         <li><span className="ck"><IPhone size={15} /></span><div><b>Side-on, 10–15 m away</b>Phone at hip height, level with the crease. Or film from behind the stumps.</div></li>
                         <li><span className="ck"><IPlay size={13} /></span><div><b>Slow motion if you have it</b>120–240 fps makes timings far more precise.</div></li>
@@ -221,7 +221,7 @@ function PlayersPanel({ players, current, adding, setAdding, onCreate, go }: {
       </div>
       {adding && (
         <div className="card card-pad">
-          <div className="card-title">New player</div>
+          <div role="heading" aria-level={2} className="card-title">New player</div>
           <PlayerForm submitLabel="Create player" onSave={onCreate} onCancel={() => setAdding(false)} />
         </div>
       )}

@@ -24,7 +24,7 @@ export default function FrameCard({ result, frame, onOpen, onConfirm, busy }: {
   return (
     <div className="card card-pad">
       <div className="row wrap" style={{ marginBottom: 12, gap: 8 }}>
-        <div className="card-title" style={{ margin: 0 }}>At this frame</div>
+        <div role="heading" aria-level={2} className="card-title" style={{ margin: 0 }}>At this frame</div>
         <span className="chip mono">f {frame}</span>
         {rel !== null && <span className="chip mono">{Math.round(rel * 1000) === 0 ? "at release" : `${rel > 0 ? "+" : "−"}${Math.abs(Math.round(rel * 1000))} ms vs release`}</span>}
         {atEvent && <span className="chip" style={{ borderColor: EVENT_HEX[atEvent.key], color: "#fff" }}><span className="dot" style={{ background: EVENT_HEX[atEvent.key] }} />{atEvent.label}</span>}

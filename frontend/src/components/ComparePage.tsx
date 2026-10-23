@@ -97,7 +97,7 @@ export default function ComparePage({ a, b, go }: { a: string; b: string; go: (t
         <div className="row faint" style={{ padding: "8px 14px", fontSize: 12 }}>
           {e ? `frame ${e.frame} · ${e.method === "user" ? "set by you" : e.method === "timing_prior" ? "estimated timing" : `${Math.round(e.confidence * 100)}% confidence`}` : ""}
           <div className="grow" />
-          <a href={`#/a/${d.meta.id}`} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>Open analysis <IChevronRight size={13} /></a>
+          <a href={`#/a/${d.meta.id}`} style={{ display: "inline-flex", alignItems: "center", gap: 4 }} aria-label={`Open analysis ${label}: ${d.meta.name}`}>Open analysis <IChevronRight size={13} /></a>
         </div>
       </div>
     );
@@ -138,7 +138,7 @@ export default function ComparePage({ a, b, go }: { a: string; b: string; go: (t
           </div>
         )}
         <div className="card card-pad" style={{ marginTop: 18 }}>
-          <div className="card-title">Metric by metric</div>
+          <div role="heading" aria-level={2} className="card-title">Metric by metric</div>
           <div className="table-scroll">
             <table className="cmp">
               <thead>

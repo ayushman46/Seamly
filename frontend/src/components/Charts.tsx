@@ -89,7 +89,8 @@ function Chart({ k, result, frame, onSeek }: { k: string; result: AnalysisResult
         </div>
         <span className="mono" style={{ fontSize: 15, fontWeight: 700 }}>{fmt(data[i], 1)}{unitLabel(info.unit)}</span>
       </div>
-      <svg ref={svg} className="chart" viewBox={`0 0 ${W} ${H}`} onClick={click}>
+      <svg ref={svg} className="chart" viewBox={`0 0 ${W} ${H}`} onClick={click} role="img"
+        aria-label={`${info.label} through the delivery, from ${fmt(Math.min(...data.filter(Number.isFinite)), 0)} to ${fmt(Math.max(...data.filter(Number.isFinite)), 0)}${unitLabel(info.unit)}; ${fmt(data[i], 1)}${unitLabel(info.unit)} at this frame`}>
         {ticks.map((t) => (
           <g key={t}>
             <line x1={P.l} x2={W - P.r} y1={y(t)} y2={y(t)} stroke="#1f2a3d" strokeDasharray="3 4" />

@@ -20,7 +20,7 @@ export default function Settings({ result, busy, onRecompute, onRerun, playerId,
   return (
     <div className="settings-grid">
       <div className="stack">
-        <div className="card-title">Corrections</div>
+        <div role="heading" aria-level={3} className="card-title">Corrections</div>
         <div className="field">
           <label>Player (groups this delivery into their progress)</label>
           <select className="input" style={{ width: 260, maxWidth: "100%" }} value={playerId ?? ""} disabled={busy} aria-label="Player"
@@ -65,7 +65,7 @@ export default function Settings({ result, busy, onRecompute, onRerun, playerId,
         </div>
       </div>
       <div className="stack">
-        <div className="card-title">Deliveries found in this video</div>
+        <div role="heading" aria-level={3} className="card-title">Deliveries found in this video</div>
         {result.candidates.map((c, i) => {
           const isSel = c.track === sel.track && c.shot === sel.shot;
           return (
@@ -80,7 +80,7 @@ export default function Settings({ result, busy, onRecompute, onRerun, playerId,
         })}
       </div>
       <div className="stack">
-        <div className="card-title">Detection quality</div>
+        <div role="heading" aria-level={3} className="card-title">Detection quality</div>
         <dl className="kv">
           <dt>Video</dt><dd>{result.video.width}×{result.video.height} · {fmt(result.video.fps, 1)} fps</dd>
           <dt>Scenes (shots) found</dt><dd>{result.video.shots.length}</dd>

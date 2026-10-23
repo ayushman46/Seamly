@@ -15,7 +15,7 @@ export default function CoachingPanel({ result, onJump, age }: { result: Analysi
   return (
     <div className="coach-grid">
       <div className="stack">
-        <div className="card-title">Top priorities</div>
+        <div role="heading" aria-level={3} className="card-title">Top priorities</div>
         {c.priorities.length === 0 && (
           <div className="notice ok"><ICheck size={16} /> <div>No clear technical issues among the metrics this camera angle can measure reliably. Add a clip from another angle for a fuller picture.</div></div>
         )}
@@ -32,7 +32,7 @@ export default function CoachingPanel({ result, onJump, age }: { result: Analysi
                   </span>
                   <span className={`chip ${cat.cls}`}>{cat.icon} {cat.label}</span>
                   <span className="chip unrated" title="Strength of the published evidence">{p.evidence}</span>
-                  {ev && <button className="btn sm ghost" onClick={() => onJump(ev)}><IPlay size={11} /> Show in video</button>}
+                  {ev && <button className="btn sm ghost" onClick={() => onJump(ev)} aria-label={`Show in video: ${p.headline}`}><IPlay size={11} /> Show in video</button>}
                 </div>
                 <h4>{p.headline}</h4>
                 <div className="muted" style={{ fontSize: 13 }}>{p.why}</div>
@@ -45,19 +45,19 @@ export default function CoachingPanel({ result, onJump, age }: { result: Analysi
         })}
       </div>
       <div className="stack">
-        <div className="card-title">What you do well</div>
+        <div role="heading" aria-level={3} className="card-title">What you do well</div>
         {c.strengths.length ? (
           <div className="stack" style={{ gap: 8 }}>
             {c.strengths.map((s) => <div key={s} className="row" style={{ gap: 8 }}><span className="chip good"><ICheck size={13} /></span><span>{s}</span></div>)}
           </div>
         ) : <div className="faint">Strengths appear here once enough metrics are measured reliably.</div>}
         <div className="divider" />
-        <div className="card-title">Get a better reading</div>
+        <div role="heading" aria-level={3} className="card-title">Get a better reading</div>
         <div className="stack" style={{ gap: 8 }}>
           <ul className="plain" style={{ margin: 0 }}>{c.capture_tips.map((t) => <li key={t} className="muted">{t}</li>)}</ul>
         </div>
         <div className="divider" />
-        <div className="card-title">Score breakdown</div>
+        <div role="heading" aria-level={3} className="card-title">Score breakdown</div>
         <div className="stack" style={{ gap: 6 }}>
           {c.score_breakdown.map((b) => (
             <div key={b.key} className="row" style={{ fontSize: 13 }}>

@@ -376,10 +376,11 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
   const [toast, setToast] = useState<{ text: string; error?: boolean } | null>(null);
   const [menu, setMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const menuBtn = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!menu) return;
     const onDown = (e: PointerEvent) => { if (!menuRef.current?.contains(e.target as Node)) setMenu(false); };
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setMenu(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { setMenu(false); menuBtn.current?.focus(); } };
     document.addEventListener("pointerdown", onDown);
     document.addEventListener("keydown", onKey);
     return () => { document.removeEventListener("pointerdown", onDown); document.removeEventListener("keydown", onKey); };
@@ -434,7 +435,7 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;            // browser / OS shortcuts
       const el = e.target as HTMLElement | null;
-      if (el?.closest?.("input, select, textarea, [contenteditable]")) return;
+      if (el?.closest?.("input, select, textarea, [contenteditable], [role=tablist], [role=menu]")) return;   // they use the arrows
       if (el?.closest?.("button, a") && (e.key === " " || e.key === "Enter")) return;   // native activation
       if (e.key === " " || e.key === "k") { e.preventDefault(); setPlaying((p) => !p); }
       else if (e.key === "ArrowRight" || e.key === "l") { e.preventDefault(); setPlaying(false); setFrame((f) => Math.min(f1 - 1, f + (e.shiftKey ? 5 : 1))); }
@@ -544,16 +545,16 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
               </select>
             )}
             <button className="btn" onClick={() => go(`/r/${id}`)}><IFile size={15} /> Report</button>
-            <div className="rel" ref={menuRef}>
-              <button className="btn" onClick={() => setMenu((m) => !m)} aria-haspopup="menu" aria-expanded={menu}><IDownload size={15} /> Export <IChevronDown size={14} /></button>
+            <div className="rel" ref={menuRef} onBlur={(e) => { if (!menuRef.current?.contains(e.relatedTarget as Node | null)) setMenu(false); }}>
+              <button ref={menuBtn} className="btn" onClick={() => setMenu((m) => !m)} aria-expanded={menu} aria-controls="export-list"><IDownload size={15} /> Export <IChevronDown size={14} /></button>
               {menu && (
-                <div className="menu" role="menu">
-                  <a role="menuitem" href={api.objUrl(id, frame)} download={`${fileBase}-frame-${frame}.obj`} onClick={() => setMenu(false)}><ICube size={15} /> 3D mesh of this frame (.obj)</a>
-                  <a role="menuitem" href={api.exportUrl(id, "csv")} download={`${fileBase}-angles.csv`} onClick={() => setMenu(false)}><IFile size={15} /> Joint-angle time series (.csv)</a>
-                  <a role="menuitem" href={api.exportUrl(id, "json")} download={`${fileBase}-analysis.json`} onClick={() => setMenu(false)}><IFile size={15} /> Full analysis (.json)</a>
-                  {api.hasVideo(id) && <a role="menuitem" href={api.videoUrl(id)} download={videoName} onClick={() => setMenu(false)}><IVideo size={15} /> Original video (.{ext})</a>}
+                <div className="menu" id="export-list">
+                  <a href={api.objUrl(id, frame)} download={`${fileBase}-frame-${frame}.obj`} onClick={() => setMenu(false)}><ICube size={15} /> 3D mesh of this frame (.obj)</a>
+                  <a href={api.exportUrl(id, "csv")} download={`${fileBase}-angles.csv`} onClick={() => setMenu(false)}><IFile size={15} /> Joint-angle time series (.csv)</a>
+                  <a href={api.exportUrl(id, "json")} download={`${fileBase}-analysis.json`} onClick={() => setMenu(false)}><IFile size={15} /> Full analysis (.json)</a>
+                  {api.hasVideo(id) && <a href={api.videoUrl(id)} download={videoName} onClick={() => setMenu(false)}><IVideo size={15} /> Original video (.{ext})</a>}
                   <div className="menu-sep" />
-                  <button role="menuitem" onClick={() => { setMenu(false); go(`/r/${id}`); }}><IFilm size={15} /> Coaching report (print / PDF)</button>
+                  <button onClick={() => { setMenu(false); go(`/r/${id}`); }}><IFilm size={15} /> Coaching report (print / PDF)</button>
                 </div>
               )}
             </div>
@@ -622,9 +623,19 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
         </div>
 
         <div className="card card-pad" style={{ marginTop: 18, scrollMarginTop: 70 }} ref={tabsRef}>
-          <div className="tabs" role="tablist" aria-label="Analysis details">
+          <div className="tabs" role="tablist" aria-label="Analysis details" onKeyDown={(e) => {
+            // arrow keys move between tabs (only the selected tab is in the Tab order)
+            const i = TABS.findIndex(([k]) => k === tab);
+            const to = e.key === "ArrowRight" ? (i + 1) % TABS.length : e.key === "ArrowLeft" ? (i - 1 + TABS.length) % TABS.length
+              : e.key === "Home" ? 0 : e.key === "End" ? TABS.length - 1 : -1;
+            if (to < 0) return;
+            e.preventDefault();
+            setTab(TABS[to][0]);
+            document.getElementById(`tab-${TABS[to][0]}`)?.focus();
+          }}>
             {TABS.map(([k, l]) => (
-              <button key={k} role="tab" id={`tab-${k}`} aria-selected={tab === k} aria-controls="tab-panel" className={tab === k ? "on" : ""} onClick={() => setTab(k)}>{l}</button>
+              <button key={k} role="tab" id={`tab-${k}`} aria-selected={tab === k} aria-controls="tab-panel" tabIndex={tab === k ? 0 : -1}
+                className={tab === k ? "on" : ""} onClick={() => setTab(k)}>{l}</button>
             ))}
           </div>
           <div role="tabpanel" id="tab-panel" aria-labelledby={`tab-${tab}`}>
@@ -645,7 +656,8 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
         <p className="faint" style={{ fontSize: 12, marginTop: 14, lineHeight: 1.6 }}>{result.coaching.disclaimer}</p>
       </main>
       <SiteFooter compact />
-      {toast && <div className={`toast ${toast.error ? "error" : ""}`} role="status">{toast.text}</div>}
+      <div className="sr-only" role="status" aria-live="polite">{toast?.text ?? (busy ? "Updating the results…" : "")}</div>
+      {toast && <div className={`toast ${toast.error ? "error" : ""}`} aria-hidden="true">{toast.text}</div>}
     </>
   );
 }
@@ -668,7 +680,7 @@ function ScoreCard({ result, edited, busy, onReset }: { result: AnalysisResult; 
           <div className="val"><div><b>{c.score ?? "–"}</b><small>{c.grade ?? "No score"}</small></div></div>
         </div>
         <div>
-          <div className="card-title" style={{ marginBottom: 6 }}>Action score</div>
+          <div role="heading" aria-level={2} className="card-title" style={{ marginBottom: 6 }}>Action score</div>
           <div className="muted" style={{ fontSize: 13, lineHeight: 1.55 }}>
             {c.score === null || c.score === undefined
               ? "Not enough reliably measured metrics in this clip for a fair score. Confirm the event markers on the timeline, or add a side-on clip."

@@ -22,8 +22,8 @@ DRILLS = {
         "title": "Drive the chest through",
         "cue": "Chest over the front knee — finish with your bowling shoulder pointing at the batter.",
         "drills": [
-            "Kneeling throws: front knee down, pull the trunk down and through towards a target (3 × 8).",
-            "Med-ball slam from the delivery stride position (17+ only) (3 × 6).",
+            "Kneeling throws with a light ball: front knee down, pull the trunk down and through towards a target (3 × 8).",
+            "Med-ball slam from the delivery stride position, 2–3 kg ball (17+ only) (3 × 6).",
             "Follow-through line drill: finish with the chest past the front knee on a chalk line (2 × 8).",
         ],
     },
@@ -38,7 +38,7 @@ DRILLS = {
     },
     "mixed_action": {
         "title": "Line up hips and shoulders",
-        "cue": "Back foot and shoulders tell the same story — choose side-on or front-on and commit.",
+        "cue": "Hips and shoulders face the same way at back-foot contact — side-on, semi-open or front-on are all fine; mixing them isn't.",
         "drills": [
             "Chalk the crease: mark back-foot and front-foot positions and match shoulders to the back-foot line (3 × 6).",
             "Mirror/phone checks at back-foot contact from behind; fix the shoulders first (2 × 8).",
@@ -47,7 +47,7 @@ DRILLS = {
     },
     "release_height": {
         "title": "Get taller at release",
-        "cue": "Tall at the crease — bowling arm brushes the ear, release at the top.",
+        "cue": "Stand tall on your front leg and let the ball go at the top of your natural arm path.",
         "drills": [
             "High-target drill: release over a raised rope/bar 1 m in front of the crease (3 × 6).",
             "Standing-start bowling focusing on reaching up through the bowling arm (3 × 6).",
@@ -56,6 +56,15 @@ DRILLS = {
     "stride": {
         "title": "Find your stride",
         "cue": "Bound up, not along — land with a stride that lets you stay tall.",
+        "drills": [
+            "Stride markers: mark a target front-foot position at ~75–80% of your height from the back foot (3 × 6).",
+            "Bound and stick: bound into the delivery stride and hold balance for two seconds (2 × 8).",
+        ],
+    },
+    # the same drills for a short stride, with a cue that asks for more length, not less
+    "stride_short": {
+        "title": "Find your stride",
+        "cue": "Push off and reach your front foot a little further down the pitch.",
         "drills": [
             "Stride markers: mark a target front-foot position at ~75–80% of your height from the back foot (3 × 6).",
             "Bound and stick: bound into the delivery stride and hold balance for two seconds (2 × 8).",
@@ -70,10 +79,10 @@ DRILLS = {
         ],
     },
     "elbow": {
-        "title": "Check the elbow with a proper test",
+        "title": "Keep an eye on the elbow",
         "cue": "Keep the arm long and relaxed from horizontal to release.",
         "drills": [
-            "Film side-on at 120–240 fps from 10 m and re-analyse; if the estimate stays high, book an accredited biomechanics test.",
+            "Film side-on at 120–240 fps from 10 m and re-analyse. If the estimate stays high, talk to your coach; your state or county association can advise if they're worried.",
         ],
     },
 }
@@ -81,11 +90,11 @@ DRILLS = {
 RULES = [
     # key, issue (rating that triggers), category, drill, weight, headline (formatted with value)
     ("front_knee_br", ("watch",), "pace", "front_leg", 1.0,
-     "Front knee softens to {v:.0f}° at release (aim for 160° or straighter)", "Strong evidence for pace (r ≈ 0.4)"),
+     "Front knee softens to {v:.0f}° at release (aim for 160° or straighter)", "Moderate evidence for pace (r ≈ 0.4)"),
     ("front_knee_flexion", ("watch",), "pace", "front_leg", 0.7,
      "Front knee flexes {v:.0f}° after landing", "Moderate evidence"),
     ("trunk_flexion_ffc_br", ("watch",), "pace", "trunk_flexion", 0.8,
-     "Limited trunk flexion through the crease ({v:.0f}°)", "Moderate evidence for pace"),
+     "Not much forward bend of the upper body from landing to release ({v:.0f}°)", "Moderate evidence for pace"),
     ("trunk_forward_br", ("watch",), "pace", "trunk_flexion", 0.6,
      "Upright trunk at release ({v:.0f}°)", "Moderate evidence for pace"),
     ("trunk_lateral_br", ("watch", "risk"), "load", "side_bend", 1.1,
@@ -93,7 +102,7 @@ RULES = [
     ("hip_shoulder_sep_bfc", ("watch", "risk"), "load", "mixed_action", 1.0,
      "Hips and shoulders misaligned at back-foot contact ({v:.0f}°)", "Classification; injury link debated"),
     ("shoulder_counter_rotation", ("watch", "risk"), "load", "mixed_action", 0.9,
-     "Shoulder counter-rotation of {v:.0f}°", "Low-moderate evidence (stronger in juniors)"),
+     "Shoulders twist back {v:.0f}° after back-foot contact", "Low-moderate evidence (stronger in juniors)"),
     ("back_knee_bfc", ("watch", "risk"), "load", "front_leg", 0.6,
      "Back leg folds at back-foot contact ({v:.0f}°)", "One prospective study"),
     ("release_height_pct", ("watch",), "pace", "release_height", 0.6,
@@ -114,7 +123,7 @@ POSITIVES = {
     "hip_shoulder_sep_bfc": "Hips and shoulders aligned at back-foot contact",
     "shoulder_counter_rotation": "Minimal shoulder counter-rotation",
     "release_height_pct": "High release point",
-    "trunk_flexion_ffc_br": "Good trunk flexion through the crease",
+    "trunk_flexion_ffc_br": "Good forward bend of the upper body from landing to release",
     "stride_length_pct": "Stride length in the typical elite range",
     "back_knee_bfc": "Firm back leg at back-foot contact",
     "head_offset_br": "Head stays over the front foot",
@@ -181,7 +190,8 @@ def coach(metrics: list[dict], view: str, fps: float) -> dict:
             "key": key, "category": cat, "severity": round(sev, 2), "rating": m["rating"], "borderline": borderline,
             "headline": head.format(v=abs(m["value"]), side=side), "evidence": evidence,
             "why": m.get("explain", ""), "metric": key, "confidence": m["confidence"],
-            "drill": DRILLS[drill], "drill_key": drill, "event": m.get("event"),
+            "drill": DRILLS["stride_short" if drill == "stride" and side == "Short" else drill], "drill_key": drill,
+            "event": m.get("event"),
         })
     issues.sort(key=lambda x: -x["severity"])
     seen, priorities = set(), []

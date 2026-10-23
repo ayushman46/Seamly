@@ -161,7 +161,7 @@ def back_health(result: dict, player: dict | None = None) -> dict | None:
     if age in JUNIOR:
         advice.append("Lower-back stress injuries are most common in teenage fast bowlers, especially in the two to "
                       "three years after a growth spurt. Stick to the bowling limits in your plan.")
-    advice.append("If you get lower back pain while bowling, stop and see a sports doctor or physiotherapist "
+    advice.append("If you get lower back pain while bowling (or any pain that changes how you bowl or lasts to the next day), stop and see a sports doctor or physiotherapist "
                   "before bowling again.")
     return {"overall": overall, "checks": checks, "advice": advice, "measured": len(measured), "total": len(checks),
             "disclaimer": "A technique screen from one video, not a medical assessment."}
@@ -178,7 +178,7 @@ def _limits(age: str, style: str) -> dict | None:
     if style == "spin":
         return None
     return {**ADULT_LIMITS, "age_group": "adult", "label": AGE_LABEL["adult"],
-            "source": "general guidance (the official limits are for juniors)", "between_spells_min": 20,
+            "source": "general guidance; the official limits are for juniors", "between_spells_min": 20,
             "preseason_weeks": None}
 
 
@@ -222,7 +222,7 @@ PLAN_DRILLS = {
         _d("Clap timing: a partner claps as your front foot lands and the release follows immediately", 2, 8, True),
     ],
     "elbow": [
-        _d("Film side-on in slow motion (120–240 fps) from about 10 m; if the estimate stays high, book an accredited biomechanics test", 1, 1, False),
+        _d("Film side-on in slow motion (120–240 fps) from about 10 m; if the estimate stays high, talk to your coach", 1, 1, False),
     ],
 }
 MAINTAIN_DRILLS = [
@@ -295,13 +295,15 @@ def practice_plan(result: dict, player: dict | None = None) -> dict:
         left = budget - warm - drill_balls
         overs = min(spell_overs, left // 6)
         second = min(spell_overs, (left - overs * 6) // 6) if w == 2 else 0
+        if second < 2:
+            second = 0   # a one-over "second spell" isn't worth the rest and re-warm-up
         if overs >= 1:
             ov = lambda n: f"{n} over{'s' if n > 1 else ''}"
             if w == 1:
                 items.append({"text": f"Short run-up (5–7 steps): {ov(overs)} focusing only on “{cue}”."})
             else:
                 txt = f"Full run-up: {ov(overs)} at about 80% effort, keeping “{cue}”."
-                if second >= 1:
+                if second:
                     txt += f" Rest at least 20 minutes, then an optional second spell of up to {ov(second)}."
                 items.append({"text": txt})
         items.append({"text": "Cool-down (5 min): walk, then calf, hamstring and hip-flexor stretches."})
@@ -344,7 +346,7 @@ def practice_plan(result: dict, player: dict | None = None) -> dict:
             for it in d["items"]:
                 it["id"] = _item_id(w, d["day"], it["text"], taken)
                 it.setdefault("detail", None)
-        weeks.append({"title": "Week 1: learn the movement" if w == 1 else "Week 2: take it to full pace", "days": days})
+        weeks.append({"title": "Week 1: learn the movement" if w == 1 else "Week 2: build towards full pace", "days": days})
     notes = []
     if lim:
         notes.append(f"Bowling limits for {lim['label']} bowlers ({lim['source']}): at most {lim['spell']} overs per "
@@ -354,9 +356,12 @@ def practice_plan(result: dict, player: dict | None = None) -> dict:
                      "counts, including warm-up and drill balls: each session above is counted and stays well inside the limit.")
         if lim.get("preseason_weeks"):
             notes.append(f"Coming back after a break? Build up over about {lim['preseason_weeks']} weeks before bowling flat out.")
+        if age in JUNIOR:
+            notes.append("At training, bowl for no more than about 30 minutes at a time, then rest for as long. Plan a lighter "
+                         "week every 4–6 weeks, and after a growth spurt bowl shorter spells or less often for a while.")
     else:
         notes.append("Spin bowling loads are lower than pace; still keep at least one full rest day a week.")
-    notes.append("Stop and see a physio or sports doctor if you get lower back pain while bowling.")
+    notes.append("Stop bowling and see a physio or sports doctor if you get lower back pain, or any pain that changes how you bowl or is still there the next day.")
     return {"focus": focus, "weeks": weeks, "limits": lim, "notes": notes}
 
 

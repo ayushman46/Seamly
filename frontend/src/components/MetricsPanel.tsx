@@ -23,7 +23,7 @@ export default function MetricsPanel({ result, selected, onSelect }: { result: A
         if (!ms.length) return null;
         return (
           <div key={g.title}>
-            <div className="card-title">{g.title}</div>
+            <div role="heading" aria-level={3} className="card-title">{g.title}</div>
             <div className="metric-groups">
               {ms.map((m) => <MetricCard key={m.key} m={m} sel={selected === m.key} onClick={() => onSelect(m.key, m.event?.split("-").pop() ?? null)} />)}
             </div>
@@ -35,7 +35,7 @@ export default function MetricsPanel({ result, selected, onSelect }: { result: A
         if (!out.length) return null;
         return (
           <div>
-            <div className="card-title">Needs another camera angle or frame rate</div>
+            <div role="heading" aria-level={3} className="card-title">Needs another camera angle or frame rate</div>
             <div className="stack" style={{ gap: 6 }}>
               {out.map((m) => (
                 <div key={m.key} className="faint" style={{ fontSize: 12.5 }}>
@@ -57,7 +57,9 @@ function MetricCard({ m, sel, onClick }: { m: Metric; sel: boolean; onClick: () 
   const extra = m.technique ? `Technique: ${m.technique}${TECHNIQUE_HELP[m.technique] ? ` (${TECHNIQUE_HELP[m.technique]})` : ""}` : m.action_type ? `Action: ${m.action_type}` : m.metres ? `≈ ${m.metres.toFixed(2)} m` : null;
   return (
     <div className={`metric ${sel ? "sel" : ""} ${m.reliability === "estimate" ? "estimate" : ""}`} onClick={onClick}
-      role="button" tabIndex={0} aria-pressed={sel} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); onClick(); } }}>
+      role="button" tabIndex={0} aria-pressed={sel}
+      aria-label={`${m.label}: ${m.value === null ? "not measured" : `${fmt(m.value, m.unit === "ms" || m.unit === "cm" ? 0 : 1)}${unitLabel(m.unit)}`}, ${RATING_LABEL[m.rating]}. Show on the video`}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); onClick(); } }}>
       <div className="row">
         <span className="mlabel grow">{m.label}</span>
         <span className={`chip ${m.rating}`}>{RATING_LABEL[m.rating]}</span>

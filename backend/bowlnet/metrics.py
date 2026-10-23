@@ -408,7 +408,7 @@ def compute(c: Ctx) -> dict:
                                        "higher ball speed; some flexion is normal and may reduce load.",
                                extra={"flexion_after_ffc": round(flexion, 1),
                                       "extension_to_br": round(extension, 1), "min_frame": i_min}))
-        metrics.append(_metric("front_knee_flexion", "Front knee collapse after landing", flexion, event="ffc-br",
+        metrics.append(_metric("front_knee_flexion", "Front knee bend after landing", flexion, event="ffc-br",
                                source=src, confidence=cf, needs=SIDE, view=view,
                                explain="Flexion of the front knee from landing to its most bent point. Together with "
                                        "the extension to release it gives the front-leg technique (Portus et al. 2004).",

@@ -70,7 +70,15 @@ export default function ReportPage({ id, go }: { id: string; go: (to: string) =>
               </li>
             ))}
           </ul>
+          {ins.back_health.advice.length > 0 && <ul>{ins.back_health.advice.map((a) => <li key={a}>{a}</li>)}</ul>}
           <p className="rp-note">{ins.back_health.disclaimer}</p>
+        </section>
+      )}
+
+      {ins?.plan?.notes && ins.plan.notes.length > 0 && (
+        <section>
+          <h2>Safe bowling{ins.player ? ` for ${AGE_LABEL[ins.player.age_group] ?? ""} bowlers` : ""}</h2>
+          <ul>{ins.plan.notes.map((n) => <li key={n}>{n}</li>)}</ul>
         </section>
       )}
 

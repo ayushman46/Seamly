@@ -131,7 +131,7 @@ button { font: inherit; color: inherit; }
 h1, h2, h3, h4 { color: var(--c-text); font-weight: 700; }
 p { margin: 0 0 var(--sp-3); }
 ::selection { background: rgba(61, 220, 151, 0.3); color: #fff; }
-main:focus { outline: none; }
+main:focus, h1[tabindex="-1"]:focus { outline: none; }
 hr { border: 0; height: 1px; background: var(--c-line); margin: var(--sp-4) 0; }
 kbd { font-family: var(--mono); font-size: 11px; padding: 1px 5px; border-radius: 5px; border: 1px solid var(--c-line-3); border-bottom-width: 2px; background: var(--c-surface-2); color: var(--c-text-2); }
 
@@ -306,7 +306,8 @@ button.chip:hover { border-color: var(--c-line-3); color: var(--c-text); }
 }
 .input::placeholder { color: #66748b; }
 .input:hover { border-color: var(--c-line-3); }
-.input:focus, .input:focus-visible { border-color: var(--c-accent-line); box-shadow: var(--ring); outline: none; }
+.input:focus { border-color: var(--c-accent-line); box-shadow: var(--ring); outline: none; }
+.input:focus-visible { border-color: var(--c-accent); box-shadow: var(--ring); outline: 2px solid var(--c-accent); outline-offset: 1px; }
 .input:disabled { opacity: 0.55; }
 select.input {
   appearance: none; -webkit-appearance: none; padding-right: 34px; cursor: pointer; text-overflow: ellipsis;

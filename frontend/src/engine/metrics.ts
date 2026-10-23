@@ -539,7 +539,7 @@ export function compute(c: Ctx): { metrics: MetricDict[]; series: Series } {
       explain: "A straighter front leg at release acts as a lever and is associated with "
         + "higher ball speed; some flexion is normal and may reduce load.",
       extra: { flexion_after_ffc: pyRound(flexion, 1), extension_to_br: pyRound(extension, 1), min_frame: iMin } }));
-    metrics.push(metric("front_knee_flexion", "Front knee collapse after landing", flexion, {
+    metrics.push(metric("front_knee_flexion", "Front knee bend after landing", flexion, {
       event: "ffc-br", source: src, confidence: cf, needs: SIDE, view,
       explain: "Flexion of the front knee from landing to its most bent point. Together with "
         + "the extension to release it gives the front-leg technique (Portus et al. 2004).",
