@@ -13,6 +13,6 @@ export function setCurrentPlayer(id: string | null): void {
 }
 
 export const AGE_LABEL: Record<string, string> = {
-  u11: "Under 11", u13: "11–13", u15: "13–15", u17: "15–17", u19: "17–19", adult: "Adult",
+  u11: "Under 11", u13: "11–12", u15: "13–14", u17: "15–16", u19: "17–18", adult: "Adult (19+)",
 };
 export const STYLE_LABEL: Record<string, string> = { fast: "Fast", medium: "Medium pace", spin: "Spin" };

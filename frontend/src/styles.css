@@ -1074,3 +1074,20 @@ button:focus:not(:focus-visible) { outline: none; }
   .report { padding: 0; max-width: none; margin: 0; box-shadow: none; border-radius: 0; }
   .report section { break-inside: avoid; }
 }
+
+/* inline link-style button (inside notices) */
+.link-btn { background: none; border: 0; padding: 0; color: var(--c-accent, #34d399); text-decoration: underline; cursor: pointer; font: inherit; }
+.link-btn:hover { text-decoration: none; }
+.chip.warn { border-color: rgba(251, 191, 36, 0.55); color: #fde68a; cursor: pointer; }
+
+/* 3D viewer: inactive until clicked/tapped, so it never traps page scrolling */
+.viewer-activate { position: absolute; inset: 0; z-index: 2; display: flex; align-items: flex-start; justify-content: flex-end; padding: 12px; background: transparent; border: 0; cursor: pointer; color: var(--c-text-2, #c7d2e0); font: inherit; font-size: 12px; }
+.viewer-activate span { background: rgba(5, 8, 13, 0.72); border: 1px solid rgba(255, 255, 255, 0.12); padding: 5px 10px; border-radius: 999px; margin-top: 34px; }
+.viewer-activate .touch { display: none; }
+.viewer-done { position: absolute; right: 12px; top: 46px; z-index: 3; }
+@media (hover: none) and (pointer: coarse) {
+  .viewer-activate .mouse { display: none; }
+  .viewer-activate .touch { display: inline; }
+}
+.rp-list { margin: 6px 0 8px; padding-left: 18px; font-size: 13px; line-height: 1.5; }
+.rp-list li { margin: 3px 0; }

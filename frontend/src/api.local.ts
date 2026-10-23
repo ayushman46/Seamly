@@ -110,7 +110,7 @@ function pub(m: Meta): AnalysisMeta {
 
 function requireMeta(id: string): Meta {
   const m = metas.get(id);
-  if (!m) throw new Error("Analysis not found");
+  if (!m) throw new Error("This analysis isn't in this browser. Seamly keeps analyses on the device that made them (nothing is uploaded), so a link only opens there — to share one, use its PDF report.");
   return m;
 }
 
@@ -373,7 +373,7 @@ function playerOut(p: StoredPlayer): Player {
 
 async function requirePlayer(pid: string): Promise<StoredPlayer> {
   const p = await db.get<StoredPlayer>("player", pid);
-  if (!p) throw new Error("Player not found");
+  if (!p) throw new Error("This player isn't in this browser. Player profiles are kept on the device where they were created.");
   return p;
 }
 
@@ -387,19 +387,35 @@ function newMeta(id: string, name: string, size: number, opts: Partial<Options>,
 
 const ALLOWED = [".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi"];
 
+/** Container signature check (instant), so a renamed photo or document is refused before anything is stored. */
+async function looksLikeVideo(file: Blob): Promise<boolean> {
+  try {
+    const b = new Uint8Array(await file.slice(0, 16).arrayBuffer());
+    const ascii = (o: number, n: number) => String.fromCharCode(...b.slice(o, o + n));
+    if (ascii(4, 4) === "ftyp" || ["moov", "mdat", "wide", "free", "skip"].includes(ascii(4, 4))) return true;   // MP4 / MOV / 3GP
+    if (b[0] === 0x1a && b[1] === 0x45 && b[2] === 0xdf && b[3] === 0xa3) return true;                         // WebM / MKV (EBML)
+    if (ascii(0, 4) === "RIFF" && ascii(8, 4) === "AVI ") return true;                                          // AVI
+    return false;
+  } catch {
+    return true;   // can't read the header: let the decoder decide
+  }
+}
+
 export const SAMPLES = {
   club: { url: `${import.meta.env.BASE_URL}samples/club-side-on.mp4`, dir: `${import.meta.env.BASE_URL}samples/club/`, id: "c1ab5a3d1e01",
     name: "Sample: club bowler, side-on (real match)" },
   synthetic: { url: `${import.meta.env.BASE_URL}samples/synthetic-side-on.mp4`, dir: `${import.meta.env.BASE_URL}samples/synthetic/`, id: "5e7a5a3d1e02",
-    name: "Sample: synthetic bowler with exact ground truth (60 fps)" },
+    name: "Sample: computer-generated bowler, every angle known exactly (60 fps)" },
 };
 export type SampleName = keyof typeof SAMPLES;
+// bump when the bundled sample analyses are regenerated, so a browser that imported an older copy gets the new one
+const SAMPLE_VERSION = 2;
 
 /** Import a precomputed sample analysis (opens instantly: no models to download). */
 async function importSample(which: SampleName): Promise<string> {
   const s = SAMPLES[which];
-  const have = metas.get(s.id);
-  if (have && have.status === "done") return s.id;
+  const have = metas.get(s.id) as (Meta & { sample_version?: number }) | undefined;
+  if (have && have.status === "done" && have.sample_version === SAMPLE_VERSION) return s.id;
   const get = async (path: string) => {
     const r = await fetch(s.dir + path);
     if (!r.ok) throw new Error("Couldn't load the sample analysis. Check your connection and try again.");
@@ -415,13 +431,14 @@ async function importSample(which: SampleName): Promise<string> {
   const entries: [string, unknown][] = frames.map((f, i) => [`${s.id}/f/${f}`, blobs[i]]);
   entries.push([`${s.id}/mesh_rest.bin`, rest], [`${s.id}/pose.bin`, pose]);
   if (video) entries.push([`${s.id}/input`, video]);
+  if (have) await db.delPrefix("blob", `${s.id}/`);   // an older copy of this sample (other frame numbers)
   await db.putMany("blob", entries);
   await db.put("stagea", s.id, bundle.stagea);
   await db.put("result", s.id, r);
   const t = now();
   const m = { ...newMeta(s.id, s.name, video?.size ?? 0, (bundle.meta.options ?? {}) as Partial<Options>, null, "video/mp4"),
     ...bundle.meta, id: s.id, name: s.name, created: t, updated: t, status: "done", progress: 1, stage: "done", stage_label: "Complete",
-    error: null, notice: null, player_id: null, gen: "" } as Meta;
+    error: null, notice: null, player_id: have?.player_id ?? null, gen: "", sample_version: SAMPLE_VERSION } as Meta;
   metas.set(s.id, m);
   await db.put("meta", s.id, m);
   results.delete(s.id); meshBufs.delete(s.id); dropUrls(s.id);
@@ -593,6 +610,9 @@ export const api = {
     if (opts.height_cm !== undefined && opts.height_cm !== null && !(opts.height_cm >= 120 && opts.height_cm <= 230)) throw new Error("Height must be between 120 and 230 cm.");
     if (!(opts.slowmo_factor >= 1 && opts.slowmo_factor <= 20)) throw new Error("Clip speed must be between 1x and 20x slow motion.");
     if (file.size === 0) throw new Error("The chosen file is empty.");
+    if (!(await looksLikeVideo(file))) {
+      throw new Error("This file doesn't look like a video. Choose the clip itself (MP4, MOV, WEBM, MKV or AVI) — not a photo, document or shortcut to it.");
+    }
     if (file.size > 600e6) throw new Error("This file is larger than 600 MB. Trim the clip around the delivery first.");
     // the clip, its display frames and the 3D data are kept in this browser
     const free = await db.freeSpace();

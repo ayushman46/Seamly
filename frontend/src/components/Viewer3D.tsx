@@ -27,6 +27,8 @@ export default function Viewer3D({ id, result, frame }: { id: string; result: An
   const [ghost, setGhost] = useState(false);
   const [follow, setFollow] = useState(true);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  // the canvas only takes the mouse wheel and touch gestures once the user asks for it, so it never traps page scrolling
+  const [active, setActive] = useState(false);
   const f0 = result.frames.start;
   const parents = result.skeleton3d.parents;
   const right = result.bowling_arm.arm === "right";
@@ -48,6 +50,8 @@ export default function Viewer3D({ id, result, frame }: { id: string; result: An
     controls.minDistance = 1.2;
     controls.maxDistance = 25;
     controls.maxPolarAngle = Math.PI * 0.495;
+    controls.enabled = false;
+    renderer.domElement.style.touchAction = "pan-y";
 
     scene.add(new THREE.HemisphereLight(0xdbeafe, 0x1e293b, 1.15));
     const key = new THREE.DirectionalLight(0xffffff, 1.6);
@@ -234,9 +238,26 @@ export default function Viewer3D({ id, result, frame }: { id: string; result: An
     });
   }, [ghost, status, result.events, f0]);
 
+  useEffect(() => {
+    const s = st.current;
+    if (!s) return;
+    s.controls.enabled = active;
+    s.renderer.domElement.style.touchAction = active ? "none" : "pan-y";
+    if (!active) return;
+    const out = (e: PointerEvent) => { if (host.current && !host.current.contains(e.target as Node)) setActive(false); };
+    document.addEventListener("pointerdown", out);
+    return () => document.removeEventListener("pointerdown", out);
+  }, [active]);
+
   return (
     <div className="card viewer">
       <div className="viewer-stage" ref={host}>
+        {!active && status === "ready" && (
+          <button type="button" className="viewer-activate" onClick={() => setActive(true)} aria-label="Explore the 3D body: rotate and zoom">
+            <span className="mouse">Click to rotate and zoom</span><span className="touch">Tap to rotate and zoom</span>
+          </button>
+        )}
+        {active && <button type="button" className="btn sm viewer-done" onClick={() => setActive(false)}>Done</button>}
         {status === "loading" && <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center" }}><div className="spinner" /></div>}
         {status === "error" && <div className="notice warn" style={{ position: "absolute", left: 12, right: 12, top: 12 }}>3D body model unavailable for this analysis.</div>}
         <div className="viewer-legend"><span className="mouse">Drag to orbit · scroll to zoom · right-drag to pan</span><span className="touch">Drag to orbit · pinch to zoom · two-finger drag to pan</span></div>

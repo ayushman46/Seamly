@@ -11,13 +11,13 @@ type Route = { page: "home" } | { page: "analysis"; id: string; tab?: string } |
   | { page: "report"; id: string } | { page: "player"; id: string };
 
 function parseRoute(): Route {
-  const c = window.location.hash.match(/^#\/compare\/([a-f0-9]{12})\/([a-f0-9]{12})/);
+  const c = window.location.hash.match(/^#\/compare\/([A-Za-z0-9_-]+)\/([A-Za-z0-9_-]+)/);
   if (c) return { page: "compare", a: c[1], b: c[2] };
-  const rep = window.location.hash.match(/^#\/r\/([a-f0-9]{12})/);
+  const rep = window.location.hash.match(/^#\/r\/([A-Za-z0-9_-]+)/);
   if (rep) return { page: "report", id: rep[1] };
-  const pl = window.location.hash.match(/^#\/p\/([a-f0-9]{12})/);
+  const pl = window.location.hash.match(/^#\/p\/([A-Za-z0-9_-]+)/);
   if (pl) return { page: "player", id: pl[1] };
-  const m = window.location.hash.match(/^#\/a\/([a-f0-9]{12})(?:\/(plan))?/);
+  const m = window.location.hash.match(/^#\/a\/([A-Za-z0-9_-]+?)(?:\/(plan))?$/);
   return m ? { page: "analysis", id: m[1], tab: m[2] } : { page: "home" };
 }
 

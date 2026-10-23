@@ -81,21 +81,21 @@ DRILLS = {
 RULES = [
     # key, issue (rating that triggers), category, drill, weight, headline (formatted with value)
     ("front_knee_br", ("watch",), "pace", "front_leg", 1.0,
-     "Front knee collapses to {v:.0f} deg at release", "Strong evidence for pace (r~0.4)"),
+     "Front knee softens to {v:.0f}° at release (aim for 160° or straighter)", "Strong evidence for pace (r ≈ 0.4)"),
     ("front_knee_flexion", ("watch",), "pace", "front_leg", 0.7,
-     "Front knee flexes {v:.0f} deg after landing", "Moderate evidence"),
+     "Front knee flexes {v:.0f}° after landing", "Moderate evidence"),
     ("trunk_flexion_ffc_br", ("watch",), "pace", "trunk_flexion", 0.8,
-     "Limited trunk flexion through the crease ({v:.0f} deg)", "Moderate evidence for pace"),
+     "Limited trunk flexion through the crease ({v:.0f}°)", "Moderate evidence for pace"),
     ("trunk_forward_br", ("watch",), "pace", "trunk_flexion", 0.6,
-     "Upright trunk at release ({v:.0f} deg)", "Moderate evidence for pace"),
+     "Upright trunk at release ({v:.0f}°)", "Moderate evidence for pace"),
     ("trunk_lateral_br", ("watch", "risk"), "load", "side_bend", 1.1,
-     "High side-bend at release ({v:.0f} deg)", "Moderate evidence in juniors, contested in adults"),
+     "High side-bend at release ({v:.0f}°)", "Moderate evidence in juniors, contested in adults"),
     ("hip_shoulder_sep_bfc", ("watch", "risk"), "load", "mixed_action", 1.0,
-     "Hips and shoulders misaligned at back-foot contact ({v:.0f} deg)", "Classification; injury link debated"),
+     "Hips and shoulders misaligned at back-foot contact ({v:.0f}°)", "Classification; injury link debated"),
     ("shoulder_counter_rotation", ("watch", "risk"), "load", "mixed_action", 0.9,
-     "Shoulder counter-rotation of {v:.0f} deg", "Low-moderate evidence (stronger in juniors)"),
+     "Shoulder counter-rotation of {v:.0f}°", "Low-moderate evidence (stronger in juniors)"),
     ("back_knee_bfc", ("watch", "risk"), "load", "front_leg", 0.6,
-     "Back leg folds at back-foot contact ({v:.0f} deg)", "One prospective study"),
+     "Back leg folds at back-foot contact ({v:.0f}°)", "One prospective study"),
     ("release_height_pct", ("watch",), "pace", "release_height", 0.6,
      "Release point is low ({v:.0f}% of height)", "Descriptive"),
     ("stride_length_pct", ("watch",), "pace", "stride", 0.4,
@@ -105,7 +105,7 @@ RULES = [
     ("head_offset_br", ("watch", "risk"), "accuracy", "side_bend", 0.6,
      "Head falls {v:.0f} cm outside the front foot", "Coaching heuristic"),
     ("elbow_extension", ("watch", "risk"), "legality", "elbow", 0.8,
-     "Estimated elbow extension {v:.0f} deg", "Screening only - not an ICC test"),
+     "Estimated elbow extension {v:.0f}°", "Screening only - not an ICC test"),
 ]
 
 POSITIVES = {
@@ -118,6 +118,15 @@ POSITIVES = {
     "stride_length_pct": "Stride length in the typical elite range",
     "back_knee_bfc": "Firm back leg at back-foot contact",
     "head_offset_br": "Head stays over the front foot",
+}
+
+# body area of each metric, so a strength is never listed for an area that is also a fix
+AREA = {
+    "front_knee_br": "front_knee", "front_knee_flexion": "front_knee", "front_knee_ffc": "front_knee",
+    "trunk_flexion_ffc_br": "trunk", "trunk_forward_br": "trunk", "trunk_lateral_br": "side_bend",
+    "head_offset_br": "side_bend", "hip_shoulder_sep_bfc": "alignment", "shoulder_counter_rotation": "alignment",
+    "back_knee_bfc": "back_knee", "release_height_pct": "release", "stride_length_pct": "stride",
+    "ffc_to_br_ms": "rhythm", "elbow_extension": "elbow",
 }
 
 SCORE_WEIGHTS = {
@@ -174,13 +183,16 @@ def coach(metrics: list[dict], view: str, fps: float) -> dict:
         priorities.append(it)
         if len(priorities) == 3:
             break
+    # never praise a body area that is also flagged (e.g. "good trunk flexion" next to "upright trunk at release")
+    flagged = {AREA.get(i["key"]) for i in issues}
     strengths = [POSITIVES[m["key"]] for m in metrics
-                 if m["key"] in POSITIVES and m["rating"] == "good" and m["confidence"] >= 0.3][:4]
+                 if m["key"] in POSITIVES and m["rating"] == "good" and m["confidence"] >= 0.3
+                 and AREA.get(m["key"]) not in flagged][:4]
 
     # ---------- capture quality advice ----------
     capture = []
     if fps < 90:
-        capture.append(f"Filmed at {fps:.0f} fps - the arm moves ~{min(80, 2000 / fps):.0f} deg between frames at "
+        capture.append(f"Filmed at {fps:.0f} fps - the arm moves ~{min(80, 2000 / fps):.0f}° between frames at "
                        "release. Use 120-240 fps slow motion for precise release and elbow measurements.")
     if view in ("behind", "front_on"):
         capture.append("Filmed from behind/in front: side-bend, arm slot and alignment are measured well, but knee, "

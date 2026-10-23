@@ -4,7 +4,7 @@
  * Every metric declares the anatomical plane it lives in. If that plane is (nearly) parallel to the image
  * plane for the detected camera view we measure it directly on the high-resolution 2D keypoints (e.g. Cottam
  * 2016 for rear-view lateral flexion); otherwise we use the reconstructed 3D skeleton and lower the confidence.
- * Norms, thresholds and references are in docs/RESEARCH.md; thresholds marked 'heuristic' are +/-1-2 SD bands
+ * Norms, thresholds and references are in docs/RESEARCH.md; thresholds marked 'heuristic' are ±1-2 SD bands
  * around elite norms, not published cut-offs, and are labelled as such in the UI.
  *
  * Numerics follow numpy where it changes a rounded result: pairwise summation for means, numpy's percentile
@@ -147,46 +147,46 @@ export interface Norm {
 
 export const NORMS: Record<string, Norm> = {
   elbow_extension: { unit: "deg", good: [null, 10], watch: [10, 15], risk: [15, null],
-    norm: "Legal bowlers: 0-10 deg (mean ~6 deg); ICC limit 15 deg",
+    norm: "Legal bowlers: 0-10° (mean ~6°); ICC limit 15°",
     ref: "ICC Illegal Bowling Regulations; Ferdinands & Kersting 2005; King & Yeadon 2013" },
-  front_knee_ffc: { unit: "deg", norm: "Elite men 164 +/- 6 deg at FFC", ref: "Felton 2019" },
+  front_knee_ffc: { unit: "deg", norm: "Elite men 164 ± 6° at FFC", ref: "Felton 2019" },
   front_knee_br: { unit: "deg", good: [160, null], watch: [140, 160], risk: null,
-    norm: "Elite men 167 +/- 19 deg at release; straighter knee correlates with ball speed (r~0.4)",
+    norm: "Aim for 160° or straighter at release. Elite men average 167 ± 19°; a straighter front knee goes with faster bowling (r ≈ 0.4)",
     ref: "Felton 2019; Ramachandran 2024 meta-analysis" },
   front_knee_flexion: { unit: "deg", good: [null, 20], watch: [20, null], risk: null,
-    norm: "Elite men flex 9 +/- 11 deg after FFC (heuristic band)", ref: "Felton 2019" },
+    norm: "Elite men flex 9 ± 11° after FFC (heuristic band)", ref: "Felton 2019" },
   back_knee_bfc: { unit: "deg", good: [156, null], watch: [146, 156], risk: [null, 146],
-    norm: "Injured bowlers 146 deg vs uninjured 156 deg at BFC (rear hip/knee)",
+    norm: "Injured bowlers 146° vs uninjured 156° at BFC (rear hip/knee)",
     ref: "Alway et al. 2021 (prospective, MRI)" },
   trunk_forward_br: { unit: "deg", good: [30, null], watch: [15, 30], risk: null,
-    norm: "Elite men ~42 +/- 5 deg forward at release (heuristic band)", ref: "Felton 2019" },
+    norm: "Elite men ~42 ± 5° forward at release (heuristic band)", ref: "Felton 2019" },
   trunk_flexion_ffc_br: { unit: "deg", good: [25, null], watch: [15, 25], risk: null,
-    norm: "Elite men flex the trunk 31 +/- 8 deg from FFC to release", ref: "Felton 2019" },
+    norm: "Elite men flex the trunk 31 ± 8° from FFC to release", ref: "Felton 2019" },
   trunk_lateral_br: { unit: "deg", good: [null, 40], watch: [40, 50], risk: [50, null],
-    norm: "Later-injured juniors 50 +/- 6 deg vs uninjured 40 +/- 8 deg (thorax lateral flexion at BR)",
+    norm: "Later-injured juniors 50 ± 6° vs uninjured 40 ± 8° (thorax lateral flexion at BR)",
     ref: "Bayne et al. 2016; contested in elite adults (Alway 2021)" },
   shoulder_alignment_bfc: { unit: "deg",
     norm: "180 = side-on, 270 = front-on; side-on < 210, semi-open 210-240, front-on > 240",
-    ref: "Portus et al. 2004; elite men 232 +/- 14 (Felton 2019)" },
+    ref: "Portus et al. 2004; elite men 232 ± 14 (Felton 2019)" },
   hip_shoulder_sep_bfc: { unit: "deg", good: [null, 20], watch: [20, 30], risk: [30, null],
-    norm: ">= 30 deg at BFC classifies a mixed action", ref: "Portus et al. 2004" },
+    norm: ">= 30° at BFC classifies a mixed action", ref: "Portus et al. 2004" },
   shoulder_counter_rotation: { unit: "deg", good: [null, 30], watch: [30, 40], risk: [40, null],
-    norm: ">= 30 deg is the common mixed-action criterion (stronger evidence in juniors)",
+    norm: ">= 30° is the common mixed-action criterion (stronger evidence in juniors)",
     ref: "Portus 2004; Elliott & Foster 1989; Ranson 2008; Alway 2021" },
   release_height_pct: { unit: "% height", good: [108, null], watch: [104, 108], risk: null,
-    norm: "Elite men 113 +/- 4 % of standing height (heuristic band)", ref: "Felton 2019" },
+    norm: "Elite men 113 ± 4 % of standing height (heuristic band)", ref: "Felton 2019" },
   stride_length_pct: { unit: "% height", good: [70, 87], watch: [64, 93], risk: null,
-    norm: "Elite men 79 +/- 7 % of standing height (heuristic band)", ref: "Felton 2019" },
+    norm: "Elite men 79 ± 7 % of standing height (heuristic band)", ref: "Felton 2019" },
   ffc_to_br_ms: { unit: "ms", good: [null, 125], watch: [125, null], risk: null,
-    norm: "Elite men 103 +/- 11 ms; juniors 126 +/- 37 ms", ref: "Felton 2019; Andrews 2024" },
-  bfc_to_ffc_ms: { unit: "ms", norm: "Elite men 192 +/- 31 ms; juniors 197 +/- 59 ms", ref: "Felton 2019; Andrews 2024" },
+    norm: "Elite men 103 ± 11 ms; juniors 126 ± 37 ms", ref: "Felton 2019; Andrews 2024" },
+  bfc_to_ffc_ms: { unit: "ms", norm: "Elite men 192 ± 31 ms; juniors 197 ± 59 ms", ref: "Felton 2019; Andrews 2024" },
   arm_slot_br: { unit: "deg",
     norm: "Angle of the bowling arm from vertical at release (descriptive; higher slot often costs more side-bend)",
     ref: "descriptive" },
   head_offset_br: { unit: "cm", good: [null, 15], watch: [15, 30], risk: [30, null],
     norm: "Lateral distance of the head outside the front foot at release (heuristic; 'falling away')",
     ref: "coaching heuristic" },
-  runup_speed: { unit: "m/s", norm: "Elite men 5.8 +/- 0.6 m/s; juniors 5.8 +/- 0.7; finger spinners 2.5 +/- 0.5",
+  runup_speed: { unit: "m/s", norm: "Elite men 5.8 ± 0.6 m/s; juniors 5.8 ± 0.7; finger spinners 2.5 ± 0.5",
     ref: "Felton 2019; Andrews 2024; Sanders 2018" },
 };
 
@@ -275,7 +275,7 @@ export function metric(key: string, label: string, value: number | null, o: Metr
   let v: number | null = value === null || !Number.isFinite(value) ? null : pyRound(value, decimals);
   let rating: Rating = rate(key, v);
   if (tolerance && v !== null && (rating === "watch" || rating === "risk")) {
-    // give the benefit of the measurement resolution (e.g. +/- one frame for timings)
+    // give the benefit of the measurement resolution (e.g. ± one frame for timings)
     const order: Record<string, number> = { good: 0, watch: 1, risk: 2 };
     const ord = (r: string) => order[r] ?? 3;
     const better = [rate(key, v - tolerance), rate(key, v + tolerance)];
@@ -289,7 +289,7 @@ export function metric(key: string, label: string, value: number | null, o: Metr
   const outside = !!(needs && needs.length) && !needs!.includes(view as View);
   if (outside) {
     // The plane this metric lives in is not visible from this camera. Monocular 3D depth gives absolute angles
-    // that can be far off (e.g. a 170 deg front knee read as 96 deg from behind), and nothing tells a good
+    // that can be far off (e.g. a 170° front knee read as 96° from behind), and nothing tells a good
     // estimate from a bad one, so the value is withheld (kept as estimate_3d in the JSON export).
     reliability = "estimate";
     note = "Not measurable from this camera view - film " + needs!.map((x) => VIEW_LABEL[x]).join(" or ") + " to measure it.";
@@ -370,8 +370,8 @@ export const alignmentSeries = (c: Ctx, which: "shoulder" | "hip"): Arr1 => alig
 
 /** (angle from 2D width + 3D sign, the 3D model's own angle, out-of-image-plane angle phi), per frame.
  *
- * Transverse-plane orientation of the shoulder (or hip) line, Portus convention: 180 deg = side-on (line pointing
- * down the pitch), 270 deg = front-on. Bowling-arm independent. For behind/front views the angle is recovered from
+ * Transverse-plane orientation of the shoulder (or hip) line, Portus convention: 180° = side-on (line pointing
+ * down the pitch), 270° = front-on. Bowling-arm independent. For behind/front views the angle is recovered from
  * the projected width (w = W cos(phi), phi = angle of the line out of the image plane) and only the sign comes
  * from 3D; for side views the projection gives the complementary angle. W = 3D segment length x image scale. */
 export function alignmentParts(c: Ctx, which: "shoulder" | "hip"): [Arr1, Arr1, Arr1] {
@@ -389,7 +389,7 @@ export function alignmentParts(c: Ctx, which: "shoulder" | "hip"): [Arr1, Arr1, 
   // True line width in the 2D keypoints' own convention: the line swings through the image plane during a
   // delivery, so its widest (robust p95) projection is its length. The 3D model's joint distance can't be used:
   // its joints follow another convention (e.g. SAM 3D Body's hip joint centres are ~1/3 narrower than the 2D
-  // hip keypoints, which pinned the hips at "front-on" and produced false 39 deg separations).
+  // hip keypoints, which pinned the hips at "front-on" and produced false 39° separations).
   const okIdx: number[] = [];
   c.kc.forEach((r, t) => { if (Math.min(r[a2], r[b2]) > 0.3) okIdx.push(t); });
   const wk = okIdx.length >= 5 ? okIdx.map((t) => w[t] / Math.max(c.k[t], 1e-6)) : [];
@@ -475,7 +475,7 @@ export function compute(c: Ctx): { metrics: MetricDict[]; series: Series } {
   if (bfc !== null && ffc !== null && ffc > bfc) {
     metrics.push(metric("bfc_to_ffc_ms", "Back-foot to front-foot contact", (ffc - bfc) * ms, {
       event: "bfc-ffc", source: "events", confidence: pyMin(evConf("bfc"), evConf("ffc")), decimals: 0,
-      tolerance: resMs, explain: "Duration of the delivery stride. Reported +/- one frame "
+      tolerance: resMs, explain: "Duration of the delivery stride. Reported ± one frame "
         + `(${pyFormat(resMs, 0)} ms for this footage).`,
       extra: timingExtra("bfc", "ffc") }));
   }
@@ -533,7 +533,7 @@ export function compute(c: Ctx): { metrics: MetricDict[]; series: Series } {
     const legJ = [s.c_fhip, s.c_fkn, s.c_fan];
     const cf = kconf * pyMin(conf2d(c, ffc, legJ), conf2d(c, br, legJ));
     metrics.push(metric("front_knee_ffc", "Front knee at front-foot contact", kFfc, {
-      event: "ffc", source: src, confidence: cf, explain: "180 deg = straight leg.", needs: SIDE, view }));
+      event: "ffc", source: src, confidence: cf, explain: "180° = straight leg.", needs: SIDE, view }));
     metrics.push(metric("front_knee_br", "Front knee at release", kBr, {
       event: "br", source: src, confidence: cf, needs: SIDE, view,
       explain: "A straighter front leg at release acts as a lever and is associated with "
@@ -602,7 +602,7 @@ export function compute(c: Ctx): { metrics: MetricDict[]; series: Series } {
     if (rearView) {
       // From behind/in front only the *size* of each line's out-of-plane angle is seen; which side of front-on it
       // lies comes from the 3D model. Near front-on that side is uncertain, and putting hips and shoulders on
-      // opposite sides adds two small angles into a large, false separation (synthetic check: 39 deg read for a
+      // opposite sides adds two small angles into a large, false separation (synthetic check: 39° read for a
       // true 0). Then use the same-side reading (the conservative one) at lower confidence.
       const [, s3, sPhi] = alignmentParts(c, "shoulder");
       const [, h3, hPhi] = alignmentParts(c, "hip");
@@ -639,7 +639,7 @@ export function compute(c: Ctx): { metrics: MetricDict[]; series: Series } {
     event: "br", source: rhSrc as string, confidence: (rhConf as number) * conf2d(c, br, [s.c_wr, s.c_fan]),
     explain: "Height of the ball at release as a percentage of your height "
       + `(~${pyFormat((relH * H) / 100, 2)} m for a stature of ${pyFormat(H, 2)} m). Single-camera `
-      + "precision is about +/- 8 points.",
+      + "precision is about ± 8 points.",
     extra: { metres: pyRound((relH * H) / 100, 2) } }));
   // arm slot: angle of shoulder->wrist from vertical in the frontal plane
   let slot: number, ssrc: string, sconf: number;
@@ -653,7 +653,7 @@ export function compute(c: Ctx): { metrics: MetricDict[]; series: Series } {
   }
   metrics.push(metric("arm_slot_br", "Arm slot at release", slot, {
     event: "br", source: ssrc, confidence: sconf * conf2d(c, br, [s.c_sh, s.c_wr]), needs: REAR, view,
-    explain: "0 deg = bowling arm straight up (high arm); larger = more round-arm." }));
+    explain: "0° = bowling arm straight up (high arm); larger = more round-arm." }));
   if (rearView) {
     const f = c.kp[br];
     const headX = c.kc[br][0] > 0.3 ? f[0][0] : (f[3][0] + f[4][0]) / 2;

@@ -136,7 +136,8 @@ export class FrameSource {
         setTimeout(() => reject(new VideoError("The video took too long to load.")), 30000);
         v.load();
       });
-      await v.play().then(() => v.pause(), () => undefined);
+      if (IS_IOS) await Promise.race([v.play().then(() => v.pause(), () => undefined), new Promise((r) => setTimeout(r, 3000))]);
+      v.pause();
       if (v.readyState < 2) {
         await new Promise<void>((resolve, reject) => {
           v.onloadeddata = () => resolve();
@@ -176,18 +177,38 @@ export class FrameSource {
   }
 
   /** Show frame i (seek to the middle of its display interval). */
+  /** Called while the analysis waits for a hidden tab to become visible again (true) and when it resumes (false). */
+  onHidden: ((paused: boolean) => void) | null = null;
+
   async seek(i: number): Promise<void> {
+    // Browsers throttle or suspend video decoding in background tabs, and a frame drawn there can be stale: wait
+    // until the tab is visible again rather than analyse the wrong frames.
+    if (typeof document !== "undefined" && document.hidden && !allowHidden()) {
+      this.onHidden?.(true);
+      await new Promise<void>((r) => {
+        const on = () => { if (!document.hidden) { document.removeEventListener("visibilitychange", on); r(); } };
+        document.addEventListener("visibilitychange", on);
+      });
+      this.onHidden?.(false);
+    }
     const v = this.video, ts = this.info.timestamps;
     const next = i + 1 < ts.length ? ts[i + 1] : ts[i] + 1 / this.info.fps;
     const t = Math.min(v.duration - 1e-3, (ts[i] + next) / 2);
+    const half = 0.5 * (next - ts[i]);
+    if (!v.paused) v.pause();
     if (Math.abs(v.currentTime - t) < 1e-6 && v.readyState >= 2) return;
-    await new Promise<void>((resolve, reject) => {
-      const to = setTimeout(() => { cleanup(); reject(new VideoError("Seeking in the video timed out.")); }, 10000);
-      const cleanup = () => { clearTimeout(to); v.removeEventListener("seeked", on); };
-      const on = () => { cleanup(); resolve(); };
-      v.addEventListener("seeked", on);
-      v.currentTime = t;
-    });
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await new Promise<void>((resolve, reject) => {
+        const to = setTimeout(() => { cleanup(); reject(new VideoError("Seeking in the video timed out.")); }, 10000);
+        const cleanup = () => { clearTimeout(to); v.removeEventListener("seeked", on); };
+        const on = () => { cleanup(); resolve(); };
+        v.addEventListener("seeked", on);
+        v.currentTime = t;
+      });
+      // the element must be paused on the requested frame (a playing or racing element would hand us another one)
+      if (v.paused && Math.abs(v.currentTime - t) <= half) break;
+      v.pause();
+    }
     // Safari can still paint the previous frame right after "seeked": wait (briefly) until the new one is presented.
     // Chrome and Firefox draw the seeked frame already.
     const rvfc = (v as HTMLVideoElement & { requestVideoFrameCallback?: (cb: () => void) => number }).requestVideoFrameCallback;
@@ -201,6 +222,14 @@ export class FrameSource {
     this.video.remove();
     URL.revokeObjectURL(this.url);
   }
+}
+
+const IS_IOS = typeof navigator !== "undefined" && (/iPhone|iPad|iPod/.test(navigator.userAgent)
+  || (/Macintosh/.test(navigator.userAgent) && (navigator.maxTouchPoints ?? 0) > 1));
+
+/** localStorage "seamly:allow-hidden" = "1" lets an analysis continue in a hidden tab (automated testing only). */
+function allowHidden(): boolean {
+  try { return localStorage.getItem("seamly:allow-hidden") === "1"; } catch { return false; }
 }
 
 // WebKit outside desktop/Android Chrome: Safari, and every browser on iOS (they all use WebKit there)

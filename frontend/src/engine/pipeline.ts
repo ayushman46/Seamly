@@ -212,7 +212,8 @@ export function useWasmOnly() {
 export async function analyseVideo(file: Blob, options: Partial<Options>, onProgress?: ProgressCb, abort?: AbortSignal,
   onFrame?: (frame: number, jpeg: Blob) => void): Promise<StageAOut> {
   const opts = optionsFrom(options);
-  const prog = new Progress(onProgress);
+  let lastProgress: Parameters<ProgressCb>[0] | null = null;
+  const prog = new Progress((p) => { lastProgress = p; onProgress?.(p); });
   const t0 = performance.now();
   prog.stage("probe", 0, "Loading the analysis models (first time only)");
   const models = await loadModels((f) => prog.stage("probe", 0.9 * f, "Loading the analysis models (first time only)"));
@@ -223,6 +224,10 @@ export async function analyseVideo(file: Blob, options: Partial<Options>, onProg
   } catch (e) {
     throw new AnalysisError((e as Error).message);
   }
+  src.onHidden = (paused) => {
+    if (paused && lastProgress) onProgress?.({ ...lastProgress, label: "Paused",
+      detail: "Paused while Seamly is in the background — come back to this tab to continue." });
+  };
   try {
     return await stageA(src, opts, models, prog, t0, abort, onFrame);
   } finally {
@@ -556,7 +561,7 @@ export async function stageB(A: StageA, overrides: Overrides = {}, onProgress?: 
     bone_lengths: skel.bone_lengths, fps_unique: fpsUnique };
   const mres = compute(ctx);
   const coaching = coach(mres.metrics, view.view, rep >= 0.4 ? fpsUnique : realFps);
-  // a real delivery's arm turns at >~700 deg/s; much slower suggests a slowed-down (replay) clip
+  // a real delivery's arm turns at >~700°/s; much slower suggests a slowed-down (replay) clip
   let peakReal = sweep.peak_speed_dps || 0;
   if ((meta.version ?? 2) < 3) peakReal *= opts.slowmo_factor;
   if (rep >= 0.4) {
@@ -569,7 +574,7 @@ export async function stageB(A: StageA, overrides: Overrides = {}, onProgress?: 
       coaching.capture_tips.unshift(`Each frame of this clip is repeated ~${nTxt}x, so only ~${fpsUnique.toFixed(0)} distinct frames were captured per real second; precision follows that rate, not the slowed-down frame count.`);
     }
   } else if (peakReal > 0 && peakReal < 650) {
-    coaching.capture_tips.unshift(`The bowling arm peaks at only ~${peakReal.toFixed(0)} deg/s, which is unusually slow for a real delivery. If this clip is a slowed-down replay, set its clip speed in Detection & settings so timings are correct.`);
+    coaching.capture_tips.unshift(`The bowling arm peaks at only ~${peakReal.toFixed(0)}°/s, which is unusually slow for a real delivery. If this clip is a slowed-down replay, set its clip speed in Detection & settings so timings are correct.`);
   }
   prog.stage("mesh", 0.1);
   const mesh = await exportMesh(Wd, height, overrides.gender ?? meta.options.gender ?? 0, arm);

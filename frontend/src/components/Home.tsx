@@ -416,7 +416,7 @@ function Uploader({ go, disabled, health, players, current, onChoose, onCreate, 
         <input ref={input} type="file" accept="video/*,.mp4,.mov,.m4v,.avi,.mkv,.webm" hidden onChange={(e) => pick(e.target.files?.[0])} />
         <span className="dz-icon"><IVideo size={24} /></span>
         <h3>{file ? file.name : "Choose or drop a bowling video"}</h3>
-        <div className="dz-sub">{file ? `${(file.size / 1e6).toFixed(1)} MB · tap to change` : "MP4, MOV, AVI, MKV or WEBM · one delivery works best"}</div>
+        <div className="dz-sub">{file ? `${(file.size / 1e6).toFixed(1)} MB · choose again to change` : "MP4, MOV, AVI, MKV or WEBM · one delivery works best"}</div>
         {MODE === "browser" && <div className="dz-local"><ILock size={13} /> Stays on your device</div>}
       </div>
       <div className="upload-opts">
@@ -455,6 +455,11 @@ function Uploader({ go, disabled, health, players, current, onChoose, onCreate, 
             <button type="button" className="btn primary lg block" disabled={!file || disabled} onClick={submit}>
               Analyse delivery
             </button>
+            {MODE === "browser" && (
+              <span className="faint" style={{ fontSize: 12, textAlign: "center" }}>
+                The first analysis downloads the analysis models (about 70 MB, once) — Wi-Fi is best.
+              </span>
+            )}
             <div className="demo-link">
               <span className="faint" style={{ fontSize: 12.5 }}>No video handy? Try a sample:</span>
               <div className="row wrap" style={{ justifyContent: "center", gap: 6 }}>

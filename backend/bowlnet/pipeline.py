@@ -548,7 +548,7 @@ def stage_b(out_dir: Path, overrides: dict | None = None, progress: Progress | N
               k=skel.px_per_m, ev=ev, bone_lengths=skel.bone_lengths, fps_unique=fps_unique)
     mres = compute(ctx)
     coaching = coach(mres["metrics"], view["view"], fps_unique if rep >= 0.4 else real_fps)
-    # a real delivery's arm turns at >~700 deg/s; much slower suggests a slowed-down (replay) clip
+    # a real delivery's arm turns at >~700°/s; much slower suggests a slowed-down (replay) clip
     peak_real = float(sweep.get("peak_speed_dps") or 0.0)   # measured in real time (stage A uses real fps)
     if meta.get("version", 2) < 3:
         peak_real *= opts.slowmo_factor
@@ -567,7 +567,7 @@ def stage_b(out_dir: Path, overrides: dict | None = None, progress: Progress | N
                                                "distinct frames were captured per real second; precision follows that "
                                                "rate, not the slowed-down frame count.")
     elif 0 < peak_real < 650:
-        coaching["capture_tips"].insert(0, f"The bowling arm peaks at only ~{peak_real:.0f} deg/s, which is unusually slow "
+        coaching["capture_tips"].insert(0, f"The bowling arm peaks at only ~{peak_real:.0f}°/s, which is unusually slow "
                                            "for a real delivery. If this clip is a slowed-down replay, set its clip speed "
                                            "in Detection & settings so timings are correct.")
     prog.stage("mesh", 0.1)

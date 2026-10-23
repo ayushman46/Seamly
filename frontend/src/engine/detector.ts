@@ -31,9 +31,29 @@ async function hasWebGPU(): Promise<boolean> {
   }
 }
 
-/** Download with progress (the models are tens of MB; the browser caches them afterwards). */
+// models are kept in Cache Storage after the first download (the HTTP cache alone can drop 40 MB files);
+// bump the name when a model file changes
+const MODEL_CACHE = "seamly-models-v1";
+
+/** Download with progress (the models are tens of MB), served from Cache Storage after the first time. */
 export async function fetchModel(name: string, onProgress?: (f: number) => void): Promise<Uint8Array> {
-  const res = await fetch(MODEL_BASE + name);
+  const url = new URL(MODEL_BASE + name, location.href).href;
+  try {
+    const hit = await (await caches.open(MODEL_CACHE)).match(url);
+    if (hit) {
+      const b = new Uint8Array(await hit.arrayBuffer());
+      onProgress?.(1);
+      return b;
+    }
+  } catch { /* Cache Storage unavailable (e.g. some private windows): download normally */ }
+  const bytes = await download(url, name, onProgress);
+  void caches.open(MODEL_CACHE).then((c) => c.put(url, new Response(bytes, { headers: { "Content-Type": "application/octet-stream" } })))
+    .catch(() => undefined);
+  return bytes;
+}
+
+async function download(url: string, name: string, onProgress?: (f: number) => void): Promise<Uint8Array> {
+  const res = await fetch(url);
   if (!res.ok) throw new Error(`Could not download the analysis model (${name}: ${res.status}). Check your connection and try again.`);
   const total = Number(res.headers.get("content-length")) || 0;
   if (!res.body || !total) {

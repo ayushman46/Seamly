@@ -1,26 +1,46 @@
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { AnalysisResult } from "../types";
-import { EVENTS, EVENT_HEX, SERIES_INFO, reliableForView } from "../lib/constants";
+import { EVENTS, EVENT_HEX, SERIES_INFO, measuredForView, physical } from "../lib/constants";
 import { fmt, unitLabel } from "../lib/format";
 
 const DEFAULT = ["bowling_arm_elevation", "trunk_lateral_flexion", "front_knee_2d", "knee_front", "trunk_forward_flexion", "hip_shoulder_separation", "shoulder_alignment", "elbow_flexion_bowling", "bowling_wrist_height_pct"];
 
 export default function Charts({ result, frame, onSeek }: { result: AnalysisResult; frame: number; onSeek: (f: number) => void }) {
   const keys = DEFAULT.filter((k) => result.series[k]);
+  const measured = keys.filter((k) => measuredForView(k, (SERIES_INFO[k] ?? { plane: "any" }).plane, result.view.view));
+  const estimates = keys.filter((k) => !measured.includes(k));
+  const [showEst, setShowEst] = useState(false);
   return (
-    <div className="charts-grid">
-      {keys.map((k) => <Chart key={k} k={k} result={result} frame={frame} onSeek={onSeek} />)}
+    <div className="stack" style={{ gap: 14 }}>
+      <div className="charts-grid">
+        {measured.map((k) => <Chart key={k} k={k} result={result} frame={frame} onSeek={onSeek} />)}
+      </div>
+      {estimates.length > 0 && (
+        <div>
+          <button type="button" className="btn sm ghost" onClick={() => setShowEst((v) => !v)} aria-expanded={showEst}>
+            {showEst ? "Hide" : "Show"} 3D estimates ({estimates.length})
+          </button>
+          <span className="faint" style={{ fontSize: 12, marginLeft: 8 }}>
+            Angles this camera view can't measure reliably, from the 3D model. They aren't used in your results.
+          </span>
+          {showEst && (
+            <div className="charts-grid" style={{ marginTop: 10 }}>
+              {estimates.map((k) => <Chart key={k} k={k} result={result} frame={frame} onSeek={onSeek} />)}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
 function Chart({ k, result, frame, onSeek }: { k: string; result: AnalysisResult; frame: number; onSeek: (f: number) => void }) {
   const info = SERIES_INFO[k] ?? { label: k, unit: "", plane: "any", help: "" };
-  const data = result.series[k];
+  const data = useMemo(() => result.series[k].map((v) => physical(k, v)), [result, k]);
   const svg = useRef<SVGSVGElement>(null);
   const f0 = result.frames.start;
   const W = 600, H = 170, P = { l: 40, r: 10, t: 10, b: 22 };
-  const reliable = reliableForView(info.plane, result.view.view);
+  const reliable = measuredForView(k, info.plane, result.view.view);
   const { lo, hi, path } = useMemo(() => {
     const v = data.filter((x) => isFinite(x));
     let lo = Math.min(...v), hi = Math.max(...v);
@@ -59,17 +79,21 @@ function Chart({ k, result, frame, onSeek }: { k: string; result: AnalysisResult
             <text x={P.l - 6} y={y(t) + 4} fill="#6f7d94" fontSize="11" textAnchor="end">{t.toFixed(0)}</text>
           </g>
         ))}
-        {EVENTS.map((e) => {
-          const ev = result.events[e.key];
-          if (!ev) return null;
-          const xi = x(ev.frame - f0);
-          return (
-            <g key={e.key}>
-              <line x1={xi} x2={xi} y1={P.t} y2={H - P.b} stroke={EVENT_HEX[e.key]} strokeWidth="1.5" opacity="0.8" />
-              <text x={xi} y={H - 6} fill={EVENT_HEX[e.key]} fontSize="10" fontWeight="700" textAnchor="middle">{e.short}</text>
-            </g>
-          );
-        })}
+        {(() => {
+          // event labels a few frames apart would print on top of each other: lift every other close one
+          let lastX = -1e9, row = 0;
+          return EVENTS.filter((e) => result.events[e.key]).map((e) => ({ e, xi: x(result.events[e.key]!.frame - f0) }))
+            .sort((a, b) => a.xi - b.xi).map(({ e, xi }) => {
+              row = xi - lastX < 34 ? (row + 1) % 2 : 0;
+              lastX = xi;
+              return (
+                <g key={e.key}>
+                  <line x1={xi} x2={xi} y1={P.t} y2={H - P.b} stroke={EVENT_HEX[e.key]} strokeWidth="1.5" opacity="0.8" />
+                  <text x={xi} y={H - 6 - row * 12} fill={EVENT_HEX[e.key]} fontSize="10" fontWeight="700" textAnchor="middle">{e.short}</text>
+                </g>
+              );
+            });
+        })()}
         <path d={path} fill="none" stroke={reliable ? "#34d399" : "#8b9bb4"} strokeWidth="2.2" vectorEffect="non-scaling-stroke" strokeDasharray={reliable ? undefined : "5 4"} />
         <line x1={x(i)} x2={x(i)} y1={P.t} y2={H - P.b} stroke="#fff" strokeWidth="1.2" />
         <circle cx={x(i)} cy={y(data[i])} r="4" fill="#fff" />

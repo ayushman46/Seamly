@@ -4,7 +4,7 @@ Every metric declares the anatomical plane it lives in. If that plane is (nearly
 plane for the detected camera view we measure it directly on the high-resolution 2D keypoints (the
 approach validated for field biomechanics, e.g. Cottam 2016 for rear-view lateral flexion); otherwise we
 use the reconstructed 3D skeleton and lower the confidence. Norms, thresholds and references are in
-docs/RESEARCH.md; thresholds marked 'heuristic' are +/-1-2 SD bands around elite norms, not published
+docs/RESEARCH.md; thresholds marked 'heuristic' are ±1-2 SD bands around elite norms, not published
 cut-offs, and are labelled as such in the UI.
 """
 from __future__ import annotations
@@ -25,44 +25,44 @@ HAND_OFFSET_M = 0.07           # wrist joint -> ball centre at release
 # ------------------------------------------------------------------------------------------------------
 NORMS = {
     "elbow_extension": dict(unit="deg", good=(None, 10), watch=(10, 15), risk=(15, None),
-                            norm="Legal bowlers: 0-10 deg (mean ~6 deg); ICC limit 15 deg",
+                            norm="Legal bowlers: 0-10° (mean ~6°); ICC limit 15°",
                             ref="ICC Illegal Bowling Regulations; Ferdinands & Kersting 2005; King & Yeadon 2013"),
-    "front_knee_ffc": dict(unit="deg", norm="Elite men 164 +/- 6 deg at FFC", ref="Felton 2019"),
+    "front_knee_ffc": dict(unit="deg", norm="Elite men 164 ± 6° at FFC", ref="Felton 2019"),
     "front_knee_br": dict(unit="deg", good=(160, None), watch=(140, 160), risk=None,
-                          norm="Elite men 167 +/- 19 deg at release; straighter knee correlates with ball speed (r~0.4)",
+                          norm="Aim for 160° or straighter at release. Elite men average 167 ± 19°; a straighter front knee goes with faster bowling (r ≈ 0.4)",
                           ref="Felton 2019; Ramachandran 2024 meta-analysis"),
     "front_knee_flexion": dict(unit="deg", good=(None, 20), watch=(20, None), risk=None,
-                               norm="Elite men flex 9 +/- 11 deg after FFC (heuristic band)", ref="Felton 2019"),
+                               norm="Elite men flex 9 ± 11° after FFC (heuristic band)", ref="Felton 2019"),
     "back_knee_bfc": dict(unit="deg", good=(156, None), watch=(146, 156), risk=(None, 146),
-                          norm="Injured bowlers 146 deg vs uninjured 156 deg at BFC (rear hip/knee)",
+                          norm="Injured bowlers 146° vs uninjured 156° at BFC (rear hip/knee)",
                           ref="Alway et al. 2021 (prospective, MRI)"),
     "trunk_forward_br": dict(unit="deg", good=(30, None), watch=(15, 30), risk=None,
-                             norm="Elite men ~42 +/- 5 deg forward at release (heuristic band)", ref="Felton 2019"),
+                             norm="Elite men ~42 ± 5° forward at release (heuristic band)", ref="Felton 2019"),
     "trunk_flexion_ffc_br": dict(unit="deg", good=(25, None), watch=(15, 25), risk=None,
-                                 norm="Elite men flex the trunk 31 +/- 8 deg from FFC to release", ref="Felton 2019"),
+                                 norm="Elite men flex the trunk 31 ± 8° from FFC to release", ref="Felton 2019"),
     "trunk_lateral_br": dict(unit="deg", good=(None, 40), watch=(40, 50), risk=(50, None),
-                             norm="Later-injured juniors 50 +/- 6 deg vs uninjured 40 +/- 8 deg (thorax lateral flexion at BR)",
+                             norm="Later-injured juniors 50 ± 6° vs uninjured 40 ± 8° (thorax lateral flexion at BR)",
                              ref="Bayne et al. 2016; contested in elite adults (Alway 2021)"),
     "shoulder_alignment_bfc": dict(unit="deg", norm="180 = side-on, 270 = front-on; side-on < 210, semi-open 210-240, front-on > 240",
-                                   ref="Portus et al. 2004; elite men 232 +/- 14 (Felton 2019)"),
+                                   ref="Portus et al. 2004; elite men 232 ± 14 (Felton 2019)"),
     "hip_shoulder_sep_bfc": dict(unit="deg", good=(None, 20), watch=(20, 30), risk=(30, None),
-                                 norm=">= 30 deg at BFC classifies a mixed action", ref="Portus et al. 2004"),
+                                 norm=">= 30° at BFC classifies a mixed action", ref="Portus et al. 2004"),
     "shoulder_counter_rotation": dict(unit="deg", good=(None, 30), watch=(30, 40), risk=(40, None),
-                                      norm=">= 30 deg is the common mixed-action criterion (stronger evidence in juniors)",
+                                      norm=">= 30° is the common mixed-action criterion (stronger evidence in juniors)",
                                       ref="Portus 2004; Elliott & Foster 1989; Ranson 2008; Alway 2021"),
     "release_height_pct": dict(unit="% height", good=(108, None), watch=(104, 108), risk=None,
-                               norm="Elite men 113 +/- 4 % of standing height (heuristic band)", ref="Felton 2019"),
+                               norm="Elite men 113 ± 4 % of standing height (heuristic band)", ref="Felton 2019"),
     "stride_length_pct": dict(unit="% height", good=(70, 87), watch=(64, 93), risk=None,
-                              norm="Elite men 79 +/- 7 % of standing height (heuristic band)", ref="Felton 2019"),
+                              norm="Elite men 79 ± 7 % of standing height (heuristic band)", ref="Felton 2019"),
     "ffc_to_br_ms": dict(unit="ms", good=(None, 125), watch=(125, None), risk=None,
-                         norm="Elite men 103 +/- 11 ms; juniors 126 +/- 37 ms", ref="Felton 2019; Andrews 2024"),
-    "bfc_to_ffc_ms": dict(unit="ms", norm="Elite men 192 +/- 31 ms; juniors 197 +/- 59 ms", ref="Felton 2019; Andrews 2024"),
+                         norm="Elite men 103 ± 11 ms; juniors 126 ± 37 ms", ref="Felton 2019; Andrews 2024"),
+    "bfc_to_ffc_ms": dict(unit="ms", norm="Elite men 192 ± 31 ms; juniors 197 ± 59 ms", ref="Felton 2019; Andrews 2024"),
     "arm_slot_br": dict(unit="deg", norm="Angle of the bowling arm from vertical at release (descriptive; higher slot often costs more side-bend)",
                         ref="descriptive"),
     "head_offset_br": dict(unit="cm", good=(None, 15), watch=(15, 30), risk=(30, None),
                            norm="Lateral distance of the head outside the front foot at release (heuristic; 'falling away')",
                            ref="coaching heuristic"),
-    "runup_speed": dict(unit="m/s", norm="Elite men 5.8 +/- 0.6 m/s; juniors 5.8 +/- 0.7; finger spinners 2.5 +/- 0.5",
+    "runup_speed": dict(unit="m/s", norm="Elite men 5.8 ± 0.6 m/s; juniors 5.8 ± 0.7; finger spinners 2.5 ± 0.5",
                         ref="Felton 2019; Andrews 2024; Sanders 2018"),
 }
 
@@ -135,7 +135,7 @@ def _metric(key, label, value, *, event=None, source="3d", confidence=0.5, decim
     v = None if value is None or not np.isfinite(value) else round(float(value), decimals)
     rating = _rate(key, v)
     if tolerance and v is not None and rating in ("watch", "risk"):
-        # give the benefit of the measurement resolution (e.g. +/- one frame for timings)
+        # give the benefit of the measurement resolution (e.g. ± one frame for timings)
         better = [_rate(key, v + d) for d in (-tolerance, tolerance)]
         order = {"good": 0, "watch": 1, "risk": 2}
         best = min(better, key=lambda r: order.get(r, 3))
@@ -147,7 +147,7 @@ def _metric(key, label, value, *, event=None, source="3d", confidence=0.5, decim
     withheld = None
     if needs and view not in needs:
         # The plane this metric lives in is not visible from this camera. Monocular 3D depth gives absolute
-        # angles that can be far off (e.g. a 170 deg front knee read as 96 deg from behind), and nothing tells a
+        # angles that can be far off (e.g. a 170° front knee read as 96° from behind), and nothing tells a
         # good estimate from a bad one, so the value is withheld (kept as estimate_3d in the JSON export).
         reliability = "estimate"
         note = ("Not measurable from this camera view - film " + " or ".join(VIEW_LABEL[x] for x in needs)
@@ -229,7 +229,7 @@ def _alignment_series(c: Ctx, which: str) -> np.ndarray:
 def _alignment_parts(c: Ctx, which: str) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """(angle from 2D width + 3D sign, the 3D model's own angle, out-of-image-plane angle phi), per frame."""
     """Transverse-plane orientation of the shoulder (or hip) line, Portus convention:
-    180 deg = side-on (line pointing down the pitch), 270 deg = front-on. Bowling-arm independent.
+    180° = side-on (line pointing down the pitch), 270° = front-on. Bowling-arm independent.
 
     For behind/front views the angle is recovered from the projected width (w = W cos(phi), phi = angle of
     the line out of the image plane) and only the sign comes from 3D; for side views the projection gives
@@ -248,7 +248,7 @@ def _alignment_parts(c: Ctx, which: str) -> tuple[np.ndarray, np.ndarray, np.nda
     # True line width in the 2D keypoints' own convention: the line swings through the image plane during a
     # delivery, so its widest (robust p95) projection is its length. The 3D model's joint distance can't be used:
     # its joints follow another convention (e.g. SAM 3D Body's hip joint centres are ~1/3 narrower than the 2D
-    # hip keypoints, which pinned the hips at "front-on" and produced false 39 deg separations).
+    # hip keypoints, which pinned the hips at "front-on" and produced false 39° separations).
     ok = np.minimum(c.kc[:, a2], c.kc[:, b2]) > 0.3
     wk = w[ok] / np.maximum(c.k[ok], 1e-6) if ok.sum() >= 5 else np.zeros(0)
     L = float(np.percentile(wk, 95)) if len(wk) else float(np.median(np.linalg.norm(c.P[:, a3] - c.P[:, b3], axis=1)))
@@ -341,7 +341,7 @@ def compute(c: Ctx) -> dict:
     if bfc is not None and ffc is not None and ffc > bfc:
         metrics.append(_metric("bfc_to_ffc_ms", "Back-foot to front-foot contact", (ffc - bfc) * ms, event="bfc-ffc",
                                source="events", confidence=min(ev.confidence["bfc"], ev.confidence["ffc"]),
-                               decimals=0, tolerance=res_ms, explain="Duration of the delivery stride. Reported +/- one frame "
+                               decimals=0, tolerance=res_ms, explain="Duration of the delivery stride. Reported ± one frame "
                                                    f"({res_ms:.0f} ms for this footage).",
                                extra=timing_extra("bfc", "ffc")))
     if ffc is not None and br > ffc:
@@ -401,7 +401,7 @@ def compute(c: Ctx) -> dict:
             tech = "Constant brace"
         cf = kconf * min(_conf2d(c, ffc, [s.c_fhip, s.c_fkn, s.c_fan]), _conf2d(c, br, [s.c_fhip, s.c_fkn, s.c_fan]))
         metrics.append(_metric("front_knee_ffc", "Front knee at front-foot contact", k_ffc, event="ffc", source=src,
-                               confidence=cf, explain="180 deg = straight leg.", needs=SIDE, view=view))
+                               confidence=cf, explain="180° = straight leg.", needs=SIDE, view=view))
         metrics.append(_metric("front_knee_br", "Front knee at release", k_br, event="br", source=src, confidence=cf,
                                needs=SIDE, view=view,
                                explain="A straighter front leg at release acts as a lever and is associated with "
@@ -470,7 +470,7 @@ def compute(c: Ctx) -> dict:
         if rear_view:
             # From behind/in front only the *size* of each line's out-of-plane angle is seen; which side of front-on
             # it lies comes from the 3D model. Near front-on that side is uncertain, and putting hips and shoulders
-            # on opposite sides adds two small angles into a large, false separation (synthetic check: 39 deg read
+            # on opposite sides adds two small angles into a large, false separation (synthetic check: 39° read
             # for a true 0). Then use the same-side reading (the conservative one) at lower confidence.
             _, s3, s_phi = _alignment_parts(c, "shoulder")
             _, h3, h_phi = _alignment_parts(c, "hip")
@@ -505,7 +505,7 @@ def compute(c: Ctx) -> dict:
                            confidence=rh_conf * _conf2d(c, br, [s.c_wr, s.c_fan]),
                            explain=f"Height of the ball at release as a percentage of your height "
                                    f"(~{rel_h * H / 100:.2f} m for a stature of {H:.2f} m). Single-camera "
-                                   "precision is about +/- 8 points.",
+                                   "precision is about ± 8 points.",
                            extra={"metres": round(float(rel_h * H / 100), 2)}))
     # arm slot: angle of shoulder->wrist from vertical in the frontal plane
     if rear_view:
@@ -518,7 +518,7 @@ def compute(c: Ctx) -> dict:
         ssrc, sconf = "3d", 0.35
     metrics.append(_metric("arm_slot_br", "Arm slot at release", slot, event="br", source=ssrc,
                            confidence=sconf * _conf2d(c, br, [s.c_sh, s.c_wr]), needs=REAR, view=view,
-                           explain="0 deg = bowling arm straight up (high arm); larger = more round-arm."))
+                           explain="0° = bowling arm straight up (high arm); larger = more round-arm."))
     if rear_view:
         head_x = c.kp[br, 0, 0] if c.kc[br, 0] > 0.3 else (c.kp[br, 3, 0] + c.kp[br, 4, 0]) / 2
         foot_x = c.kp[br, s.c_fan, 0]

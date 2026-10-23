@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
-import type { AnalysisMeta, AnalysisResult, EventKey } from "../types";
+import type { AnalysisMeta, AnalysisResult, EventKey, Insights } from "../types";
 import { COCO_EDGES, EVENTS, EVENT_HEX, RATING_LABEL, VIEW_LABEL } from "../lib/constants";
 import { fmt, unitLabel } from "../lib/format";
 import { LogoMark } from "./Brand";
@@ -9,8 +9,10 @@ import { DISCLAIMER } from "./Landing";
 export default function ReportPage({ id, go }: { id: string; go: (to: string) => void }) {
   const [data, setData] = useState<{ meta: AnalysisMeta; result: AnalysisResult } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [ins, setIns] = useState<Insights | null>(null);
   useEffect(() => {
     api.get(id).then((r) => (r.result ? setData({ meta: r.meta, result: r.result }) : setError("This analysis isn't finished yet."))).catch((e) => setError(e.message));
+    api.insights(id).then(setIns).catch(() => setIns(null));
   }, [id]);
   if (error) {
     return (
@@ -45,6 +47,21 @@ export default function ReportPage({ id, go }: { id: string; go: (to: string) =>
           <span>{c.grade ?? "No score"}</span>
         </div>
       </header>
+
+      {ins?.back_health && (
+        <section>
+          <h2>Back-health check</h2>
+          <ul className="rp-list">
+            {ins.back_health.checks.map((ch) => (
+              <li key={ch.key}>
+                <b>{ch.label}</b>{ch.value !== null ? ` · ${fmt(ch.value, 0)}${unitLabel(ch.unit ?? "")}` : ""}
+                {" — "}{ch.status === "unknown" ? ch.text : <>{ch.status === "ok" ? "no concern" : ch.status === "watch" ? "worth watching" : "flagged"}. {ch.text}</>}
+              </li>
+            ))}
+          </ul>
+          <p className="rp-note">{ins.back_health.disclaimer}</p>
+        </section>
+      )}
 
       <section>
         <h2>Key positions</h2>

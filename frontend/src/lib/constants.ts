@@ -37,6 +37,23 @@ export const SERIES_INFO: Record<string, { label: string; unit: string; plane: "
   elbow_flexion_front: { label: "Front elbow flexion", unit: "deg", plane: "sagittal", help: "Non-bowling arm" },
 };
 
+// angles of the 3D model only: on the video the same joints are measured directly (front_knee_2d,
+// elbow_flexion_2d), so these are always shown as estimates
+const MODEL_ONLY = new Set(["knee_front", "knee_back", "elbow_flexion_bowling", "elbow_flexion_front"]);
+
+/** Measured for this view (shown by default) or a 3D estimate (shown on request, clearly labelled). */
+export function measuredForView(key: string, plane: string, view: View): boolean {
+  return !MODEL_ONLY.has(key) && reliableForView(plane, view);
+}
+
+/** Keep displayed joint angles in their physical range (3D estimates can overshoot a straight joint). */
+export function physical(key: string, v: number): number {
+  if (!Number.isFinite(v)) return v;
+  if (key.startsWith("knee_") || key === "front_knee_2d") return Math.min(180, v);
+  if (key.startsWith("elbow_flexion")) return Math.max(0, v);
+  return v;
+}
+
 export function reliableForView(plane: string, view: View): boolean {
   if (plane === "any") return true;
   if (plane === "sagittal") return view === "side_on";

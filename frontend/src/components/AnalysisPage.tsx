@@ -138,6 +138,9 @@ function Processing({ meta, go }: { meta: AnalysisMeta; go: (to: string) => void
   const cur = STAGES.findIndex(([k]) => k === meta.stage);
   const p = meta.progress || 0;
   const queued = meta.status === "queued";
+  // the engine's live note for the current step: the one-time model download, or a pause while the tab is hidden
+  const live = meta.stage_label && /^(Loading the analysis models|Paused)/.test(meta.stage_label) ? meta.stage_label : null;
+  const paused = !!live && live.startsWith("Paused");
   const left = meta.elapsed && meta.progress && meta.progress > 0.15 && meta.progress < 0.99
     ? Math.max(5, Math.round((meta.elapsed * (1 - meta.progress)) / meta.progress / 5) * 5) : null;
   return (
@@ -161,7 +164,7 @@ function Processing({ meta, go }: { meta: AnalysisMeta; go: (to: string) => void
             <i style={{ width: `${p * 100}%` }} />
           </div>
           <div className="proc-meta">
-            {cur >= 0 && <span><ICheck size={14} /> Step {cur + 1} of {STAGES.length}</span>}
+            {cur >= 0 && <span>Step {cur + 1} of {STAGES.length}</span>}
             {meta.elapsed ? <span><IClock size={14} /> {mmss(meta.elapsed)} elapsed</span> : null}
             {left !== null && <span>About {left < 60 ? `${left} s` : `${Math.round(left / 60)} min`} left</span>}
           </div>
@@ -174,13 +177,16 @@ function Processing({ meta, go }: { meta: AnalysisMeta; go: (to: string) => void
                   <span className="ic">{state === "done" ? <ICheck size={13} /> : state === "on" ? <div className="spinner sm" /> : i + 1}</span>
                   <div>
                     <b>{label}</b>
-                    {state === "on" && <small>{detail}</small>}
+                    {state === "on" && <small>{live && !paused ? live : detail}</small>}
                   </div>
                 </li>
               );
             })}
           </ol>
           <div className="proc-foot">
+            {paused && (
+              <div className="notice warn" role="status"><IAlert size={16} /> <div><b>Paused.</b> Seamly only analyses while this tab is visible (browsers slow down or stop video decoding in background tabs). Come back to this tab and it carries on.</div></div>
+            )}
             {MODE === "browser" ? (
               <div className="notice ok"><ILock size={16} /> <div><b>Your video isn't being uploaded.</b> Everything happens on this device, so keep this tab open until it finishes.</div></div>
             ) : (
@@ -250,6 +256,13 @@ function Failed({ meta, go, onRetry }: { meta: AnalysisMeta; go: (to: string) =>
 
 type Tab = "coach" | "plan" | "metrics" | "charts" | "frame" | "settings";
 
+/** Smooth-scroll to an element; jump if the browser ignores smooth scrolling (some do, e.g. with reduced motion). */
+function scrollToEl(el: HTMLElement | null) {
+  if (!el) return;
+  el.scrollIntoView({ behavior: "smooth", block: "start" });
+  window.setTimeout(() => { if (Math.abs(el.getBoundingClientRect().top) > 60) el.scrollIntoView({ block: "start" }); }, 700);
+}
+
 function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTab }: {
   id: string; meta: AnalysisMeta; result: AnalysisResult; setResult: (r: AnalysisResult) => void;
   setMeta: (m: AnalysisMeta) => void; go: (to: string) => void; reload: () => Promise<AnalysisMeta | null>;
@@ -295,8 +308,25 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
   }, [initialTab]);
   const openPlan = () => {
     setTab("plan");
-    tabsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    scrollToEl(tabsRef.current);
   };
+  // "Show me": go to the moment and bring the video into view (it can be far down the page, especially on a phone)
+  const playerRef = useRef<HTMLDivElement>(null);
+  const jumpTo = (k: EventKey) => {
+    const e = result.events[k];
+    if (!e) return;
+    setPlaying(false);
+    setFrame(e.frame);
+    scrollToEl(playerRef.current);
+  };
+  const openSettings = () => {
+    setTab("settings");
+    scrollToEl(tabsRef.current);
+  };
+  const armLabel = result.bowling_arm.arm === "right" ? "Right-arm" : "Left-arm";
+  const armUnsure = result.bowling_arm.source !== "user" && result.bowling_arm.confidence < 0.7;
+  const fileBase = `seamly-${(meta.name || "delivery").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "delivery"}`;
+  const videoName = `${fileBase}-original.mp4`;
   const uploadRetest = () => {
     if (ins?.player) setCurrentPlayer(ins.player.id);
     go("/");
@@ -457,7 +487,14 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
               )}
               <span className="chip">{created}</span>
               <span className="chip">{VIEW_LABEL[result.view.view]}</span>
-              <span className="chip">{result.bowling_arm.arm === "right" ? "Right-arm" : "Left-arm"}</span>
+              {armUnsure ? (
+                <button type="button" className="chip warn" onClick={openSettings}
+                  title={`Detected from the video with ${Math.round(result.bowling_arm.confidence * 100)}% agreement between cues. Click to check or set it.`}>
+                  {armLabel}?
+                </button>
+              ) : (
+                <span className="chip" title={result.bowling_arm.source === "user" ? "Set by you" : "Detected from the video"}>{armLabel}</span>
+              )}
               <span className="chip">{fmt(result.fps_real)} fps</span>
               <span className="chip" title={result.pose3d === "sam3d" ? "3D body from SAM 3D Body (image-based)" : "3D body from MotionBERT (2D-to-3D lifter); install SAM 3D Body for a more accurate 3D view"}>
                 <ICube size={13} /> {result.pose3d === "sam3d" ? "SAM 3D Body" : "MotionBERT"}
@@ -476,10 +513,10 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
               <button className="btn" onClick={() => setMenu((m) => !m)} aria-haspopup="menu" aria-expanded={menu}><IDownload size={15} /> Export <IChevronDown size={14} /></button>
               {menu && (
                 <div className="menu" role="menu">
-                  <a role="menuitem" href={api.objUrl(id, frame)} download onClick={() => setMenu(false)}><ICube size={15} /> 3D mesh of this frame (.obj)</a>
-                  <a role="menuitem" href={api.exportUrl(id, "csv")} download onClick={() => setMenu(false)}><IFile size={15} /> Joint-angle time series (.csv)</a>
-                  <a role="menuitem" href={api.exportUrl(id, "json")} download onClick={() => setMenu(false)}><IFile size={15} /> Full analysis (.json)</a>
-                  <a role="menuitem" href={api.videoUrl(id)} download onClick={() => setMenu(false)}><IVideo size={15} /> Original video</a>
+                  <a role="menuitem" href={api.objUrl(id, frame)} download={`${fileBase}-frame-${frame}.obj`} onClick={() => setMenu(false)}><ICube size={15} /> 3D mesh of this frame (.obj)</a>
+                  <a role="menuitem" href={api.exportUrl(id, "csv")} download={`${fileBase}-angles.csv`} onClick={() => setMenu(false)}><IFile size={15} /> Joint-angle time series (.csv)</a>
+                  <a role="menuitem" href={api.exportUrl(id, "json")} download={`${fileBase}-analysis.json`} onClick={() => setMenu(false)}><IFile size={15} /> Full analysis (.json)</a>
+                  <a role="menuitem" href={api.videoUrl(id)} download={videoName} onClick={() => setMenu(false)}><IVideo size={15} /> Original video</a>
                   <div className="menu-sep" />
                   <button role="menuitem" onClick={() => { setMenu(false); go(`/r/${id}`); }}><IFilm size={15} /> Coaching report (print / PDF)</button>
                 </div>
@@ -492,15 +529,24 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
             <IAlert size={16} /> <div>{meta.notice}</div>
           </div>
         )}
+        {result.bowling_arm.source !== "user" && result.bowling_arm.confidence < 0.5 && (
+          <div className="notice warn" style={{ marginBottom: 14 }}>
+            <IAlert size={16} />
+            <div>
+              <b>Is this a {armLabel.toLowerCase()} bowler?</b> The video doesn't make the bowling arm clear, and everything else
+              (release, angles, coaching) depends on it. If it's wrong, <button type="button" className="link-btn" onClick={openSettings}>set the bowling arm</button>.
+            </div>
+          </div>
+        )}
         {result.coaching.capture_tips.length > 0 && result.fps_real < 90 && (
           <div className="notice" style={{ marginBottom: 14 }}>
             <IInfo size={16} /> <div>{result.coaching.capture_tips[0]}</div>
           </div>
         )}
-        {ins && <SummaryCard ins={ins} onPlan={openPlan} onJump={(k) => { const e = result.events[k]; if (e) { setPlaying(false); setFrame(e.frame); } }} />}
+        {ins && <SummaryCard ins={ins} onPlan={openPlan} onJump={(k) => jumpTo(k as EventKey)} />}
         <div className="an-grid">
           <div className="stack">
-            <div className="card player">
+            <div className="card player" ref={playerRef}>
               <ErrorBoundary label="The video player"><FramePlayer id={id} result={result} frame={frame} overlay={overlay} selMetric={selMetric} hud={cur} /></ErrorBoundary>
               <div className="controls">
                 <div className="ctrl-group">
@@ -548,7 +594,7 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
           </div>
           <div role="tabpanel" id="tab-panel" aria-labelledby={`tab-${tab}`}>
           <ErrorBoundary label="This tab">
-          {tab === "coach" && <CoachingPanel result={result} onJump={(k) => { const e = result.events[k as EventKey]; if (e) { setPlaying(false); setFrame(e.frame); } }} />}
+          {tab === "coach" && <CoachingPanel result={result} onJump={(k) => jumpTo(k as EventKey)} />}
           {tab === "metrics" && <MetricsPanel result={result} selected={selMetric} onSelect={(k, evKey) => { setSelMetric(k === selMetric ? null : k); const e = evKey ? result.events[evKey as EventKey] : null; if (e) { setPlaying(false); setFrame(e.frame); } }} />}
           {tab === "charts" && <Charts result={result} frame={frame} onSeek={(f) => { setPlaying(false); setFrame(f); }} />}
           {tab === "frame" && <Inspector result={result} frame={frame} onSetEvent={setEvent} busy={busy} />}
@@ -591,7 +637,7 @@ function ScoreCard({ result, edited, busy, onReset }: { result: AnalysisResult; 
           <div className="muted" style={{ fontSize: 13, lineHeight: 1.55 }}>
             {c.score === null || c.score === undefined
               ? "Not enough reliably measured metrics in this clip for a fair score. Confirm the event markers on the timeline, or add a side-on clip."
-              : `How many of the ${c.score_breakdown.length} checkpoints this camera view measures reliably are in the target range (confidence-weighted). It rates the action, not playing level.`}
+              : `Based on the ${c.score_breakdown.length} checkpoints this camera view measures reliably: one in the target range counts in full, a "watch" about half, a "risk" very little (weighted by how sure each measurement is). It rates the action, not playing level.`}
           </div>
           {c.priorities[0] && (
             <div style={{ marginTop: 8 }}>

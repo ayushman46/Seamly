@@ -497,7 +497,7 @@ export function SiteFooter({ compact = false }: { compact?: boolean }) {
               <li>Person detection &amp; pose: <a href="https://github.com/ultralytics/ultralytics" target="_blank" rel="noreferrer">YOLO11</a> by Ultralytics (AGPL-3.0)</li>
               <li>3D pose lifting: <a href="https://github.com/Walter0807/MotionBERT" target="_blank" rel="noreferrer">MotionBERT</a></li>
               <li>Body model: <a href="https://github.com/naver/anny" target="_blank" rel="noreferrer">Anny</a> by NAVER LABS Europe</li>
-              <li>Sample clip: “Epping Foresters CC v Great Totham CC” by Acabashi, <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noreferrer">CC BY-SA 4.0</a>, via <a href="https://commons.wikimedia.org/" target="_blank" rel="noreferrer">Wikimedia Commons</a></li>
+              <li>Sample clip: “Epping Foresters CC v Great Totham CC” by Acabashi, <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noreferrer">CC BY-SA 4.0</a>, via <a href="https://commons.wikimedia.org/wiki/File:Epping_Foresters_CC_v_Great_Totham_CC_at_Epping,_Essex,_England_Video_1.webm" target="_blank" rel="noreferrer">Wikimedia Commons</a></li>
             </ul>
           </div>
         </div>

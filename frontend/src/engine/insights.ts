@@ -14,7 +14,7 @@ export const AGE_GROUPS = ["u11", "u13", "u15", "u17", "u19", "adult"] as const;
 export const STYLES = ["fast", "medium", "spin"] as const;
 export const ARMS = ["auto", "right", "left"] as const;
 export const AGE_LABEL: Record<string, string> = {
-  u11: "Under 11", u13: "11-13", u15: "13-15", u17: "15-17", u19: "17-19", adult: "Adult",
+  u11: "Under 11", u13: "11–12", u15: "13–14", u17: "15–16", u19: "17–18", adult: "Adult (19+)",
 };
 
 const JUNIOR = ["u11", "u13", "u15", "u17", "u19"];
@@ -312,7 +312,8 @@ export function practicePlan(result: InsightsResult, player: InsightsPlayer | nu
   let budget = 2 * spellOvers * 6;
   if (dayLimit) budget = Math.min(budget, Math.trunc(0.75 * dayLimit));
   const warm = age === "u11" ? 4 : 6;
-  const cue = focus.length ? focus[0].cue : "Smooth rhythm, hit your length";
+  // cues end with a full stop; they are quoted inside a sentence below
+  const cue = (focus.length ? focus[0].cue : "Smooth rhythm, hit your length").replace(/\.+$/, "");
 
   const bowlingSession = (w: number, i: number): Day => {
     const items: Item[] = [{ text: `Warm-up (10 min): easy jog, leg swings, lunges, arm circles, then ${warm} build-up deliveries off a short run.` }];
@@ -366,7 +367,7 @@ export function practicePlan(result: InsightsResult, player: InsightsPlayer | nu
         days.push({ day: "Fri", kind: "film", title: "Test day: film and compare", items: [
           { text: `Warm up as usual (including ${warm} build-up deliveries), then bowl 6 deliveries at match intensity.` },
           { text: "Film them from the same angle as before (side-on and/or from behind), steady and in slow motion if possible." },
-          { text: "Upload the best clip to your player profile and check 'Since last time' on your progress page." },
+          { text: "Analyse the best clip with your player profile selected and check 'Since last time' on your progress page." },
         ], load: { deliveries: warm + 6, limit: dayLimit } });
         continue;
       }

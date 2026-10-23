@@ -264,7 +264,8 @@ def practice_plan(result: dict, player: dict | None = None) -> dict:
     if day_limit:
         budget = min(budget, int(0.75 * day_limit))
     warm = 4 if age == "u11" else 6
-    cue = focus[0]["cue"] if focus else "Smooth rhythm, hit your length"
+    # cues end with a full stop; they are quoted inside a sentence below
+    cue = (focus[0]["cue"] if focus else "Smooth rhythm, hit your length").rstrip(".")
 
     def bowling_session(w: int, i: int) -> dict:
         items = [{"text": f"Warm-up (10 min): easy jog, leg swings, lunges, arm circles, then {warm} build-up deliveries off a short run."}]
@@ -316,7 +317,7 @@ def practice_plan(result: dict, player: dict | None = None) -> dict:
                 days.append({"day": "Fri", "kind": "film", "title": "Test day: film and compare", "items": [
                     {"text": f"Warm up as usual (including {warm} build-up deliveries), then bowl 6 deliveries at match intensity."},
                     {"text": "Film them from the same angle as before (side-on and/or from behind), steady and in slow motion if possible."},
-                    {"text": "Upload the best clip to your player profile and check 'Since last time' on your progress page."},
+                    {"text": "Analyse the best clip with your player profile selected and check 'Since last time' on your progress page."},
                 ], "load": {"deliveries": warm + 6, "limit": day_limit}})
                 continue
             days.append(bowling_session(w, i))

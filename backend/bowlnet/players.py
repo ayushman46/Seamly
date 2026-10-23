@@ -13,7 +13,8 @@ from .store import write_atomic
 AGE_GROUPS = ("u11", "u13", "u15", "u17", "u19", "adult")
 STYLES = ("fast", "medium", "spin")
 ARMS = ("auto", "right", "left")
-AGE_LABEL = {"u11": "Under 11", "u13": "11-13", "u15": "13-15", "u17": "15-17", "u19": "17-19", "adult": "Adult"}
+# Cricket Australia junior bands (by age at the start of the season): U13 = 11-12 year olds, U15 = 13-14, ...
+AGE_LABEL = {"u11": "Under 11", "u13": "11–12", "u15": "13–14", "u17": "15–16", "u19": "17–18", "adult": "Adult (19+)"}
 
 _lock = threading.RLock()
 

@@ -193,7 +193,9 @@ export default function FramePlayer({ id, result, frame, overlay, selMetric, hud
       const sideOn = result.view.view === "side_on";
       if (sideOn) {
         arc(F.hip, F.kn, F.an, "#34d399", "Front knee", all || sel.startsWith("front_knee"));
-        arc(B.sh, B.el, B.wr, "#fb7185", "Elbow bend", all || sel.startsWith("elbow"), true);
+        // below ~90 fps the elbow at release isn't measurable (the arm moves 25-80 deg between frames): don't print a number
+        const distinctFps = result.fps_real * (1 - (result.quality.repeated_frames ?? 0));
+        if (distinctFps >= 90) arc(B.sh, B.el, B.wr, "#fb7185", "Elbow bend", all || sel.startsWith("elbow"), true);
         if (all || sel.startsWith("back_knee")) arc(B.hip, B.kn, B.an, "#fbbf24", "Back knee", true);
       }
       // trunk line vs vertical
