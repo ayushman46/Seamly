@@ -44,7 +44,7 @@ On these behind-the-bowler broadcast clips, the image-based foot-stop detector d
 
 | Metric | Computation | Norm / threshold | Source |
 |---|---|---|---|
-| FFC → release | (BR − FFC) / fps | Elite men 103 ± 11 ms. Good below 125 ms, rated with ± 1 frame tolerance (heuristic). | Felton 2019 |
+| FFC → release | (BR − FFC) / fps | Elite men 103 ± 11 ms; juniors 126 ± 37 ms. Good below 140 ms so a typical junior isn't flagged, rated with ± 1 frame tolerance (heuristic). | Felton 2019; Andrews 2024 |
 | Front knee at FFC / BR | Angle hip–knee–ankle (180 = straight) | Elite men 164 ± 6° at FFC and 167 ± 19° at BR. Knee angle at BR correlates with ball speed, r ≈ 0.40. | Felton 2019; Ramachandran 2024 meta-analysis |
 | Front-leg technique | Flexion = angle(FFC) − min; extension = angle(BR) − min | Flexor: ≥ 10 / < 10. Flexor-extender: ≥ 10 / ≥ 10. Extender: < 10 / ≥ 10. Constant brace: < 10 / < 10. | Portus et al. 2004 |
 | Back knee at BFC | Hip–knee–ankle of the back leg | Injured 146° vs uninjured 156° (prospective, MRI-confirmed). Below 146° = risk. | Alway et al. 2021 |
@@ -117,7 +117,7 @@ The test suite renders a scripted delivery with the Anny body model (`tools/synt
 |---|---|---|
 | Junior workload limits | [Cricket Australia junior pace bowling guidelines](https://play.cricket.com.au/community/resources/player-safety/junior-bowling-guidelines/guidelines). Match limits per spell / per day: U11 2/4, 11–13 4/8, 13–15 5/12, 15–17 5/16, 17–19 6/18 overs. Training: under-17s at most 3 bowling days a week with a day off after each; 17–19 at most 4, no more than 2 in a row; spells of at most 5 or 6 overs, 20 minutes apart. Pre-season build-up of 2–8 weeks. | The practice plan's overs per spell, bowling days and rest rules for the player's age group. Adults get the 17–19 pattern as general guidance. |
 | Who is at risk | Lumbar stress fractures are most common in adolescent fast bowlers (Cricket Australia: around 1 in 3), especially in the 2–3 years after the main growth spurt. Workload spikes raise the risk in the following 3–6 weeks (Alway et al., Loughborough). | Junior wording in the summary and the back-health card. The plan never adds bowling days, and the CA back-pain advice is included. |
-| Technique risk factors | Side-bend at release (Bayne 2016), mixed action (Portus 2004; Ranson 2008), back-knee collapse at BFC (Alway 2021) | The back-health check reports these three when the camera angle can measure them, and says which angle would measure the rest. |
+| Technique risk factors | Side-bend at release (Bayne 2016: later-injured juniors 50 ± 6° vs uninjured 40 ± 8°; Seamly rates below 45° good, 45–50° worth watching, 50° and above flagged), mixed action (Portus 2004; Ranson 2008), back-knee collapse at BFC (Alway 2021) | The back-health check reports these three when the camera angle can measure them, and says which angle would measure the rest. |
 | Spin bowling | The norms above come from pace-bowling studies. | Spinners get a note that ratings are a rough guide, and no pace workload limits. |
 
 The ECB's fast-bowling directives circulate in several conflicting versions (2009 table, 2025 county revisions), so Cricket Australia's current published guidelines are used.
