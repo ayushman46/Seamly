@@ -194,8 +194,8 @@ function Processing({ meta, go }: { meta: AnalysisMeta; go: (to: string) => void
             )}
             <p>
               {MODE === "browser"
-                ? "A short clip of one delivery usually takes 15–40 seconds on a recent laptop; phones, older devices and long or high-speed (240 fps) clips take longer. The first analysis also downloads the analysis models (about 70 MB, once). The estimate above updates as it goes."
-                : "A short clip of one delivery takes about 30–60 seconds; long or high-speed (240 fps) clips up to about two minutes."}
+                ? "A short clip of one delivery usually takes 15–40 seconds on a recent laptop; phones, older devices and long or high-speed (240 fps) clips take longer. The first analysis also downloads the analysis models (about 70 MB, once). The estimate above updates as it goes."
+                : "A short clip of one delivery takes about 30–60 seconds; long or high-speed (240 fps) clips up to about two minutes."}
             </p>
           </div>
         </div>
@@ -535,7 +535,7 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
                   <a role="menuitem" href={api.objUrl(id, frame)} download={`${fileBase}-frame-${frame}.obj`} onClick={() => setMenu(false)}><ICube size={15} /> 3D mesh of this frame (.obj)</a>
                   <a role="menuitem" href={api.exportUrl(id, "csv")} download={`${fileBase}-angles.csv`} onClick={() => setMenu(false)}><IFile size={15} /> Joint-angle time series (.csv)</a>
                   <a role="menuitem" href={api.exportUrl(id, "json")} download={`${fileBase}-analysis.json`} onClick={() => setMenu(false)}><IFile size={15} /> Full analysis (.json)</a>
-                  <a role="menuitem" href={api.videoUrl(id)} download={videoName} onClick={() => setMenu(false)}><IVideo size={15} /> Original video</a>
+                  {api.hasVideo(id) && <a role="menuitem" href={api.videoUrl(id)} download={videoName} onClick={() => setMenu(false)}><IVideo size={15} /> Original video</a>}
                   <div className="menu-sep" />
                   <button role="menuitem" onClick={() => { setMenu(false); go(`/r/${id}`); }}><IFilm size={15} /> Coaching report (print / PDF)</button>
                 </div>

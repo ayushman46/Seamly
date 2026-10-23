@@ -188,7 +188,7 @@ function SectionHead({ eyebrow, title, lead, center = false, id }: { eyebrow: st
 
 export function HowItWorks() {
   const steps: { icon: ReactNode; title: string; text: string }[] = [
-    { icon: <IPhone size={22} />, title: "Film one delivery", text: "Prop your phone side-on, 10–15 m away at hip height, and record a single delivery — in slow motion if your phone has it." },
+    { icon: <IPhone size={22} />, title: "Film one delivery", text: "Prop your phone side-on, 10–15 m away at hip height, and record a single delivery — in slow motion if your phone has it." },
     { icon: <ICpu size={22} />, title: "Let Seamly analyse it", text: `Choose the clip. Seamly finds the bowler, tracks every joint and rebuilds the action in 3D${LOCAL ? ", right here in your browser" : ""}.` },
     { icon: <ITrend size={22} />, title: "Practise, re-film, improve", text: "Get the key moments, your angles and what they mean, a back-health check and a two-week plan. Re-film and watch the progress." },
   ];
@@ -335,7 +335,7 @@ function BehindDiagram() {
 
 export function FilmingGuide() {
   const tips: { icon: ReactNode; title: string; text: string }[] = [
-    { icon: <IPlay size={16} />, title: "Slow motion if you can", text: "120–240 fps makes release and contact timings far more precise than normal 30 fps video. Tell Seamly the clip speed when you add it." },
+    { icon: <IPlay size={16} />, title: "Slow motion if you can", text: "120–240 fps makes release and contact timings far more precise than normal 30 fps video. Tell Seamly the clip speed when you add it." },
     { icon: <IFrame size={18} />, title: "Whole action in frame", text: "From the last strides of the run-up to the follow-through, feet visible, with the bowler at least a third of the frame height." },
     { icon: <ITripod size={18} />, title: "Keep the phone still", text: "Use a tripod or prop the phone against something. Don't pan to follow the bowler and don't use digital zoom." },
     { icon: <ISun size={18} />, title: "Good light, one ball", text: `Bright light means less motion blur. One delivery per clip works best — trim long videos to under ${LOCAL ? "a minute" : "two minutes"}.` },
@@ -351,7 +351,7 @@ export function FilmingGuide() {
             <div className="film-body">
               <span className="chip accent">Recommended</span>
               <h3>Side-on</h3>
-              <p>Stand level with the bowling crease, 10–15 m from the pitch, with the phone at hip height and pointing straight across.</p>
+              <p>Stand level with the bowling crease, 10–15 m from the pitch, with the phone at hip height and pointing straight across.</p>
               <div className="film-best"><span className="chip">Front knee</span><span className="chip">Trunk lean</span><span className="chip">Stride</span><span className="chip">Timings</span><span className="chip">Release height</span></div>
             </div>
           </article>
@@ -413,7 +413,7 @@ const FAQS: { q: string; a: ReactNode }[] = [
   },
   {
     q: "What do I need to film with?",
-    a: <p>Any modern phone. Slow motion (120 or 240 fps) gives the most precise timings, but normal video works too. Clips with fewer than about 20 distinct frames per second can't be analysed reliably.</p>,
+    a: <p>Any modern phone. Slow motion (120 or 240 fps) gives the most precise timings, but normal video works too. Clips with fewer than about 20 distinct frames per second can't be analysed reliably.</p>,
   },
   {
     q: "Who is it for?",

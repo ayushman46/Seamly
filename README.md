@@ -27,6 +27,7 @@ Film one delivery on your phone. Seamly finds the bowler and marks the key momen
 - **Two-week practice plan** that respects the [Cricket Australia junior pace bowling guidelines](https://play.cricket.com.au/community/resources/player-safety/junior-bowling-guidelines/guidelines) for the player's age group: overs per spell, bowling days per week and rest days.
 - **Player profiles and progress over time**: score and measurement trends, personal bests, "since last time" and the current focus.
 - **Compare two deliveries** side by side, print a **coaching report**, and export **CSV / JSON / OBJ**.
+- **Backup and restore.** One file carries every analysis and player to another browser, phone or computer. Nothing goes through a server.
 
 ## Filming tips
 
@@ -113,8 +114,10 @@ Server tests: `cd backend && ../.venv/bin/python -m pytest -q` (the full suite t
 These are surfaced in the app rather than hidden:
 
 - **Depth from one camera is ambiguous.** Knee and trunk flexion can't be measured from behind; side-bend and alignment can't be measured side-on. The app reports each metric only from the view that measures it and says which clip to add.
-- **Foot contacts from behind** are often placed from typical timing. Their timings stay unrated until you confirm the markers: drag them, or press "Set FFC here".
+- **Foot contacts from behind** are often placed from typical timing. Their timings stay unrated until you confirm the markers: drag them, or use "Set this frame as" in the Frame tab.
 - **25–30 fps** limits release and timing precision to ±1 frame (33–40 ms). Elbow extension needs side-on video at 100 fps or more, and it is a screening estimate only.
+- **Analysis pauses while its tab is in the background.** Browsers throttle hidden tabs and can hand back stale video frames, so Seamly waits and carries on when you come back, rather than measuring the wrong frames. Keep the tab open on screen until it finishes.
+- **Analyses live in the browser that made them** (IndexedDB). Nothing is uploaded, so a link only opens on that device. Clearing site data deletes them, so use **Download backup** in your workspace to keep a copy or move players and analyses to another device (Restore a backup), and the PDF report to share one.
 - **The browser engine uses smaller models than the server** (YOLO11n/s instead of m/x, and int8 MotionBERT), so it can differ from the server by a frame on fast arm movements.
 
 ## Project layout

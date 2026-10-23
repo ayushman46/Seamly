@@ -78,6 +78,14 @@ export async function keysWithPrefix(store: StoreName, prefix: string): Promise<
   return (await wrap((await tx(store)).getAllKeys(range))) as string[];
 }
 
+/** Every [key, value] whose key starts with `prefix`, in key order (one read transaction). */
+export async function entriesWithPrefix<T>(store: StoreName, prefix: string): Promise<[string, T][]> {
+  const s = await tx(store);
+  const range = IDBKeyRange.bound(prefix, prefix + "￿");
+  const [keys, values] = await Promise.all([wrap(s.getAllKeys(range)), wrap(s.getAll(range))]);
+  return (keys as string[]).map((k, i) => [k, values[i] as T]);
+}
+
 /** Write many entries in one transaction. */
 export const putMany = (store: StoreName, entries: [string, unknown][]): Promise<void> =>
   write([store], (s) => { for (const [k, v] of entries) s[store].put(v, k); });

@@ -3,6 +3,7 @@ import { MODE, api } from "../api";
 import type { AnalysisMeta, Player } from "../types";
 import { AGE_LABEL, STYLE_LABEL, getCurrentPlayer, setCurrentPlayer } from "../lib/player";
 import PlayerForm from "./PlayerForm";
+import { BackupPanel, RestoreLink } from "./Backup";
 import { ago, fmt } from "../lib/format";
 import { VIEW_LABEL, SLOWMO_OPTIONS } from "../lib/constants";
 import Header, { scrollToId } from "./Header";
@@ -158,6 +159,7 @@ export default function Home({ go }: { go: (to: string) => void }) {
                 </div>
               )}
             </section>
+            {MODE === "browser" && <BackupPanel onRestored={() => { refresh(); refreshPlayers(); }} />}
           </div>
         ) : (
           <>
@@ -174,8 +176,8 @@ export default function Home({ go }: { go: (to: string) => void }) {
                     <div className="card card-pad" style={{ padding: 24 }}>
                       <div className="card-title"><ICamera size={14} /> Before you film</div>
                       <ul className="checklist">
-                        <li><span className="ck"><IPhone size={15} /></span><div><b>Side-on, 10–15 m away</b>Phone at hip height, level with the crease. Or film from behind the stumps.</div></li>
-                        <li><span className="ck"><IPlay size={13} /></span><div><b>Slow motion if you have it</b>120–240 fps makes timings far more precise.</div></li>
+                        <li><span className="ck"><IPhone size={15} /></span><div><b>Side-on, 10–15 m away</b>Phone at hip height, level with the crease. Or film from behind the stumps.</div></li>
+                        <li><span className="ck"><IPlay size={13} /></span><div><b>Slow motion if you have it</b>120–240 fps makes timings far more precise.</div></li>
                         <li><span className="ck"><IFrame size={15} /></span><div><b>Whole action in frame</b>Run-up to follow-through, feet visible.</div></li>
                         <li><span className="ck"><ITripod size={15} /></span><div><b>Keep it still</b>Tripod or propped up — no panning or zoom.</div></li>
                       </ul>
@@ -184,6 +186,7 @@ export default function Home({ go }: { go: (to: string) => void }) {
                     {MODE === "browser" && (
                       <div className="notice ok"><ILock size={16} /> <div><b>Private by design.</b> Your clip is analysed right here in your browser and never uploaded. Results are saved on this device only.</div></div>
                     )}
+                    {MODE === "browser" && <RestoreLink onRestored={() => { refresh(); refreshPlayers(); }} />}
                   </div>
                 </div>
               </div>
@@ -350,7 +353,7 @@ function Uploader({ go, disabled, health, players, current, onChoose, onCreate, 
     if (!file) return;
     const h = height ? Number(height) : undefined;
     if (h !== undefined && (!isFinite(h) || h < 120 || h > 230)) {
-      setError("Height should be between 120 and 230 cm.");
+      setError("Height should be between 120 and 230 cm.");
       return;
     }
     setBusy(true);
@@ -457,7 +460,7 @@ function Uploader({ go, disabled, health, players, current, onChoose, onCreate, 
             </button>
             {MODE === "browser" && (
               <span className="faint" style={{ fontSize: 12, textAlign: "center" }}>
-                The first analysis downloads the analysis models (about 70 MB, once) — Wi-Fi is best.
+                The first analysis downloads the analysis models (about 70 MB, once) — Wi-Fi is best.
               </span>
             )}
             <div className="demo-link">

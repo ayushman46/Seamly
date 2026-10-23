@@ -17,6 +17,7 @@ const engine = () => import("./engine/pipeline").catch((e) => {
 import { insights as buildInsights } from "./engine/insights";
 import { frameObj } from "./engine/body";
 import { playerProgress, summarise } from "./engine/progress";
+import { BACKUP_VERSION, FILE_NAME, decodeBackup, encodeBackup, type BackupAnalysis } from "./lib/backup";
 
 type Meta = AnalysisMeta & {
   overrides?: Overrides;
@@ -446,6 +447,77 @@ async function importSample(which: SampleName): Promise<string> {
   return s.id;
 }
 
+// ---------------- backup / restore ----------------
+const SAMPLE_IDS = new Set<string>(Object.values(SAMPLES).map((s) => s.id));
+const ID = /^[0-9a-z_-]{4,40}$/i;
+
+/** One file with every finished analysis (the bundled samples excepted: any browser can open those) and every player. */
+async function backup(includeVideos: boolean): Promise<{ blob: Blob; analyses: number; players: number }> {
+  await loadAll();
+  const players = await db.all<StoredPlayer>("player");
+  const analyses: BackupAnalysis[] = [];
+  const files: Blob[][] = [];
+  const done = [...metas.values()].filter((m) => m.status === "done" && !SAMPLE_IDS.has(m.id)).sort((a, b) => (a.created ?? 0) - (b.created ?? 0));
+  for (const m of done) {
+    const [result, stagea] = await Promise.all([db.get<AnalysisResult>("result", m.id), db.get<StageA>("stagea", m.id)]);
+    if (!result || !stagea) continue;
+    const named: [string, Blob][] = (await db.entriesWithPrefix<Blob>("blob", `${m.id}/${m.gen ?? ""}f/`))
+      .map(([k, b]) => [`f/${k.slice(k.lastIndexOf("/") + 1)}`, b]);
+    for (const name of ["mesh_rest.bin", "pose.bin"]) {
+      const b = await db.get<Blob>("blob", mkey(m.id, m.gen, name));
+      if (b) named.push([name, b]);
+    }
+    if (includeVideos) {
+      const v = await db.get<Blob>("blob", `${m.id}/input`);
+      if (v) named.push(["input", v]);
+    }
+    // what only means something in this browser stays out: the running tab, the storage generation, a pending re-run
+    const { owner: _owner, gen: _gen, previous: _previous, ...meta } = m;
+    analyses.push({ meta, result, stagea, files: named.map(([name, b]) => ({ name, size: b.size, type: b.type })) });
+    files.push(named.map(([, b]) => b));
+  }
+  const blob = encodeBackup({ app: "seamly", version: BACKUP_VERSION, created: now(), players: players as unknown as Record<string, unknown>[], analyses }, files);
+  return { blob, analyses: analyses.length, players: players.length };
+}
+
+/** Add the analyses and players of a backup file. Ones already in this browser are kept as they are. */
+async function restore(file: Blob): Promise<{ analyses: number; players: number; skipped: number }> {
+  await loadAll();
+  const { header, files } = await decodeBackup(file);
+  const free = await db.freeSpace();
+  if (free !== null && free < file.size + 50e6) throw new Error("Your browser is short of storage space for this backup. Delete some analyses first, or make the backup without videos.");
+  const have = new Set((await db.all<StoredPlayer>("player")).map((p) => p.id));
+  let players = 0, analyses = 0, skipped = 0;
+  for (const raw of header.players) {
+    const p = raw as unknown as StoredPlayer;
+    if (typeof p?.id !== "string" || !ID.test(p.id) || have.has(p.id)) continue;
+    const clean = cleanPlayer(p as unknown as Partial<Player>);
+    if (!clean.name) continue;
+    await db.put("player", p.id, { age_group: "adult", style: "fast", arm: "auto", height_cm: null, ...clean, id: p.id, created: Number(p.created) || now() });
+    have.add(p.id);
+    players++;
+  }
+  for (let i = 0; i < header.analyses.length; i++) {
+    const a = header.analyses[i];
+    const m = a?.meta as unknown as Meta | undefined;
+    const r = a?.result as AnalysisResult | undefined;
+    const valid = m && typeof m.id === "string" && ID.test(m.id) && r && typeof r.frames?.start === "number" && typeof r.frames?.end === "number" && r.events && a.stagea;
+    if (!valid || metas.has(m.id)) { skipped++; continue; }
+    const entries = a.files.map((f, j) => [f?.name, files[i][j]] as const).filter(([name]) => typeof name === "string" && FILE_NAME.test(name));
+    const meta = { ...m, status: "done", progress: 1, stage: "done", stage_label: "Complete", error: null, gen: "", owner: undefined, previous: null,
+      player_id: m.player_id && have.has(m.player_id) ? m.player_id : null, size_mb: m.size_mb ?? null } as Meta;
+    await db.write(["blob", "stagea", "result", "meta"], (st) => {
+      for (const [name, b] of entries) st.blob.put(b, `${m.id}/${name}`);
+      st.stagea.put(a.stagea, m.id);
+      st.result.put(r, m.id);
+      st.meta.put(meta, m.id);
+    });
+    metas.set(m.id, meta);
+    analyses++;
+  }
+  return { analyses, players, skipped };
+}
+
 export const api = {
   health: async () => ({ ok: true, device: backend() ?? "browser", missing_models: [] as string[] }),
   list: async (): Promise<AnalysisMeta[]> => {
@@ -517,6 +589,9 @@ export const api = {
     await refresh(id);
     const meta = requireMeta(id);
     if (meta.status === "queued" || meta.status === "running") throw new Error("Analysis is already running");
+    if (!(await db.get<Blob>("blob", `${id}/input`))) {
+      throw new Error("This analysis was restored from a backup made without its video, so it can't be re-analysed here. Marker and settings corrections still work.");
+    }
     // corrections made in Settings (height, bowling arm) carry over; event markers belong to the old window
     const prev = meta.overrides ?? {};
     const oldOpts = (meta.options ?? {}) as unknown as Options;
@@ -637,6 +712,10 @@ export const api = {
   exportUrl: (id: string, kind: "json" | "csv") => urls.get(`${id}/export.${kind}`) ?? BLANK,
   objUrl: (id: string, frame: number) => objFor(id, frame),
   videoUrl: (id: string) => urls.get(`${id}/input`) ?? BLANK,
+  /** Whether the original video is kept (a backup restored without videos has none: it can't be re-analysed). */
+  hasVideo: (id: string) => urls.has(`${id}/input`),
+  backup,
+  restore,
 };
 
 // keep the tab from silently stopping an analysis
