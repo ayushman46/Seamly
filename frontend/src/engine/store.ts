@@ -1,0 +1,105 @@
+/**
+ * Browser storage for analyses and players (IndexedDB). Everything stays on this device.
+ *  meta     id -> analysis metadata (status, options, overrides, summary, ...)
+ *  result   id -> analysis result JSON
+ *  stagea   id -> Stage A data (what Stage B re-runs on)
+ *  blob     "<id>/<name>" -> Blob (input video, display frames "f/<n>", mesh "mesh_rest.bin" / "pose.bin")
+ *  player   id -> player profile
+ */
+const DB_NAME = "seamly";
+const VERSION = 1;
+const STORES = ["meta", "result", "stagea", "blob", "player"] as const;
+type StoreName = (typeof STORES)[number];
+
+let dbP: Promise<IDBDatabase> | null = null;
+
+function db(): Promise<IDBDatabase> {
+  if (!dbP) {
+    dbP = new Promise((resolve, reject) => {
+      if (typeof indexedDB === "undefined") { reject(new Error("This browser has no storage for analyses (IndexedDB is unavailable, e.g. in some private windows).")); return; }
+      const req = indexedDB.open(DB_NAME, VERSION);
+      req.onupgradeneeded = () => {
+        for (const s of STORES) if (!req.result.objectStoreNames.contains(s)) req.result.createObjectStore(s);
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error ?? new Error("Could not open the browser database."));
+      req.onblocked = () => reject(new Error("Seamly is open in another tab that is blocking the database upgrade. Close other tabs and reload."));
+    });
+    dbP.catch(() => { dbP = null; });
+  }
+  return dbP;
+}
+
+function wrap<T>(req: IDBRequest<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function tx(store: StoreName, mode: IDBTransactionMode = "readonly"): Promise<IDBObjectStore> {
+  return (await db()).transaction(store, mode).objectStore(store);
+}
+
+export async function get<T>(store: StoreName, key: string): Promise<T | undefined> {
+  return wrap((await tx(store)).get(key)) as Promise<T | undefined>;
+}
+
+export async function put(store: StoreName, key: string, value: unknown): Promise<void> {
+  try {
+    await wrap((await tx(store, "readwrite")).put(value, key));
+  } catch (e) {
+    if ((e as DOMException)?.name === "QuotaExceededError") {
+      throw new Error("Your browser storage is full. Delete some old analyses and try again.");
+    }
+    throw e;
+  }
+}
+
+export async function del(store: StoreName, key: string): Promise<void> {
+  await wrap((await tx(store, "readwrite")).delete(key));
+}
+
+export async function all<T>(store: StoreName): Promise<T[]> {
+  return wrap((await tx(store)).getAll()) as Promise<T[]>;
+}
+
+export async function keysWithPrefix(store: StoreName, prefix: string): Promise<string[]> {
+  const range = IDBKeyRange.bound(prefix, prefix + "￿");
+  return (await wrap((await tx(store)).getAllKeys(range))) as string[];
+}
+
+/** Write many blobs in one transaction. */
+export async function putMany(store: StoreName, entries: [string, unknown][]): Promise<void> {
+  const d = await db();
+  await new Promise<void>((resolve, reject) => {
+    const t = d.transaction(store, "readwrite");
+    const s = t.objectStore(store);
+    for (const [k, v] of entries) s.put(v, k);
+    t.oncomplete = () => resolve();
+    t.onerror = () => reject(t.error?.name === "QuotaExceededError"
+      ? new Error("Your browser storage is full. Delete some old analyses and try again.") : t.error);
+    t.onabort = () => reject(t.error ?? new Error("Saving was aborted."));
+  });
+}
+
+export async function delPrefix(store: StoreName, prefix: string): Promise<void> {
+  const d = await db();
+  await new Promise<void>((resolve, reject) => {
+    const t = d.transaction(store, "readwrite");
+    t.objectStore(store).delete(IDBKeyRange.bound(prefix, prefix + "￿"));
+    t.oncomplete = () => resolve();
+    t.onerror = () => reject(t.error);
+  });
+}
+
+/** Ask the browser not to evict our data under storage pressure (best effort). */
+export async function persist(): Promise<void> {
+  try { await navigator.storage?.persist?.(); } catch { /* not supported */ }
+}
+
+export const newId = (): string => {
+  const b = new Uint8Array(6);
+  crypto.getRandomValues(b);
+  return [...b].map((x) => x.toString(16).padStart(2, "0")).join("");
+};

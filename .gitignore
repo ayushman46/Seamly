@@ -76,3 +76,25 @@ yolov8*.pt
 
 # SPIN source (separate repo - clone from https://github.com/nkolot/SPIN)
 spin_src/
+
+# ---- BowlNet v2 ----
+# analysis outputs (uploaded videos, frames, meshes)
+backend/data/
+# downloaded model weights (fetch with: cd backend && python -m tools.download_models)
+backend/models/yolo/
+backend/models/motionbert/
+backend/models/sam3d/
+# the compact body model (4.6 MB, CC0/Apache derived) IS tracked: backend/models/body/anny_body.npz
+# frontend build artefacts
+frontend/node_modules/
+frontend/dist/
+*.tsbuildinfo
+.claude/
+
+# ---- Seamly web app ----
+# the Python "lib/" rule above must not hide the frontend's source folder
+!frontend/src/lib/
+# bundled sample clips and browser models are part of the site
+!frontend/public/samples/*.mp4
+frontend/.vercel/
+.vercel/

@@ -1,0 +1,30 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>engine test</title></head>
+<body style="font:13px monospace;background:#111;color:#ddd">
+<pre id="log">loading…</pre>
+<script type="module">
+import { analyseVideo, stageB } from "/src/engine/pipeline.ts";
+import { backend } from "/src/engine/detector.ts";
+const log = (s) => { document.getElementById("log").textContent += "\n" + s; };
+window.__run = async (url, opts = {}) => {
+  const t0 = performance.now();
+  const blob = await (await fetch(url)).blob();
+  let last = "";
+  const { stageA, frames } = await analyseVideo(blob, opts, (p) => {
+    const s = `${p.stage} ${(p.progress * 100).toFixed(0)}% ${p.detail || ""}`;
+    if (s !== last) { last = s; }
+    window.__prog = p;
+  });
+  const tA = performance.now();
+  const { result } = await stageB(stageA, {});
+  const tB = performance.now();
+  const out = { backend: backend(), stageA_s: (tA - t0) / 1000, stageB_s: (tB - tA) / 1000, window: result.analysis_window,
+    view: result.view, arm: result.bowling_arm, events: result.events, frames: frames.size,
+    metrics: result.metrics.map((m) => [m.key, m.value, m.rating]), score: result.coaching.score, grade: result.coaching.grade,
+    quality: result.quality };
+  window.__result = result; window.__out = out;
+  log(JSON.stringify(out));
+  return out;
+};
+log("ready");
+</script></body></html>

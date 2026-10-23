@@ -1,0 +1,176 @@
+import { useEffect, useMemo, useState } from "react";
+import { api } from "../api";
+import type { AnalysisMeta, AnalysisResult, EventKey, Metric, Rating } from "../types";
+import { EVENTS, EVENT_HEX, RATING_LABEL, VIEW_LABEL } from "../lib/constants";
+import { fmt, unitLabel } from "../lib/format";
+import Header from "./Header";
+import FramePlayer from "./FramePlayer";
+import ErrorBoundary from "./ErrorBoundary";
+import { IAlert, IBack, IChevronRight } from "./Icons";
+import { SiteFooter } from "./Landing";
+
+const ORDER: Record<Rating, number> = { good: 0, watch: 1, risk: 2, info: 3, unrated: 4 };
+
+type Loaded = { meta: AnalysisMeta; result: AnalysisResult };
+
+export default function ComparePage({ a, b, go }: { a: string; b: string; go: (to: string) => void }) {
+  const [data, setData] = useState<[Loaded | null, Loaded | null]>([null, null]);
+  const [error, setError] = useState<string | null>(null);
+  const [ev, setEv] = useState<EventKey>("br");
+  const [overlay, setOverlay] = useState({ skeleton: true, angles: true, trail: false });
+
+  useEffect(() => {
+    Promise.all([api.get(a), api.get(b)])
+      .then(([x, y]) => {
+        if (!x.result || !y.result) throw new Error("Both analyses must be finished before they can be compared.");
+        setData([{ meta: x.meta, result: x.result }, { meta: y.meta, result: y.result }]);
+      })
+      .catch((e) => setError((e as Error).message));
+  }, [a, b]);
+
+  const rows = useMemo(() => {
+    const [x, y] = data;
+    if (!x || !y) return [];
+    const mx = new Map(x.result.metrics.map((m) => [m.key, m]));
+    const my = new Map(y.result.metrics.map((m) => [m.key, m]));
+    const keys = [...new Set([...mx.keys(), ...my.keys()])];
+    return keys.map((k) => ({ key: k, a: mx.get(k), b: my.get(k) }));
+  }, [data]);
+
+  if (error) {
+    return (
+      <>
+        <Header go={go} title="Compare" />
+        <main className="page narrow" id="main" tabIndex={-1}>
+          <div className="card proc">
+            <div className="notice error"><IAlert size={16} /> <div><b>Couldn't compare these deliveries.</b> {error}</div></div>
+            <button className="btn" style={{ marginTop: 16 }} onClick={() => go("/")}><IBack size={16} /> Back to your analyses</button>
+          </div>
+        </main>
+        <SiteFooter compact />
+      </>
+    );
+  }
+  const [x, y] = data;
+  if (!x || !y) {
+    return (
+      <>
+        <Header go={go} title="Compare" />
+        <main className="page" id="main" tabIndex={-1} aria-busy="true">
+          <div className="skel-page">
+            <div className="skeleton-box" style={{ height: 48, maxWidth: 640 }} />
+            <div className="skel-grid" style={{ gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)" }}>
+              <div className="skeleton-box" style={{ aspectRatio: "16 / 10" }} />
+              <div className="skeleton-box" style={{ aspectRatio: "16 / 10" }} />
+            </div>
+          </div>
+        </main>
+      </>
+    );
+  }
+  const side = (d: Loaded, label: string) => {
+    const e = d.result.events[ev];
+    return (
+      <div className="card player">
+        <div className="cmp-side-head">
+          <span className={`cmp-tag ${label === "B" ? "b" : ""}`} aria-label={`Delivery ${label}`}>{label}</span>
+          <b className="grow" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={d.meta.name}>{d.meta.name}</b>
+          <span className="chip hide-sm">{VIEW_LABEL[d.result.view.view]}</span>
+          {d.result.coaching.score !== null && <span className="score-pill static">{d.result.coaching.score}<small>/100</small></span>}
+        </div>
+        {e ? (
+          <ErrorBoundary label="The player">
+            <FramePlayer id={d.meta.id} result={d.result} frame={e.frame} overlay={overlay} selMetric={null} hud={EVENTS.find((x) => x.key === ev)!.short} />
+          </ErrorBoundary>
+        ) : (
+          <div className="player-stage"><span className="faint">{EVENTS.find((x) => x.key === ev)!.label} not detected</span></div>
+        )}
+        <div className="row faint" style={{ padding: "8px 14px", fontSize: 12 }}>
+          {e ? `frame ${e.frame} · ${e.method === "user" ? "set by you" : e.method === "timing_prior" ? "estimated timing" : `${Math.round(e.confidence * 100)}% confidence`}` : ""}
+          <div className="grow" />
+          <a href={`#/a/${d.meta.id}`} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>Open analysis <IChevronRight size={13} /></a>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <>
+      <Header go={go} title={`Compare · ${x.meta.name} vs ${y.meta.name}`} />
+      <main className="page" id="main" tabIndex={-1}>
+        <div className="an-head">
+          <div className="an-head-main">
+            <button type="button" className="back-link" onClick={() => go("/")}><IBack size={15} /> Your analyses</button>
+            <h1 className="an-title">Side by side</h1>
+            <p className="muted" style={{ margin: 0 }}>Both deliveries at the same moment of the action. Pick the moment below.</p>
+          </div>
+        </div>
+        <div className="cmp-bar">
+          <div className="seg" role="group" aria-label="Moment of the action">
+            {EVENTS.map((e) => (
+              <button key={e.key} className={ev === e.key ? "on" : ""} aria-pressed={ev === e.key} onClick={() => setEv(e.key)} title={e.help}>
+                <span className="dot" style={{ background: EVENT_HEX[e.key], marginRight: 6 }} />{e.label}
+              </button>
+            ))}
+          </div>
+          <div className="grow" />
+          <div className="seg" role="group" aria-label="Overlays">
+            <button className={overlay.skeleton ? "on" : ""} aria-pressed={overlay.skeleton} onClick={() => setOverlay((o) => ({ ...o, skeleton: !o.skeleton }))}>Skeleton</button>
+            <button className={overlay.angles ? "on" : ""} aria-pressed={overlay.angles} onClick={() => setOverlay((o) => ({ ...o, angles: !o.angles }))}>Angles</button>
+          </div>
+        </div>
+        <div className="an-grid" style={{ gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)" }}>
+          {side(x, "A")}
+          {side(y, "B")}
+        </div>
+        {x.result.view.view !== y.result.view.view && (
+          <div className="notice warn" style={{ marginTop: 14 }}>
+            <IAlert size={16} /> <div>The two clips were filmed from different angles ({VIEW_LABEL[x.result.view.view]} vs {VIEW_LABEL[y.result.view.view]}). Only metrics measured reliably in both are comparable.</div>
+          </div>
+        )}
+        <div className="card card-pad" style={{ marginTop: 18 }}>
+          <div className="card-title">Metric by metric</div>
+          <div className="table-scroll">
+            <table className="cmp">
+              <thead>
+                <tr><th>Metric</th><th>A</th><th>B</th><th>Change (B − A)</th><th /></tr>
+              </thead>
+              <tbody>
+                {rows.map(({ key, a: ma, b: mb }) => <Row key={key} a={ma} b={mb} />)}
+              </tbody>
+            </table>
+          </div>
+          <p className="faint" style={{ fontSize: 12, marginTop: 10 }}>
+            Blank or greyed values can't be measured from that camera angle (or rest on an estimated event) and aren't compared. Differences smaller than the measurement resolution (one frame for timings, a few degrees for angles) shouldn't be over-interpreted.
+          </p>
+        </div>
+      </main>
+      <SiteFooter compact />
+    </>
+  );
+}
+
+function Row({ a, b }: { a?: Metric; b?: Metric }) {
+  const m = a ?? b!;
+  const comparable = !!a && !!b && a.value !== null && b.value !== null && a.reliability === "measured" && b.reliability === "measured";
+  const d = comparable ? (b!.value as number) - (a!.value as number) : null;
+  let verdict: "better" | "worse" | "same" | null = null;
+  if (comparable && a!.rating in ORDER && b!.rating in ORDER && ORDER[a!.rating] <= 2 && ORDER[b!.rating] <= 2) {
+    verdict = ORDER[b!.rating] < ORDER[a!.rating] ? "better" : ORDER[b!.rating] > ORDER[a!.rating] ? "worse" : "same";
+  }
+  const cell = (x?: Metric) => (
+    <td className={!x || x.reliability === "estimate" ? "faint" : ""}>
+      {x && x.value !== null ? `${fmt(x.value, x.unit === "ms" || x.unit === "cm" ? 0 : 1)}${unitLabel(x.unit)}` : "–"}
+      {x && x.rating !== "unrated" && x.rating !== "info" && <span className={`chip ${x.rating}`} style={{ marginLeft: 8, height: 20, fontSize: 11 }}>{RATING_LABEL[x.rating]}</span>}
+    </td>
+  );
+  return (
+    <tr>
+      <td className="muted" style={{ fontWeight: 600 }}>{m.label}</td>
+      {cell(a)}
+      {cell(b)}
+      <td className="mono">{d === null ? <span className="faint">not comparable</span> : `${d > 0 ? "+" : ""}${fmt(d, Math.abs(d) < 10 ? 1 : 0)}${unitLabel(m.unit)}`}</td>
+      <td>{verdict && verdict !== "same" && <span className={`chip ${verdict === "better" ? "good" : "risk"}`}>{verdict === "better" ? "Improved" : "Worse"}</span>}</td>
+    </tr>
+  );
+}

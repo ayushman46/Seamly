@@ -5,7 +5,7 @@ import uuid
 RESULTS_ROOT = "results"
 
 # Path to the SPIN repo (relative to project root)
-SPIN_ROOT = os.path.join(os.path.dirname(__file__), "spin_src")
+SPIN_ROOT = os.path.join(os.path.dirname(__file__), "..", "spin_src")
 SPIN_ROOT = os.path.abspath(SPIN_ROOT)
 
 

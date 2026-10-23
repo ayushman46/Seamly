@@ -1,366 +1,138 @@
-# Cricket Bowling 3D Analysis App
+# Seamly: your pocket bowling coach
 
-An end-to-end application that analyzes cricket bowling videos using MediaPipe Pose and SPIN 3D reconstruction to compute biomechanics metrics.
+**Live app:** _deployment link below once published_
 
-<img width="661" height="393" alt="Image" src="https://github.com/user-attachments/assets/6e20f1c4-a4ef-4fc7-8136-d7d8a26dd9a0" />
-<img width="713" height="393" alt="Image" src="https://github.com/user-attachments/assets/a9c11e00-936c-484b-8a6b-844b026eabe1" />
+Film one delivery on your phone. Seamly finds the bowler and marks the key moments on your own video: back-foot contact, front-foot contact, release and follow-through. It rebuilds the action in 3D, measures your angles against published research, and gives you a plain-English summary, a back-health check and a two-week practice plan.
 
-## Features
+**Everything runs in your browser.** Your video never leaves your device. There is no account, no upload and no server, and analyses are saved in the browser.
 
-- **Video Processing**: Upload bowling videos via Streamlit interface
-- **Delivery Detection**: Automatically detect the ball release frame using wrist velocity analysis
-- **2D Pose Estimation**: MediaPipe Pose for robust 2D skeleton tracking
-- **3D Reconstruction**: SPIN model for accurate 3D body mesh and joint positions
-- **Biomechanics Analysis**: Compute key bowling metrics:
-  - Elbow angle
-  - Spine tilt
-  - Shoulder abduction
-  - Hip-shoulder separation
-  - Release wrist height
-- **Visualization**: View 2D skeleton overlays and 3D mesh renders
-- **Export**: Download mesh (.obj), joints (.npy), metrics (.json), and frames (.jpg)
+> Estimates come from a single video. Seamly is not a medical assessment and **not an ICC legality test**.
+> Every metric shows its confidence. Metrics that the camera angle can't measure are not reported; the app says which angle would measure them.
 
-## Prerequisites
+## What you get
 
-- Python 3.8+
-- Virtual environment activated (`.venv`)
-- SPIN repository cloned into `spin_src/`
-- SMPL model files (see setup below)
+- **The key moments on your own video**, with the skeleton, joint angles and wrist trail drawn on the frame. If a marker is a frame off, drag it, and everything recomputes in about a third of a second.
+- **A 3D body model** of the delivery that you can orbit, with side, behind, batter's-view and top presets.
+- **Measured angles against published norms**, each with a confidence and a reference:
+  - front knee at landing and release
+  - trunk flexion
+  - stride length
+  - release height
+  - side-bend
+  - hip–shoulder alignment and mixed-action screening
+  - head position
+  - rhythm timings
+- **Your delivery in plain words.** A verdict, what's working, and the one or two things to fix first. Each fix comes with a coaching cue, drills and a "Show me" button that jumps to the moment in the video.
+- **Back-health check** for pace bowlers: side-bend at release, mixed action and a folding back leg. These are the technique factors linked to lower-back stress injuries in young fast bowlers.
+- **Two-week practice plan** that respects the [Cricket Australia junior pace bowling guidelines](https://play.cricket.com.au/community/resources/player-safety/junior-bowling-guidelines/guidelines) for the player's age group: overs per spell, bowling days per week and rest days.
+- **Player profiles and progress over time**: score and measurement trends, personal bests, "since last time" and the current focus.
+- **Compare two deliveries** side by side, print a **coaching report**, and export **CSV / JSON / OBJ**.
 
-## Project Structure
+## Filming tips
+
+- **Side-on:** 10–15 m away, at hip height, square to the popping crease. This view measures the knees, trunk flexion, stride and release height.
+- **From behind the stumps:** this view measures side-bend, alignment and head position.
+- **Keep the whole action in frame**, from the last strides of the run-up to the follow-through. A tripod helps.
+- **Use slow motion (120–240 fps) if your phone has it**; 30 fps works. Below 20 distinct frames per second a delivery stride lasts only 4–5 frames, so those clips are refused rather than mis-measured.
+
+## How it works (in the browser)
 
 ```
-bowlin/
-├── .venv/                      # Python virtual environment
-├── spin_src/                   # SPIN repository (nkolot/SPIN)
-│   ├── data/
-│   │   ├── smpl/              # SMPL model files
-│   │   │   ├── SMPL_NEUTRAL.pkl
-│   │   │   ├── SMPL_MALE.pkl
-│   │   │   └── SMPL_FEMALE.pkl
-│   │   ├── model_checkpoint.pt
-│   │   └── smpl_mean_params.npz
-│   ├── models/
-│   ├── utils/
-│   └── ...
-├── src/
-│   ├── ingestion/             # Video loading and frame extraction
-│   ├── pose2d/                # MediaPipe pose estimation
-│   ├── delivery/              # Delivery frame detection
-│   ├── reconstruction/        # SPIN wrapper
-│   ├── analysis/              # Biomechanics metrics
-│   └── visualization/         # Rendering utilities
-├── results/                   # Output directory (created at runtime)
-├── app.py                     # Streamlit application
-├── config.py                  # Configuration
-├── requirements.txt           # Python dependencies
-├── setup_spin.sh             # SPIN data download script
-└── README.md                  # This file
+video ─► exact frame times from the container (MP4/MOV via mp4box), frame-accurate seeking
+      ─► YOLO11n-pose on every frame (ONNX Runtime Web: WebGPU, or WebAssembly as a fallback)
+      ─► multi-person tracker: camera-motion compensation (block-matched background, people and static
+         overlays masked), constant-velocity prediction, colour appearance, pose similarity, Hungarian
+         assignment, same-person duplicate boxes merged
+      ─► bowler selection: the track whose arm makes a fast ~270-360° sweep with legs in view
+      ─► YOLO11s-pose on bowler crops with flip test-time augmentation
+      ─► 2D clean-up: Hampel outliers, left/right swap repair (whole arm, then forearm), gap filling, Butterworth
+      ─► MotionBERT-Lite 3D lifting (int8 ONNX), resampled to its 50 fps training rate
+      ─► metric skeleton (L-BFGS fit: constant symmetric bones, re-projection, knee hinge, physics priors)
+      ─► bowling arm, camera view, world frame ─► events ─► view-aware metrics ─► coaching, insights, plan
+      ─► NAVER Anny body model posed by IK, skinned in three.js
 ```
 
-## Setup Instructions
+The analysis engine (`frontend/src/engine/`) is a TypeScript port of the Python pipeline in `backend/bowlnet/`. Every stage after pose detection is checked against fixtures recorded from the Python pipeline (`frontend/tests/`, 325 tests). The results match Python exactly or to floating-point precision: events, metrics, coaching, insights, progress, the body-model binaries, and the skeleton fit to about 1 mm.
 
-### 1. Install Dependencies
+The first analysis downloads about 70 MB of models, which the browser caches afterwards. On a recent laptop a short clip takes about 15–30 s; phones take longer.
 
-First, ensure your virtual environment is activated:
+### Accuracy on a synthetic delivery with exact ground truth
+
+| | Truth | Python pipeline | Seamly in the browser |
+|---|---|---|---|
+| Back-foot contact / front-foot contact / release (frame) | 36 / 48 / 55 | 35 / 47 / 55 | 35 / 47 / 55 |
+| Front knee at front-foot contact | 165.0° | 168.5° | 164.1° |
+| Front knee at release | 169.8° | 171.2° | 165.8° |
+| Trunk flexion, front-foot contact → release | 32.0° | 30.4° | 31.8° |
+| Release height | 105% | 114% | 109% |
+| Stride length | 52.8% | 49.8% | 49.3% |
+
+Full sources for every threshold are in [`docs/RESEARCH.md`](docs/RESEARCH.md).
+
+## Develop
 
 ```bash
-source .venv/bin/activate  # On macOS/Linux
-# or
-.venv\Scripts\activate     # On Windows
+cd frontend
+pnpm install
+pnpm dev                 # http://localhost:5173 - the in-browser app
+pnpm test                # engine parity tests (vitest)
+pnpm build               # static site in frontend/dist (deploy anywhere: Vercel, Netlify, GitHub Pages)
 ```
 
-Install main project dependencies:
+`frontend/public/` holds the browser models: YOLO11n/s-pose ONNX exports, MotionBERT-Lite int8 and the Anny body asset. It also holds two sample analyses (`samples/`). The tools that regenerate them are in `backend/tools/`: `export_body_asset.py`, `make_web_samples.py`, `export_web_sample.py` and `export_fixtures.py`.
+
+### Deploy
+
+The site is static. On Vercel, set the root directory to `frontend` (framework: Vite), or run `vercel deploy frontend/dist --prod` after a build. `frontend/public/vercel.json` sets the cache and security headers. For a sub-path such as GitHub Pages, build with `VITE_BASE=/<repo>/ pnpm build`.
+
+## Self-hosted server (optional, more accurate 3D)
+
+`backend/` is the original Python engine (FastAPI). It runs YOLO11m/x-pose and can use **SAM 3D Body**, an image-based 3D model that needs about 8 GB of RAM. To use it:
 
 ```bash
-pip install -r requirements.txt
+python3.12 -m venv .venv && .venv/bin/pip install -r backend/requirements.txt
+cd backend && ../.venv/bin/python -m tools.download_models && cd ..   # ~225 MB, checksum-verified
+cd frontend && pnpm install && VITE_API=server pnpm build && cd ..
+./run.sh                                                             # http://127.0.0.1:8000
 ```
 
-Install SPIN-specific dependencies:
+SAM 3D Body is gated. Accept Meta's licence at https://huggingface.co/facebook/sam-3d-body-vith, log in with `.venv/bin/hf auth login`, then run `cd backend && ../.venv/bin/python -m tools.download_models --sam3d`. The server uses it automatically on machines with at least 12 GB of RAM.
 
-```bash
-# Note: SPIN was designed for older Python/PyTorch versions
-# We install only what's needed for inference with compatible versions
-pip install tensorboard
-```
+Server tests: `cd backend && ../.venv/bin/python -m pytest -q` (the full suite takes about 7 minutes, including real-clip and synthetic ground-truth runs).
 
-**Important:** Some packages in `spin_src/requirements.txt` are incompatible with Python 3.12 or only needed for training:
--  `chumpy` - Python 3.11+ incompatible, training-only
--  `neural-renderer-pytorch` - Build issues, training-only  
--  `torchgeometry` - Deprecated, training-only
--  `spacepy` - Dataset preprocessing only
+## Known limitations
 
-**All compatibility issues have been resolved!** See `COMPATIBILITY_FIXES.md` for details.
+These are surfaced in the app rather than hidden:
 
-**Note**: If you encounter issues with pyrender, follow the [pyrender installation guide](https://pyrender.readthedocs.io/en/latest/install/index.html).
+- **Depth from one camera is ambiguous.** Knee and trunk flexion can't be measured from behind; side-bend and alignment can't be measured side-on. The app reports each metric only from the view that measures it and says which clip to add.
+- **Foot contacts from behind** are often placed from typical timing. Their timings stay unrated until you confirm the markers: drag them, or press "Set FFC here".
+- **25–30 fps** limits release and timing precision to ±1 frame (33–40 ms). Elbow extension needs side-on video at 100 fps or more, and it is a screening estimate only.
+- **The browser engine uses smaller models than the server** (YOLO11n/s instead of m/x, and int8 MotionBERT), so it can differ from the server by a frame on fast arm movements.
 
-### 2. Download SPIN Model Data
-
-Run the setup script to download SPIN model checkpoint and data files:
-
-```bash
-chmod +x setup_spin.sh
-./setup_spin.sh
-```
-
-This will download:
-- SPIN model checkpoint (~300MB)
-- SMPL mean parameters and other data files (~200MB)
-
-### 3. Get SMPL Model Files
-
-The SMPL body model files cannot be automatically downloaded due to licensing restrictions. You need to:
-
-1. **Download the neutral SMPL model**:
-   - Go to http://smplify.is.tue.mpg.de
-   - Register and download the neutral model
-   - Rename to `SMPL_NEUTRAL.pkl`
-
-2. **Download male and female models** (optional, for evaluation):
-   - Go to http://smpl.is.tue.mpg.de
-   - Register and download both models
-   - Rename to `SMPL_MALE.pkl` and `SMPL_FEMALE.pkl`
-
-3. **Place all files** in `spin_src/data/smpl/`:
-   ```
-   spin_src/data/smpl/
-   ├── SMPL_NEUTRAL.pkl
-   ├── SMPL_MALE.pkl
-   └── SMPL_FEMALE.pkl
-   ```
-
-**Note**: The user indicated they already have these files. Verify they're in the correct location.
-
-### 4. Verify Setup
-
-Check that all required files are present:
-
-```bash
-ls -lh spin_src/data/model_checkpoint.pt
-ls -lh spin_src/data/smpl_mean_params.npz
-ls -lh spin_src/data/smpl/*.pkl
-```
-
-You should see:
-- `model_checkpoint.pt` (~300MB)
-- `smpl_mean_params.npz` and other .npz/.npy files
-- Three SMPL .pkl files in the smpl/ directory
-
-## Running the App
-
-Start the Streamlit application:
-
-```bash
-streamlit run app.py
-```
-
-The app will open in your browser (typically at http://localhost:8501).
-
-## Deploying on Streamlit Cloud
-
-This repo is set up to deploy on Streamlit Cloud.
-
-### Streamlit Cloud settings
-
-- **App entrypoint**: `app.py`
-- **Python runtime**: pinned via `runtime.txt` (currently `python-3.12`)
-- **System packages**: `packages.txt` installs OS libs needed by OpenCV/MediaPipe on Linux
-
-### Why you saw `np.float = np.float_` errors
-
-On Streamlit Cloud you may get a newer Python/NumPy combo (e.g. Python 3.13 + NumPy 2.x).
-NumPy 2.x removes legacy aliases like `np.float`, and accessing older aliases like
-`np.float_` can error in some builds.
-
-This app imports `chumpy_compat` first (see the top of `app.py`) to patch these
-aliases safely.
-
-### Common deployment gotchas
-
-1. **Large model files**: SPIN checkpoints and SMPL files can be too large for the repo.
-  - Keep them out of Git; download at runtime or store in a release bucket.
-  - Make sure the app can start even if the model files are missing (show a friendly error).
-
-2. **MediaPipe wheels**: Streamlit Cloud is Linux; MediaPipe works best when the Python
-  version matches available wheels.
-  - This repo pins **Python 3.12** in `runtime.txt`.
-
-3. **GPU**: Streamlit Cloud is typically CPU-only.
-  - Expect slower inference.
-
-
-## Usage
-
-1. **Upload Video**: Click "Upload bowling video" and select a cricket bowling video (MP4, MOV, or AVI)
-   - Best results with side-view videos
-   - Person should be relatively centered in frame
-
-2. **Process**: Click the "Process Video" button
-
-3. **Wait**: Processing typically takes 1-3 minutes depending on video length and hardware
-   - The app will show progress for each step:
-     - Frame extraction
-     - 2D pose estimation
-     - Delivery frame detection
-     - 3D reconstruction
-     - Metrics computation
-     - Visualization
-
-4. **Review Results**:
-   - View the detected delivery frame with 2D skeleton overlay
-   - See computed biomechanics metrics
-   - View the 3D mesh preview
-
-5. **Download**:
-   - Click download buttons to save:
-     - `mesh.obj` - 3D mesh file (can be opened in Blender, MeshLab, etc.)
-     - `joints_3d.npy` - NumPy array of 3D joint positions
-     - `metrics.json` - Computed biomechanics metrics
-     - `delivery_frame.jpg` - The detected delivery frame image
-
-## Understanding the Metrics
-
-- **Elbow Angle**: Angle at the bowling arm elbow (degrees)
-  - Lower values = more bent elbow
-  - ~150-180° is typical for straight-arm bowling
-
-- **Spine Tilt**: Forward lean of the spine (degrees)
-  - Measured from vertical
-  - Higher values = more forward lean
-
-- **Shoulder Abduction**: Angle between torso and upper arm (degrees)
-  - Measures how far the arm is raised from the body
-
-- **Hip-Shoulder Separation**: Rotational difference between hips and shoulders (degrees)
-  - Indicates trunk rotation during delivery
-
-- **Release Wrist Height**: Vertical position of wrist at release (model units)
-  - Higher values = higher release point
-
-## Troubleshooting
-
-### SPIN Model Errors
-
-**Error**: `FileNotFoundError: SPIN checkpoint not found`
-- **Solution**: Run `./setup_spin.sh` to download the checkpoint
-
-**Error**: `SMPL model files not found`
-- **Solution**: Download SMPL models from the official sources (see Setup section)
-
-**Error**: `Could not import SPIN modules`
-- **Solution**: Ensure `spin_src/` contains the official SPIN repository
-- Verify by checking `spin_src/models/hmr.py` exists
-
-### MediaPipe Errors
-
-**Error**: `No pose detected in any frame`
-- **Solution**: 
-  - Ensure the person is clearly visible in the video
-  - Try videos with better lighting/contrast
-  - Person should be relatively centered
-
-**Error**: `Not enough wrist points to detect delivery frame`
-- **Solution**:
-  - Video may be too short or person not visible throughout
-  - Ensure the bowling action is complete in the video
-
-### Rendering Errors
-
-**Error**: Pyrender/OpenGL errors
-- **Solution**:
-  - On Linux: Ensure you have proper OpenGL support
-  - Try setting `PYOPENGL_PLATFORM=egl` or `osmesa`
-  - Install mesa libraries: `sudo apt-get install libosmesa6-dev`
-
-### Memory Issues
-
-**Error**: Out of memory errors
-- **Solution**:
-  - Use shorter videos
-  - Reduce video resolution before upload
-  - Close other applications
-
-## Technical Details
-
-### Pipeline Overview
-
-1. **Ingestion** (`src/ingestion/video_utils.py`):
-   - Load video with OpenCV
-   - Extract frames and metadata
-
-2. **2D Pose** (`src/pose2d/mediapipe_runner.py`):
-   - Run MediaPipe Pose on all frames
-   - Extract landmark positions in pixel space
-
-3. **Delivery Detection** (`src/delivery/delivery_detector.py`):
-   - Compute wrist trajectory from 2D poses
-   - Find peak velocity (delivery moment)
-   - Select sharpest frame in window around peak
-
-4. **3D Reconstruction** (`src/reconstruction/spin_wrapper.py`):
-   - Preprocess delivery frame (crop, resize, normalize)
-   - Run SPIN HMR model
-   - Generate SMPL mesh and joints
-
-5. **Analysis** (`src/analysis/metrics.py`):
-   - Compute joint angles from 3D positions
-   - Calculate biomechanics metrics
-
-6. **Visualization** (`src/visualization/render_utils.py`):
-   - Draw 2D skeleton overlay
-   - Render 3D mesh with pyrender
-
-### Output Files
-
-Each processing session creates a folder in `results/session_<uuid>/`:
+## Project layout
 
 ```
-results/session_<uuid>/
-├── input_video.mp4                 # Original uploaded video
-├── frames/                         # Extracted frames
-├── keypoints_2d.json              # 2D pose data
-├── delivery_frame_info.json       # Detection metadata
-├── delivery_frame.jpg             # Detected frame
-├── delivery_frame_with_skeleton.jpg  # Frame with overlay
-├── mesh.obj                       # 3D mesh
-├── joints_3d.npy                  # 3D joint positions
-├── smpl_params.npz                # SMPL model parameters
-├── metrics.json                   # Biomechanics metrics
-└── mesh_preview.jpg               # Rendered mesh image
+frontend/   the Seamly web app: React + TypeScript + three.js
+  src/engine/   in-browser analysis engine (detector, video, tracking, pose2d, lifter, kinematics,
+                events, metrics, coaching, insights, progress, body, pipeline, store)
+  src/api.ts    data layer: api.local.ts (browser, default) or api.remote.ts (VITE_API=server)
+  public/       models, sample analyses, icons
+  tests/        parity tests against fixtures recorded from the Python pipeline
+backend/    the Python engine and FastAPI server (source of truth for the algorithms)
+docs/       RESEARCH.md
+legacy/     the original Streamlit + SPIN prototype
 ```
 
-## Credits
+## Licences and credits
 
-This application integrates:
-
-- **SPIN** (Kolotouros et al., ICCV 2019): 3D human pose and shape reconstruction
-  - Repository: https://github.com/nkolot/SPIN
-  - Paper: https://arxiv.org/abs/1909.12828
-
-- **MediaPipe** (Google): Real-time pose estimation
-  - https://google.github.io/mediapipe/
-
-- **SMPL** (Loper et al., 2015): Skinned multi-person linear model
-  - https://smpl.is.tue.mpg.de/
-
-## License
-
-This project integrates multiple components with different licenses:
-- SPIN: See spin_src/LICENSE
-- SMPL: Requires registration and agreement to license terms
-- MediaPipe: Apache 2.0
-
-Please respect the licenses of all integrated components.
-
-## Citation
-
-If you use this tool in research, please cite the relevant papers:
-
-```bibtex
-@Inproceedings{kolotouros2019spin,
-  Title          = {Learning to Reconstruct 3D Human Pose and Shape via Model-fitting in the Loop},
-  Author         = {Kolotouros, Nikos and Pavlakos, Georgios and Black, Michael J and Daniilidis, Kostas},
-  Booktitle      = {ICCV},
-  Year           = {2019}
-}
-```
+| Component | Licence | Note |
+|---|---|---|
+| Seamly code | see repository | |
+| Ultralytics YOLO11 (models in `frontend/public/models`) | **AGPL-3.0** | The source of this site is public in this repository |
+| MotionBERT (model code + weights) | Apache-2.0 | `backend/bowlnet/lifting/LICENSE-MotionBERT` |
+| ONNX Runtime Web | MIT | loaded from jsDelivr |
+| mp4box.js | BSD-3-Clause | |
+| NAVER Anny body model | Apache-2.0 code, CC0 1.0 MakeHuman/MPFB2 assets | |
+| SAM 3D Body (server only, optional) | SAM License (Meta) | weights are downloaded by you |
+| three.js, React, FastAPI | MIT / BSD | |
+| Sample clip: "Epping Foresters CC v Great Totham CC at Epping, Essex, England Video 1" by Acabashi | CC BY-SA 4.0 | via [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Epping_Foresters_CC_v_Great_Totham_CC_at_Epping,_Essex,_England_Video_1.webm); trimmed and re-encoded (`frontend/public/samples/club-side-on.mp4`, same licence) |

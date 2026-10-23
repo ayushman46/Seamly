@@ -1,0 +1,100 @@
+import { useEffect, useState } from "react";
+import type { AnalysisResult, Player } from "../types";
+import { api } from "../api";
+import { SLOWMO_OPTIONS, VIEW_LABEL } from "../lib/constants";
+import { fmt } from "../lib/format";
+
+export default function Settings({ result, busy, onRecompute, onRerun, playerId, onAssign }: {
+  id: string; result: AnalysisResult; busy: boolean; playerId: string | null; onAssign: (pid: string | null) => Promise<void>;
+  onRecompute: (body: { bowling_arm?: string; height_m?: number; view?: string }, msg: string) => Promise<void>;
+  onRerun: (body: { candidate?: number; slowmo_factor?: number }) => Promise<void>;
+}) {
+  const [players, setPlayers] = useState<Player[]>([]);
+  useEffect(() => { api.players().then(setPlayers).catch(() => undefined); }, []);
+  const stature = Math.round(result.skeleton.stature_m * 100);
+  const [height, setHeight] = useState(String(stature));
+  useEffect(() => setHeight(String(stature)), [stature]);   // follow resets / re-analyses
+  const sel = result.bowler;
+  return (
+    <div className="settings-grid">
+      <div className="stack">
+        <div className="card-title">Corrections</div>
+        <div className="field">
+          <label>Player (groups this delivery into their progress)</label>
+          <select className="input" style={{ width: 260, maxWidth: "100%" }} value={playerId ?? ""} disabled={busy} aria-label="Player"
+            onChange={(e) => onAssign(e.target.value || null)}>
+            <option value="">No player</option>
+            {players.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </div>
+        <div className="field">
+          <label>Bowling arm (detected: {result.bowling_arm.arm}, {Math.round(result.bowling_arm.confidence * 100)}% agreement)</label>
+          <div className="seg">
+            {["right", "left"].map((a) => (
+              <button key={a} className={result.bowling_arm.arm === a ? "on" : ""} aria-pressed={result.bowling_arm.arm === a} disabled={busy} onClick={() => onRecompute({ bowling_arm: a }, `Bowling arm set to ${a}`)}>{a === "right" ? "Right-arm" : "Left-arm"}</button>
+            ))}
+          </div>
+        </div>
+        <div className="field">
+          <label>Camera view (detected: {VIEW_LABEL[result.view.view]})</label>
+          <div className="seg">
+            {(["side_on", "behind", "front_on"] as const).map((v) => (
+              <button key={v} className={result.view.view === v ? "on" : ""} aria-pressed={result.view.view === v} disabled={busy} onClick={() => onRecompute({ view: v }, `View set to ${VIEW_LABEL[v]}`)}>{VIEW_LABEL[v]}</button>
+            ))}
+          </div>
+        </div>
+        <div className="field">
+          <label>Clip speed (use if the video plays in slow motion; re-analyses the video)</label>
+          <select className="input" style={{ width: 230, maxWidth: "100%" }} aria-label="Clip speed" disabled={busy}
+            value={String(Math.round(result.options.slowmo_factor || 1))}
+            onChange={(e) => onRerun({ slowmo_factor: Number(e.target.value) })}>
+            {SLOWMO_OPTIONS.map((o) => <option key={o.value} value={String(o.value)}>{o.label}</option>)}
+          </select>
+        </div>
+        <div className="field">
+          <label>Bowler height (cm) — scales distances ({result.skeleton.height_source === "user" ? "entered" : "default"})</label>
+          <div className="row">
+            <input className="input" style={{ width: 120 }} aria-label="Bowler height in centimetres" inputMode="numeric" value={height} onChange={(e) => setHeight(e.target.value.replace(/[^0-9]/g, ""))} />
+            <button className="btn sm" disabled={busy || !height} onClick={() => {
+              const h = Number(height);
+              if (h >= 120 && h <= 230) onRecompute({ height_m: h / 100 }, `Height set to ${h} cm`);
+            }}>Apply</button>
+          </div>
+        </div>
+      </div>
+      <div className="stack">
+        <div className="card-title">Deliveries found in this video</div>
+        {result.candidates.map((c, i) => {
+          const isSel = c.track === sel.track && c.shot === sel.shot;
+          return (
+            <div key={`${c.shot}-${c.track}`} className={`row cand ${isSel ? "sel" : ""}`}>
+              <div className="grow">
+                <b>Delivery {i + 1}</b> <span className="faint">· frames {c.first}–{c.last}</span>
+                <div className="faint" style={{ fontSize: 12 }}>Arm sweep {fmt(c.sweep?.sweep_deg)}° · peak {fmt(c.sweep?.peak_speed_dps)}°/s</div>
+              </div>
+              {isSel ? <span className="chip good">Analysed</span> : <button className="btn sm" disabled={busy} onClick={() => onRerun({ candidate: i })}>Analyse this one</button>}
+            </div>
+          );
+        })}
+      </div>
+      <div className="stack">
+        <div className="card-title">Detection quality</div>
+        <dl className="kv">
+          <dt>Video</dt><dd>{result.video.width}×{result.video.height} · {fmt(result.video.fps, 1)} fps</dd>
+          <dt>Scenes (shots) found</dt><dd>{result.video.shots.length}</dd>
+          <dt>Frames analysed</dt><dd>{result.quality.frames_total}</dd>
+          <dt>Frames with refined pose</dt><dd>{result.quality.frames_refined}</dd>
+          <dt>Mean keypoint confidence</dt><dd>{Math.round(result.quality.mean_kp_conf * 100)}%</dd>
+          <dt>Left/right swaps corrected</dt><dd>{result.quality.lr_swaps_fixed}</dd>
+          {(result.quality.repeated_frames ?? 0) >= 0.05 && (
+            <><dt>Repeated frames</dt><dd title="Frames identical to the previous one (frame-rate conversion or frame-repeat slow motion)">{Math.round((result.quality.repeated_frames ?? 0) * 100)}%</dd></>
+          )}
+          <dt>3D model</dt><dd>{result.pose3d === "sam3d" ? "SAM 3D Body (image-based)" : "MotionBERT (2D-to-3D lifter)"}</dd>
+          <dt>3D re-projection error</dt><dd>{fmt(result.skeleton.reproj_err_px_median, 1)} px</dd>
+          <dt>Body model</dt><dd>{result.mesh.vertices.toLocaleString()} verts</dd>
+          <dt>Processing time</dt><dd>{fmt(result.timing_s)} s</dd>
+        </dl>
+      </div>
+    </div>
+  );
+}

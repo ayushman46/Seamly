@@ -1,0 +1,6 @@
+# esbuild's install script only fetches its platform binary, which pnpm already installs as an optional
+# dependency (@esbuild/<platform>), so it does not need to run.
+allowBuilds:
+  esbuild: false
+  # protobufjs' postinstall only prints a version notice (pulled in by onnxruntime-web)
+  protobufjs: false
