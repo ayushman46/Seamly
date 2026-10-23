@@ -20,9 +20,11 @@ export default function CoachingPanel({ result, onJump, age, style }: { result: 
           <div className="notice ok"><ICheck size={16} /> <div>No clear technical issues among the metrics this camera angle can measure reliably. Add a clip from another angle for a fuller picture.</div></div>
         )}
         {c.priorities.map((p, i) => {
-          // the rules come from pace-bowling research: for a spinner, a "pace" point is about the action
+          // the rules come from pace-bowling research: for a spinner, and for a junior (whose notes say a sound
+          // action comes before pace), a "pace" point is about the action
           const cat0 = CAT[p.category] ?? CAT.pace;
-          const cat = style === "spin" && p.category === "pace" ? { ...cat0, label: "Action" } : cat0;
+          const junior = !!age && ["u11", "u13", "u15", "u17", "u19"].includes(age);
+          const cat = (style === "spin" || junior) && p.category === "pace" ? { ...cat0, label: "Action" } : cat0;
           const ev = p.event?.split("-").pop();
           return (
             <div key={p.key} className="prio">
