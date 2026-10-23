@@ -404,12 +404,14 @@ const FAQS: { q: string; a: ReactNode }[] = [
   {
     q: "Where are my videos and results stored?",
     a: LOCAL
-      ? <p>In this browser, on this device. Nothing is uploaded and there's no account. That also means clearing your browser data deletes your analyses and players, and they won't appear on your other devices — use the exports to keep a copy.</p>
+      ? <p>In this browser, on this device. Nothing is uploaded and there's no account. That also means clearing your browser data deletes your analyses and players, and they won't appear on your other devices — use "Download backup" in your workspace to keep a copy or move them to a new phone.</p>
       : <p>On the Seamly server this page is connected to. Nothing is sent anywhere else, and there's no account.</p>,
   },
   {
     q: "Does it need an internet connection?",
-    a: <p>Only to load the site and its analysis models. The analysis itself runs on your device. A recent phone or laptop works best; older devices can take noticeably longer.</p>,
+    a: LOCAL
+      ? <p>Only the first time. Open Seamly and analyse one clip while you're online (that downloads the analysis models, about 70 MB), and after that it works with no signal: at the nets, film, analyse and review right there. A recent phone or laptop works best; older devices can take noticeably longer.</p>
+      : <p>Yes, to reach the Seamly server this page is connected to.</p>,
   },
   {
     q: "What do I need to film with?",
