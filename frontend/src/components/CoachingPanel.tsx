@@ -10,7 +10,7 @@ const CAT: Record<string, { label: string; icon: JSX.Element; cls: string }> = {
   legality: { label: "Elbow screen", icon: <IAlert size={13} />, cls: "risk" },
 };
 
-export default function CoachingPanel({ result, onJump, age }: { result: AnalysisResult; onJump: (eventKey: string) => void; age?: string | null }) {
+export default function CoachingPanel({ result, onJump, age, style }: { result: AnalysisResult; onJump: (eventKey: string) => void; age?: string | null; style?: string | null }) {
   const c = result.coaching;
   return (
     <div className="coach-grid">
@@ -20,7 +20,9 @@ export default function CoachingPanel({ result, onJump, age }: { result: Analysi
           <div className="notice ok"><ICheck size={16} /> <div>No clear technical issues among the metrics this camera angle can measure reliably. Add a clip from another angle for a fuller picture.</div></div>
         )}
         {c.priorities.map((p, i) => {
-          const cat = CAT[p.category] ?? CAT.pace;
+          // the rules come from pace-bowling research: for a spinner, a "pace" point is about the action
+          const cat0 = CAT[p.category] ?? CAT.pace;
+          const cat = style === "spin" && p.category === "pace" ? { ...cat0, label: "Action" } : cat0;
           const ev = p.event?.split("-").pop();
           return (
             <div key={p.key} className="prio">

@@ -132,7 +132,7 @@ export function summary(result: InsightsResult, player: InsightsPlayer | null = 
   const view = result.view.view;
   const unlock: string[] = [];
   if (view === "behind" || view === "front_on") {
-    unlock.push("Film side-on (10-15 m away, hip height) to also measure your front knee, trunk flexion and stride.");
+    unlock.push("Film side-on (10–15 m away, hip height) to also measure your front knee, trunk flexion and stride.");
   } else {
     unlock.push("Film from behind the stumps to also measure side-bend, alignment and whether you fall away.");
   }
@@ -142,6 +142,8 @@ export function summary(result: InsightsResult, player: InsightsPlayer | null = 
   const notes: string[] = [];
   if (JUNIOR.includes(age) && style !== "spin") {
     notes.push("At your age, a safe action and sensible bowling loads matter more than pace; the pace comes later.");
+  } else if (JUNIOR.includes(age)) {
+    notes.push("At your age, a smooth, repeatable action and sensible bowling loads matter more than how much you spin it.");
   }
   if (style === "spin") {
     notes.push("Seamly's reference values come from studies of pace bowlers; for spin, treat the ratings as a rough guide.");
@@ -405,7 +407,7 @@ export function practicePlan(result: InsightsResult, player: InsightsPlayer | nu
         if (!("detail" in it)) it.detail = null;
       }
     }
-    weeks.push({ title: w === 1 ? "Week 1: learn the movement" : "Week 2: build towards full pace",
+    weeks.push({ title: w === 1 ? "Week 1: learn the movement" : style === "spin" ? "Week 2: build up to match intensity" : "Week 2: build towards full pace",
       days: days as Insights["plan"]["weeks"][number]["days"] });
   }
   const notes: string[] = [];

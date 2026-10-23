@@ -92,7 +92,7 @@ def summary(result: dict, player: dict | None = None) -> dict:
     view = result["view"]["view"]
     unlock = []
     if view in ("behind", "front_on"):
-        unlock.append("Film side-on (10-15 m away, hip height) to also measure your front knee, trunk flexion and stride.")
+        unlock.append("Film side-on (10–15 m away, hip height) to also measure your front knee, trunk flexion and stride.")
     else:
         unlock.append("Film from behind the stumps to also measure side-bend, alignment and whether you fall away.")
     if result.get("fps_real", 30) < 90:
@@ -100,6 +100,8 @@ def summary(result: dict, player: dict | None = None) -> dict:
     notes = []
     if age in JUNIOR and style != "spin":
         notes.append("At your age, a safe action and sensible bowling loads matter more than pace; the pace comes later.")
+    elif age in JUNIOR:
+        notes.append("At your age, a smooth, repeatable action and sensible bowling loads matter more than how much you spin it.")
     if style == "spin":
         notes.append("Seamly's reference values come from studies of pace bowlers; for spin, treat the ratings as a rough guide.")
     return {"headline": headline, "working": list(c.get("strengths") or [])[:3], "fixes": fixes,
@@ -346,7 +348,8 @@ def practice_plan(result: dict, player: dict | None = None) -> dict:
             for it in d["items"]:
                 it["id"] = _item_id(w, d["day"], it["text"], taken)
                 it.setdefault("detail", None)
-        weeks.append({"title": "Week 1: learn the movement" if w == 1 else "Week 2: build towards full pace", "days": days})
+        week2 = "Week 2: build up to match intensity" if style == "spin" else "Week 2: build towards full pace"
+        weeks.append({"title": "Week 1: learn the movement" if w == 1 else week2, "days": days})
     notes = []
     if lim:
         notes.append(f"Bowling limits for {lim['label']} bowlers ({lim['source']}): at most {lim['spell']} overs per "

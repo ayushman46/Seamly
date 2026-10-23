@@ -640,7 +640,7 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
           </div>
           <div role="tabpanel" id="tab-panel" aria-labelledby={`tab-${tab}`}>
           <ErrorBoundary label="This tab">
-          {tab === "coach" && <CoachingPanel result={result} onJump={(k) => jumpTo(k as EventKey)} age={ins?.player?.age_group} />}
+          {tab === "coach" && <CoachingPanel result={result} onJump={(k) => jumpTo(k as EventKey)} age={ins?.player?.age_group} style={ins?.player?.style} />}
           {tab === "metrics" && <MetricsPanel result={result} selected={selMetric} onSelect={(k, evKey) => { setSelMetric(k === selMetric ? null : k); const e = evKey ? result.events[evKey as EventKey] : null; if (e) { setPlaying(false); setFrame(e.frame); } }} />}
           {tab === "charts" && <Charts result={result} frame={frame} onSeek={(f) => { setPlaying(false); setFrame(f); }} />}
           {tab === "frame" && <Inspector result={result} frame={frame} onSetEvent={setEvent} busy={busy} />}
