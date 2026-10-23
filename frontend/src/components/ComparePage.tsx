@@ -136,7 +136,7 @@ export default function ComparePage({ a, b, go }: { a: string; b: string; go: (t
                 <tr><th>Metric</th><th>A</th><th>B</th><th>Change (B − A)</th><th /></tr>
               </thead>
               <tbody>
-                {rows.map(({ key, a: ma, b: mb }) => <Row key={key} a={ma} b={mb} />)}
+                {rows.map(({ key, a: ma, b: mb }) => <Row key={key} a={ma} b={mb} fps={Math.min(data[0]!.result.fps_real, data[1]!.result.fps_real)} />)}
               </tbody>
             </table>
           </div>
@@ -150,12 +150,20 @@ export default function ComparePage({ a, b, go }: { a: string; b: string; go: (t
   );
 }
 
-function Row({ a, b }: { a?: Metric; b?: Metric }) {
+/** Smallest difference one camera can resolve (matches the progress page): a frame for timings, a few degrees or
+ *  points for angles and heights, more at low frame rates where an event can land a frame either side. */
+function resolution(m: Metric, fps: number): number {
+  if (m.unit === "ms") return Math.max(20, 1000 / fps);
+  const base = m.key === "release_height_pct" ? 8 : m.unit === "% height" ? 2 : m.unit === "cm" ? 5 : 3;
+  return fps < 60 ? base * (60 / fps) : base;
+}
+
+function Row({ a, b, fps }: { a?: Metric; b?: Metric; fps: number }) {
   const m = a ?? b!;
   const comparable = !!a && !!b && a.value !== null && b.value !== null && a.reliability === "measured" && b.reliability === "measured";
   const d = comparable ? (b!.value as number) - (a!.value as number) : null;
   let verdict: "better" | "worse" | "same" | null = null;
-  if (comparable && a!.rating in ORDER && b!.rating in ORDER && ORDER[a!.rating] <= 2 && ORDER[b!.rating] <= 2) {
+  if (comparable && Math.abs(d!) >= resolution(m, fps) && a!.rating in ORDER && b!.rating in ORDER && ORDER[a!.rating] <= 2 && ORDER[b!.rating] <= 2) {
     verdict = ORDER[b!.rating] < ORDER[a!.rating] ? "better" : ORDER[b!.rating] > ORDER[a!.rating] ? "worse" : "same";
   }
   const cell = (x?: Metric) => (

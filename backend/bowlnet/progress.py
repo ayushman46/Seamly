@@ -58,6 +58,10 @@ def improved(key: str, before: float, after: float, unit: str, fps: float | None
     tol = MIN_CHANGE_KEY.get(key, MIN_CHANGE.get(unit, 0.0))
     if unit == "ms" and fps:
         tol = max(tol, 1000.0 / fps)
+    elif fps and fps < 60:
+        # angles and heights read at an event move a lot when it lands one frame earlier or later at low frame
+        # rates (trunk lean can change ~10 deg per frame at 25 fps): demand a proportionally bigger change
+        tol *= 60.0 / fps
     if rule is None or abs(after - before) < tol:
         return None
     if isinstance(rule, tuple):

@@ -65,6 +65,9 @@ export function improved(key: string, before: number, after: number, unit: strin
   const rule = BETTER[key];
   let tol = has(MIN_CHANGE_KEY, key) ? MIN_CHANGE_KEY[key] : has(MIN_CHANGE, unit) ? MIN_CHANGE[unit] : 0.0;
   if (unit === "ms" && fps) tol = pyMax(tol, 1000.0 / fps);
+  // angles and heights read at an event move a lot when it lands one frame earlier or later at low frame rates
+  // (trunk lean can change ~10 deg per frame at 25 fps): demand a proportionally bigger change
+  else if (fps && fps < 60) tol *= 60.0 / fps;
   if (rule === undefined || Math.abs(after - before) < tol) return null;
   if (Array.isArray(rule)) {
     const [, lo, hi] = rule;
