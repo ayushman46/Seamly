@@ -153,9 +153,11 @@ export default function FramePlayer({ id, result, frame, overlay, selMetric, hud
     }
     if (overlay.angles) {
       const placed: [number, number, number, number][] = [];
-      const place = (x: number, y: number, w: number, h: number): [number, number] => {
-        // nudge labels vertically until they don't overlap earlier ones
-        let yy = y;
+      const place = (x0: number, y: number, w: number, h: number): [number, number] => {
+        // keep labels inside the frame (they clipped at the edge on phones), then nudge them vertically until they
+        // don't overlap earlier ones
+        const x = Math.min(Math.max(2, x0), ctx.canvas.width - w - 2);
+        let yy = Math.min(Math.max(2, y), ctx.canvas.height - h - 2);
         for (let k = 0; k < 8; k++) {
           const hit = placed.find((r) => x < r[0] + r[2] && x + w > r[0] && yy < r[1] + r[3] && yy + h > r[1]);
           if (!hit) break;
@@ -229,7 +231,7 @@ export default function FramePlayer({ id, result, frame, overlay, selMetric, hud
       </div>
       <div className="player-hud-r">
         <button className={`btn sm ${zoomOn ? "active" : ""}`} aria-pressed={zoomOn} onClick={() => setZoom(!zoomOn)} title="Follow and zoom on the bowler">
-          {zoomOn ? "Zoom: bowler" : "Zoom: full frame"}
+          {zoomOn ? "Show full frame" : "Zoom on bowler"}
         </button>
       </div>
     </div>

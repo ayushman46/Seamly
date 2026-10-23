@@ -122,7 +122,7 @@ export default function PlayerPage({ pid, go }: { pid: string; go: (to: string) 
                 <small>Latest score</small><b>{s.latest_score ?? "–"}</b>
                 {s.count >= 2 && s.latest_score !== null && s.first_score !== null && (
                   <span className={s.latest_score >= s.first_score ? "up" : "down"}>
-                    {s.latest_score >= s.first_score ? "▲" : "▼"} {Math.abs(s.latest_score - s.first_score)} since the first session
+                    {s.latest_score === s.first_score ? "Same as the first session" : `${s.latest_score > s.first_score ? "▲" : "▼"} ${Math.abs(s.latest_score - s.first_score)} since the first session`}
                   </span>
                 )}
               </div>

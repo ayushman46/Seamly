@@ -209,6 +209,18 @@ function Failed({ meta, go, onRetry }: { meta: AnalysisMeta; go: (to: string) =>
   const [slowmo, setSlowmo] = useState(String(meta.suggest?.slowmo_factor ?? cur));   // preselect the suggested fix
   const [busy, setBusy] = useState(false);
   const [retryError, setRetryError] = useState<string | null>(null);
+  // what went wrong decides what is worth offering: filming tips, a clip-speed retry, or just another clip
+  const err = meta.error || "";
+  const kind: "fps" | "file" | "detect" | "other" =
+    meta.suggest || /frames per second|repeats|clip speed/i.test(err) ? "fps"
+    : /decode|look like a video|too short|long; please trim|no decodable|no duration|couldn't open|took too long to load|no longer stored/i.test(err) ? "file"
+    : /couldn't find a bowling delivery/i.test(err) ? "detect" : "other";
+  const remove = async () => {
+    if (!window.confirm("Delete this analysis?")) return;
+    setBusy(true);
+    try { await api.remove(meta.id); go("/"); }
+    catch (e) { setRetryError((e as Error).message); setBusy(false); }
+  };
   const retry = async () => {
     setBusy(true);
     setRetryError(null);
@@ -230,21 +242,28 @@ function Failed({ meta, go, onRetry }: { meta: AnalysisMeta; go: (to: string) =>
             </div>
           </div>
           <div className="notice warn" style={{ marginTop: 20 }}><IAlert size={16} /> <div>{meta.error || "Unknown error"}</div></div>
-          <ul className="fail-tips">
-            <li>Make sure the bowler's whole body (including feet) is visible from run-up to follow-through.</li>
-            <li>Film side-on or from behind the bowler; avoid heavy zoom and fast panning.</li>
-            <li>Trim long videos to the delivery (under {MODE === "browser" ? "a minute" : "2 minutes"}).</li>
-          </ul>
-          <div className="row wrap" style={{ gap: 10 }}>
-            <button className="btn" onClick={() => go("/")}><IBack size={16} /> Back</button>
+          {kind === "detect" && (
+            <ul className="fail-tips">
+              <li>Make sure the bowler's whole body (including feet) is visible from run-up to follow-through.</li>
+              <li>Film side-on or from behind the bowler; avoid heavy zoom and fast panning.</li>
+              <li>Trim long videos to the delivery (under {MODE === "browser" ? "a minute" : "2 minutes"}).</li>
+            </ul>
+          )}
+          <div className="row wrap" style={{ gap: 10, marginTop: 16 }}>
+            <button className="btn" onClick={() => go("/")}><IBack size={16} /> Choose another clip</button>
+            <button className="btn ghost" disabled={busy} onClick={remove}>Delete</button>
             <div className="grow" />
-            <label className="field" style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-              <span className="label">Clip speed</span>
-              <select className="input" style={{ width: 210 }} value={slowmo} onChange={(e) => setSlowmo(e.target.value)}>
-                {SLOWMO_OPTIONS.map((o) => <option key={o.value} value={String(o.value)}>{o.label}</option>)}
-              </select>
-            </label>
-            <button className="btn primary" disabled={busy} onClick={retry}>{busy ? <div className="spinner sm" /> : <IRefresh size={16} />} {Number(slowmo) !== cur ? "Retry at this clip speed" : "Retry"}</button>
+            {kind === "fps" && (
+              <label className="field" style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <span className="label">Clip speed</span>
+                <select className="input" style={{ width: 210 }} value={slowmo} onChange={(e) => setSlowmo(e.target.value)}>
+                  {SLOWMO_OPTIONS.map((o) => <option key={o.value} value={String(o.value)}>{o.label}</option>)}
+                </select>
+              </label>
+            )}
+            {kind !== "file" && (
+              <button className="btn primary" disabled={busy} onClick={retry}>{busy ? <div className="spinner sm" /> : <IRefresh size={16} />} {Number(slowmo) !== cur ? "Retry at this clip speed" : "Retry"}</button>
+            )}
           </div>
           {retryError && <div className="notice error" style={{ marginTop: 12 }}><IAlert size={16} /> <div>{retryError}</div></div>}
         </div>

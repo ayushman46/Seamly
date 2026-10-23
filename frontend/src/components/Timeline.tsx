@@ -60,17 +60,24 @@ export default function Timeline({ id, result, frame, onSeek, onSetEvent, edited
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     onSeek(frameAt(e.clientX));
   };
+  // the flag being dragged is also kept in a ref: a fast drag moves before React re-renders with the new state,
+  // and those first moves must move the flag, not scrub the playhead
+  const dragRef = useRef<{ key: EventKey; frame: number } | null>(null);
   const onTrackMove = (e: React.PointerEvent) => {
-    if (drag) {
+    const d = dragRef.current;
+    if (d) {
       const f = frameAt(e.clientX);
-      setDrag({ ...drag, frame: f });
+      dragRef.current = { ...d, frame: f };
+      setDrag(dragRef.current);
       onSeek(f);
     } else if (e.buttons === 1 && !(e.target as HTMLElement).closest(".tl-ev")) onSeek(frameAt(e.clientX));
   };
   const onUp = () => {
-    if (drag) {
-      const orig = result.events[drag.key]?.frame;
-      if (orig !== drag.frame) onSetEvent(drag.key, drag.frame);
+    const d = dragRef.current;
+    if (d) {
+      dragRef.current = null;
+      const orig = result.events[d.key]?.frame;
+      if (orig !== d.frame) onSetEvent(d.key, d.frame);
       setDrag(null);
     }
   };
@@ -84,7 +91,7 @@ export default function Timeline({ id, result, frame, onSeek, onSetEvent, edited
 
   return (
     <div className="timeline">
-      <div className="tl-track" style={{ marginTop: 6 + 17 * Math.max(0, ...Object.values(rows).map((r) => r ?? 0)) }} ref={track} onPointerDown={onTrackDown} onPointerMove={onTrackMove} onPointerUp={onUp} onPointerLeave={() => drag && onUp()}>
+      <div className="tl-track" style={{ marginTop: 6 + 17 * Math.max(0, ...Object.values(rows).map((r) => r ?? 0)) }} ref={track} onPointerDown={onTrackDown} onPointerMove={onTrackMove} onPointerUp={onUp} onPointerLeave={() => dragRef.current && onUp()}>
         <div className="tl-bar" />
         {phases.map((p) => ev[p.a] && ev[p.b] ? (
           <div key={p.label} className="tl-phase" title={p.label} style={{ left: `${pct(ev[p.a]!.frame)}%`, width: `${pct(ev[p.b]!.frame) - pct(ev[p.a]!.frame)}%`, background: p.color }} />
@@ -107,12 +114,29 @@ export default function Timeline({ id, result, frame, onSeek, onSetEvent, edited
               className={`tl-ev ${drag?.key === e.key ? "dragging" : ""} ${edited.includes(e.key) ? "edited" : ""}`}
               style={{ left: `${pct(f)}%`, top: -17 * (rows[e.key] ?? 0) }}
               title={`${e.label} · frame ${f} · ${how} — drag to adjust`}
+              tabIndex={0}
+              role="slider"
+              aria-label={`${e.label} marker`}
+              aria-valuemin={f0}
+              aria-valuemax={f1 - 1}
+              aria-valuenow={f}
+              aria-valuetext={`frame ${f}`}
+              onKeyDown={(ke) => {
+                // keyboard: arrows move the marker a frame (shift: 5)
+                if (busy || (ke.key !== "ArrowLeft" && ke.key !== "ArrowRight")) return;
+                ke.preventDefault();
+                ke.stopPropagation();
+                const to = Math.max(f0, Math.min(f1 - 1, info.frame + (ke.key === "ArrowRight" ? 1 : -1) * (ke.shiftKey ? 5 : 1)));
+                onSeek(to);
+                onSetEvent(e.key, to);
+              }}
               onPointerDown={(pe) => {
                 pe.stopPropagation();
                 onSeek(info.frame);
                 if (busy) return;
                 (track.current as HTMLElement).setPointerCapture(pe.pointerId);
-                setDrag({ key: e.key, frame: info.frame });
+                dragRef.current = { key: e.key, frame: info.frame };
+                setDrag(dragRef.current);
               }}
             >
               <span className="flag" style={{ background: EVENT_HEX[e.key], opacity: info.confidence < 0.4 && info.method !== "user" ? 0.65 : 1 }}>{e.short}{info.method === "timing_prior" || info.method === "constrained" || rearContact ? "?" : ""}</span>
@@ -123,8 +147,11 @@ export default function Timeline({ id, result, frame, onSeek, onSetEvent, edited
         <div className="tl-head" style={{ left: `${pct(frame)}%` }} />
       </div>
       <div className="row faint tl-help">
-        <span>Tap or drag to scrub · drag a flag to correct it<span className="tl-keys"> · keys <kbd>←</kbd> <kbd>→</kbd> (shift ×5), <kbd>space</kbd>, <kbd>1</kbd>–<kbd>5</kbd> jump to events</span></span>
+        <span>Tap or drag to scrub · drag a flag to correct it (or use "Set this frame as" in the Frame tab)<span className="tl-keys"> · keys <kbd>←</kbd> <kbd>→</kbd> (shift ×5), <kbd>space</kbd>, <kbd>1</kbd>–<kbd>5</kbd> jump to events</span></span>
         <span className="mono">{f0}–{f1 - 1}</span>
+      </div>
+      <div className="tl-legend faint">
+        {EVENTS.map((e) => <span key={e.key}><b style={{ color: EVENT_HEX[e.key] }}>{e.short}</b> {e.label.toLowerCase()}</span>)}
       </div>
       <div className="filmstrip">
         {EVENTS.map((e) => {
