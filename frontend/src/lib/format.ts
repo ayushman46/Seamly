@@ -1,11 +1,17 @@
-export const fmt = (v: number | null | undefined, d = 0) => (v === null || v === undefined || !isFinite(v) ? "–" : v.toFixed(d));
-export const unitLabel = (u: string) => (u === "deg" ? "°" : u === "% height" ? "% ht" : u);
+/** A number for display: fixed decimals, a true minus sign (−) and no "-0". */
+export const fmt = (v: number | null | undefined, d = 0) => {
+  if (v === null || v === undefined || !isFinite(v)) return "–";
+  const s = v.toFixed(d);
+  return /^-0(\.0+)?$/.test(s) ? s.slice(1) : s.replace(/^-/, "−");
+};
+/** Unit after a number: degrees and % sit right after it, words get a (non-breaking) space ("120 ms"). */
+export const unitLabel = (u: string) => (u === "deg" ? "°" : u === "% height" ? "% ht" : u === "%" || !u ? u : `\u00a0${u}`);
 export function ago(ts: number): string {
   const s = Math.max(1, Math.floor(Date.now() / 1000 - ts));
-  if (s < 60) return `${s}s ago`;
+  if (s < 60) return "just now";
   if (s < 3600) return `${Math.floor(s / 60)} min ago`;
   if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
-  return new Date(ts * 1000).toLocaleDateString();
+  return new Date(ts * 1000).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 }
 /** Seconds of video converted to real (filmed) time for slowed-down clips. */
 export const realSec = (s: number, slowmo: number | null | undefined) => s / Math.max(1, slowmo || 1);

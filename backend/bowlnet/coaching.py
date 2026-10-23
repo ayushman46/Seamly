@@ -11,7 +11,7 @@ from .metrics import NORMS
 DRILLS = {
     "front_leg": {
         "title": "Brace the front leg",
-        "cue": "Land tall, push the ground away - 'stand up' through the front leg as the arm comes over.",
+        "cue": "Land tall, push the ground away — ‘stand up’ through the front leg as the arm comes over.",
         "drills": [
             "Standing brace: front foot planted, bowl from a static delivery-stride position, focus on a firm knee (3 × 6).",
             "Walk-through then jog-through deliveries, adding speed only while the knee stays firm (3 × 6).",

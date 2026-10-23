@@ -4,6 +4,7 @@ import type { AnalysisMeta, AnalysisResult, EventKey, Insights } from "../types"
 import { COCO_EDGES, EVENTS, EVENT_HEX, RATING_LABEL, TECHNIQUE_HELP, VIEW_LABEL } from "../lib/constants";
 import { dateTime, fmt, unitLabel } from "../lib/format";
 import { LogoMark } from "./Brand";
+import { AGE_LABEL, drillsForAge } from "../lib/player";
 import { DISCLAIMER } from "./Landing";
 
 export default function ReportPage({ id, go }: { id: string; go: (to: string) => void }) {
@@ -18,9 +19,10 @@ export default function ReportPage({ id, go }: { id: string; go: (to: string) =>
   useEffect(() => {
     if (!data) return;
     const before = document.title;
-    document.title = `Seamly report - ${data.meta.name}`;
+    const who = ins?.player?.name;
+    document.title = `Seamly report - ${who ? `${who} - ` : ""}${data.meta.name}`;
     return () => { document.title = before; };
-  }, [data]);
+  }, [data, ins]);
   if (error) {
     return (
       <div className="report">
@@ -44,6 +46,7 @@ export default function ReportPage({ id, go }: { id: string; go: (to: string) =>
         <div>
           <div className="rp-brand"><LogoMark size={20} /> Seamly · Bowling action report</div>
           <h1>{meta.name}</h1>
+          {ins?.player && <div className="rp-player">{ins.player.name} · {AGE_LABEL[ins.player.age_group] ?? ins.player.age_group}</div>}
           <div className="rp-sub">
             {dateTime(meta.created)} · {VIEW_LABEL[r.view.view]} · {r.bowling_arm.arm === "right" ? "Right-arm" : "Left-arm"}
             {r.bowling_arm.source !== "user" && r.bowling_arm.confidence < 0.7 ? " (detected, not certain)" : ""} ·{" "}
@@ -89,10 +92,10 @@ export default function ReportPage({ id, go }: { id: string; go: (to: string) =>
         <ol className="rp-prio">
           {c.priorities.map((p) => (
             <li key={p.key}>
-              <b>{p.headline}</b> <em>({p.borderline ? "Borderline" : RATING_LABEL[p.rating]} · {p.evidence})</em>
+              <b>{p.headline}</b> <em>— {p.borderline ? "Borderline" : RATING_LABEL[p.rating]} · {p.evidence}</em>
               <div>{p.why}</div>
               <div className="rp-cue">Cue: “{p.drill.cue}”</div>
-              <ul>{p.drill.drills.map((d) => <li key={d}>{d}</li>)}</ul>
+              <ul>{drillsForAge(p.drill.drills, ins?.player?.age_group).map((d) => <li key={d}>{d}</li>)}</ul>
             </li>
           ))}
         </ol>
@@ -124,7 +127,6 @@ export default function ReportPage({ id, go }: { id: string; go: (to: string) =>
       <section>
         <h2>Get a better reading next time</h2>
         <ul>{c.capture_tips.map((t) => <li key={t}>{t}</li>)}</ul>
-        <p className="rp-note">{c.disclaimer}</p>
       </section>
       <footer className="rp-foot">
         <span>{DISCLAIMER}</span>

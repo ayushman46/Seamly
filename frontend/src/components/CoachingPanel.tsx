@@ -1,3 +1,4 @@
+import { drillsForAge } from "../lib/player";
 import type { AnalysisResult } from "../types";
 import { RATING_LABEL } from "../lib/constants";
 import { IAlert, IBolt, ICheck, IPlay, IShield, ITarget } from "./Icons";
@@ -9,7 +10,7 @@ const CAT: Record<string, { label: string; icon: JSX.Element; cls: string }> = {
   legality: { label: "Elbow screen", icon: <IAlert size={13} />, cls: "risk" },
 };
 
-export default function CoachingPanel({ result, onJump }: { result: AnalysisResult; onJump: (eventKey: string) => void }) {
+export default function CoachingPanel({ result, onJump, age }: { result: AnalysisResult; onJump: (eventKey: string) => void; age?: string | null }) {
   const c = result.coaching;
   return (
     <div className="coach-grid">
@@ -37,7 +38,7 @@ export default function CoachingPanel({ result, onJump }: { result: AnalysisResu
                 <div className="muted" style={{ fontSize: 13 }}>{p.why}</div>
                 <div className="cue">“{p.drill.cue}”</div>
                 <div style={{ marginTop: 10, fontWeight: 700, fontSize: 13 }}>{p.drill.title} — drills</div>
-                <ul className="drills">{p.drill.drills.map((d) => <li key={d}>{d}</li>)}</ul>
+                <ul className="drills">{drillsForAge(p.drill.drills, age).map((d) => <li key={d}>{d}</li>)}</ul>
               </div>
             </div>
           );

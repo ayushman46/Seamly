@@ -32,7 +32,7 @@ function Missing({ go }: { go: (to: string) => void }) {
       <div className="empty" style={{ marginTop: 48 }}>
         <span className="empty-icon">?</span>
         <b>This link doesn't lead anywhere in Seamly</b>
-        <span>It may be cut short or mistyped. Analyses and players open only in the browser that made them.</span>
+        <span>It may be cut short or mistyped. Analyses and players open only in the browser that made them: to move them to another device, use "Download backup" in your workspace.</span>
         <button type="button" className="btn primary sm" style={{ marginTop: 8 }} onClick={() => go("/")}>Go to Seamly</button>
       </div>
     </main>

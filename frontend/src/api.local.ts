@@ -31,6 +31,9 @@ type Meta = AnalysisMeta & {
 };
 type StoredPlayer = Omit<Player, "analyses" | "latest_score" | "last_analysis">;
 
+/** How sure the bowling arm is (1 when the user set it), kept with the metadata so lists can mark a guess. */
+const armConf = (r: AnalysisResult) => (r.bowling_arm.source === "user" ? 1 : Math.round(r.bowling_arm.confidence * 100) / 100);
+
 const now = () => Date.now() / 1000;
 
 // Each tab holds a Web Lock for as long as it is open, so another tab can tell an analysis it is running apart from
@@ -100,7 +103,7 @@ async function refresh(id: string): Promise<void> {
 }
 
 const PUBLIC = ["id", "name", "created", "updated", "status", "progress", "stage", "stage_label", "error", "score", "grade", "view", "arm",
-  "thumb_frame", "options", "timing_s", "elapsed", "size_mb", "notice", "suggest", "player_id", "input_type"] as const;
+  "thumb_frame", "options", "timing_s", "elapsed", "size_mb", "notice", "suggest", "player_id", "input_type", "arm_conf"] as const;
 
 function pub(m: Meta): AnalysisMeta {
   const out = {} as Record<string, unknown>;
@@ -271,14 +274,14 @@ async function runJob(id: string) {
       P.useWasmOnly();
       A = await run();
     }
-    const { result, mesh } = await P.stageB(A.stageA, overrides);
+    const { result, mesh } = await P.stageB(A.stageA, await withAgeStature(meta, overrides));
     result.timing_s = Math.round((performance.now() - t0) / 100) / 10;
     await db.putMany("blob", [[mkey(id, gen, "mesh_rest.bin"), new Blob([mesh.rest])], [mkey(id, gen, "pose.bin"), new Blob([mesh.pose])]]);
     const c = result.coaching;
     const cur = metas.get(id);
     if (!cur) throw new AnalysisError("This analysis was deleted.");
     const done = { ...cur, status: "done", progress: 1, stage: "done", stage_label: "Complete", finished: now(), score: c.score, grade: c.grade,
-      view: result.view.view, arm: result.bowling_arm.arm, thumb_frame: result.events.br.frame, timing_s: result.timing_s,
+      view: result.view.view, arm: result.bowling_arm.arm, arm_conf: armConf(result), thumb_frame: result.events.br.frame, timing_s: result.timing_s,
       summary: summarise(result), error: null, previous: null, suggest: null, elapsed: result.timing_s, gen, overrides, updated: now() } as Meta;
     // one transaction: stage A, result and the metadata pointing at the new generation commit together
     await db.write(["stagea", "result", "meta"], (st) => { st.stagea.put(A.stageA, id); st.result.put(result, id); st.meta.put(done, id); });
@@ -309,18 +312,28 @@ async function runJob(id: string) {
   }
 }
 
+// typical stature (m) for each age group, assumed when no height is entered (adults keep the engine's 1.80 m)
+const AGE_STATURE: Record<string, number> = { u11: 1.38, u13: 1.49, u15: 1.61, u17: 1.7, u19: 1.75 };
+
+/** Stage-B overrides plus the stature to assume for the analysis' player when no height was entered. */
+async function withAgeStature(meta: Meta, overrides: Overrides): Promise<Overrides> {
+  const p = meta.player_id ? await db.get<StoredPlayer>("player", meta.player_id).catch(() => undefined) : undefined;
+  const h = p ? AGE_STATURE[p.age_group] : undefined;
+  return h ? { ...overrides, default_height_m: h } : overrides;
+}
+
 // ---------------- stage B edits ----------------
 async function applyEdit(id: string, overrides: Overrides, latest?: EventKey[]) {
   const meta = requireEditable(id);
   const A = await db.get<StageA>("stagea", id);
   if (!A) throw new Error("This analysis can't be edited any more (its working data is missing). Re-analyse it.");
   const { stageB } = await engine();
-  const { result, mesh } = await stageB(A, latest?.length ? { ...overrides, latest_events: latest } : overrides);
+  const { result, mesh } = await stageB(A, await withAgeStature(meta, latest?.length ? { ...overrides, latest_events: latest } : overrides));
   result.timing_s = meta.timing_s;
   const c = result.coaching;
   const cur = metas.get(id);
   if (!cur) throw new Error("This analysis was deleted.");
-  const m = { ...cur, overrides, score: c.score, grade: c.grade, notice: null, summary: summarise(result), arm: result.bowling_arm.arm,
+  const m = { ...cur, overrides, score: c.score, grade: c.grade, notice: null, summary: summarise(result), arm: result.bowling_arm.arm, arm_conf: armConf(result),
     view: result.view.view, thumb_frame: result.events.br.frame, updated: now() } as Meta;
   // result, mesh and metadata commit together, so they can never disagree
   await db.write(["result", "blob", "meta"], (st) => {
@@ -410,7 +423,7 @@ export const SAMPLES = {
 };
 export type SampleName = keyof typeof SAMPLES;
 // bump when the bundled sample analyses are regenerated, so a browser that imported an older copy gets the new one
-const SAMPLE_VERSION = 4;
+const SAMPLE_VERSION = 5;
 
 /** Import a precomputed sample analysis (opens instantly: no models to download). */
 async function importSample(which: SampleName): Promise<string> {
@@ -439,7 +452,7 @@ async function importSample(which: SampleName): Promise<string> {
   const t = now();
   const m = { ...newMeta(s.id, s.name, video?.size ?? 0, (bundle.meta.options ?? {}) as Partial<Options>, null, "video/mp4"),
     ...bundle.meta, id: s.id, name: s.name, created: t, updated: t, status: "done", progress: 1, stage: "done", stage_label: "Complete",
-    error: null, notice: null, player_id: have?.player_id ?? null, gen: "", sample_version: SAMPLE_VERSION } as Meta;
+    error: null, notice: null, player_id: have?.player_id ?? null, gen: "", sample_version: SAMPLE_VERSION, arm_conf: armConf(r) } as Meta;
   metas.set(s.id, m);
   await db.put("meta", s.id, m);
   results.delete(s.id); meshBufs.delete(s.id); dropUrls(s.id);
@@ -481,13 +494,13 @@ async function backup(includeVideos: boolean): Promise<{ blob: Blob; analyses: n
 }
 
 /** Add the analyses and players of a backup file. Ones already in this browser are kept as they are. */
-async function restore(file: Blob): Promise<{ analyses: number; players: number; skipped: number }> {
+async function restore(file: Blob): Promise<{ analyses: number; players: number; skipped: number; videos: number }> {
   await loadAll();
   const { header, files } = await decodeBackup(file);
   const free = await db.freeSpace();
   if (free !== null && free < file.size + 50e6) throw new Error("Your browser is short of storage space for this backup. Delete some analyses first, or make the backup without videos.");
   const have = new Set((await db.all<StoredPlayer>("player")).map((p) => p.id));
-  let players = 0, analyses = 0, skipped = 0;
+  let players = 0, analyses = 0, skipped = 0, videos = 0;
   for (const raw of header.players) {
     const p = raw as unknown as StoredPlayer;
     if (typeof p?.id !== "string" || !ID.test(p.id) || have.has(p.id)) continue;
@@ -502,10 +515,21 @@ async function restore(file: Blob): Promise<{ analyses: number; players: number;
     const m = a?.meta as unknown as Meta | undefined;
     const r = a?.result as AnalysisResult | undefined;
     const valid = m && typeof m.id === "string" && ID.test(m.id) && r && typeof r.frames?.start === "number" && typeof r.frames?.end === "number" && r.events && a.stagea;
-    if (!valid || metas.has(m.id)) { skipped++; continue; }
+    if (!valid) { skipped++; continue; }
+    if (metas.has(m.id)) {
+      // already here: only fill in the original video if this copy lacks it (a backup made without videos)
+      const j = a.files.findIndex((f) => f?.name === "input");
+      if (j >= 0 && !(await db.get<Blob>("blob", `${m.id}/input`))) {
+        await db.put("blob", `${m.id}/input`, files[i][j]);
+        dropUrls(m.id);
+        videos++;
+      }
+      skipped++;
+      continue;
+    }
     const entries = a.files.map((f, j) => [f?.name, files[i][j]] as const).filter(([name]) => typeof name === "string" && FILE_NAME.test(name));
     const meta = { ...m, status: "done", progress: 1, stage: "done", stage_label: "Complete", error: null, gen: "", owner: undefined, previous: null,
-      player_id: m.player_id && have.has(m.player_id) ? m.player_id : null, size_mb: m.size_mb ?? null } as Meta;
+      player_id: m.player_id && have.has(m.player_id) ? m.player_id : null, size_mb: m.size_mb ?? null, arm_conf: m.arm_conf ?? armConf(r) } as Meta;
     await db.write(["blob", "stagea", "result", "meta"], (st) => {
       for (const [name, b] of entries) st.blob.put(b, `${m.id}/${name}`);
       st.stagea.put(a.stagea, m.id);
@@ -515,7 +539,7 @@ async function restore(file: Blob): Promise<{ analyses: number; players: number;
     metas.set(m.id, meta);
     analyses++;
   }
-  return { analyses, players, skipped };
+  return { analyses, players, skipped, videos };
 }
 
 export const api = {

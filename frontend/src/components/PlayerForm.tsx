@@ -22,7 +22,10 @@ export default function PlayerForm({ initial, submitLabel, onSave, onCancel }: {
   const save = async () => {
     if (busy) return;   // a double Enter must not create two players
     const h = f.height ? Number(f.height) : null;
-    if (!f.name.trim()) return setErr("Give the player a name.");
+    if (!f.name.trim()) {
+      document.getElementById(`${uid}-name`)?.focus();
+      return setErr("Give the player a name.");
+    }
     if (!f.age_group) {
       document.getElementById(`${uid}-age`)?.focus();
       return setErr("Choose the player's age group — it sets safe bowling loads in the practice plan.");

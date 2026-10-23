@@ -9,6 +9,7 @@ import PlayerForm from "./PlayerForm";
 import Trend from "./Trend";
 import { IAlert, IBack, ICalendar, IChevronRight, ITrash, IUpload, IVideo } from "./Icons";
 import { SiteFooter } from "./Landing";
+import { usePageTitle } from "../lib/title";
 
 const dateOf = (ts: number | null) => (ts ? new Date(ts * 1000).toLocaleDateString(undefined, { day: "numeric", month: "short" }) : "–");
 const BETTER_TEXT: Record<string, string> = { higher: "higher is better", lower: "lower is better" };
@@ -18,6 +19,7 @@ export default function PlayerPage({ pid, go }: { pid: string; go: (to: string) 
   const [data, setData] = useState<PlayerProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  usePageTitle(data ? `${data.player.name}'s progress` : null);
 
   const load = useCallback(() => {
     api.progress(pid).then(setData).catch((e) => setError((e as Error).message));
@@ -154,13 +156,13 @@ export default function PlayerPage({ pid, go }: { pid: string; go: (to: string) 
                     {data.since_last.map((d) => (
                       <div key={d.key} className="row" style={{ gap: 10 }}>
                         <span className={`delta ${d.improved === true ? "up" : d.improved === false ? "down" : "same"}`}>
-                          {d.improved === true ? "▲ better" : d.improved === false ? "▼ worse" : "● same"}
+                          {d.improved === true ? "▲ better" : d.improved === false ? "▼ worse" : d.rated === false ? "○ info" : "● no clear change"}
                         </span>
                         <span className="grow">{d.label}</span>
                         <span className="mono faint">{fmt(d.before, d.unit === "ms" || d.unit === "cm" ? 0 : 1)} → <b className="muted">{fmt(d.after, d.unit === "ms" || d.unit === "cm" ? 0 : 1)}</b>{unitLabel(d.unit)}</span>
                       </div>
                     ))}
-                    <div className="faint" style={{ fontSize: 12 }}>"Same" means the change is within what a single camera can resolve.</div>
+                    <div className="faint" style={{ fontSize: 12 }}>"No clear change" means the difference is within what one camera can resolve at this frame rate (a value read one frame earlier or later can differ that much). "Info" values have no target range, so they aren't called better or worse.</div>
                   </div>
                 )}
               </div>
@@ -197,7 +199,7 @@ export default function PlayerPage({ pid, go }: { pid: string; go: (to: string) 
                           <span className={`chip ${last.rating}`}>{fmt(last.value, d)}{unitLabel(t.unit)}</span>
                         </div>
                         <Trend points={t.points.map((pt) => ({ value: pt.value, label: dateOf(pt.created), id: pt.id, rating: pt.rating }))}
-                          band={t.good} height={70} format={(v) => v.toFixed(d)} onPick={(id) => go(`/a/${id}`)} />
+                          band={t.good} height={70} format={(v) => fmt(v, d)} onPick={(id) => go(`/a/${id}`)} />
                         <div className="faint" style={{ fontSize: 12 }}>
                           {t.better && (BETTER_TEXT[t.better] ?? `best inside ${t.better}`)}
                           {best && t.points.length > 1 && <> · personal best {fmt(best.value, d)}{unitLabel(t.unit)} ({dateOf(best.created)})</>}

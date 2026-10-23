@@ -33,6 +33,7 @@ export default function Home({ go }: { go: (to: string) => void }) {
   const [demoBusy, setDemoBusy] = useState<Sample | null>(null);
   const [demoErr, setDemoErr] = useState<string | null>(null);
   const [attention, setAttention] = useState(0);
+  const [restored, setRestored] = useState<string | null>(null);   // outcome of a restore from the first-visit page
   const choosePlayer = (id: string | null) => { setCurrent(id); setCurrentPlayer(id); };
   const refreshPlayers = useCallback(() => {
     api.players().then((ps) => {
@@ -160,7 +161,7 @@ export default function Home({ go }: { go: (to: string) => void }) {
                 </div>
               )}
             </section>
-            {MODE === "browser" && <BackupPanel onRestored={() => { refresh(); refreshPlayers(); }} />}
+            {MODE === "browser" && <BackupPanel restored={restored} onRestored={() => { refresh(); refreshPlayers(); }} />}
           </div>
         ) : (
           <>
@@ -187,7 +188,7 @@ export default function Home({ go }: { go: (to: string) => void }) {
                     {MODE === "browser" && (
                       <div className="notice ok"><ILock size={16} /> <div><b>Private by design.</b> Your clip is analysed right here in your browser and never uploaded. Results are saved on this device only.</div></div>
                     )}
-                    {MODE === "browser" && <RestoreLink onRestored={() => { refresh(); refreshPlayers(); }} />}
+                    {MODE === "browser" && <RestoreLink onRestored={(text) => { setRestored(text); refresh(); refreshPlayers(); }} />}
                   </div>
                 </div>
               </div>
@@ -287,7 +288,8 @@ function HistoryCard({ m, go, onDeleted, picked, onPick, player }: { m: Analysis
         <div className="hmeta">
           {player && <span className="chip info">{player}</span>}
           {m.view && <span className="chip">{VIEW_LABEL[m.view]}</span>}
-          {m.arm && <span className="chip">{m.arm === "right" ? "Right-arm" : "Left-arm"}</span>}
+          {m.arm && <span className="chip" title={m.arm_conf != null && m.arm_conf < 0.7 ? "Detected bowling arm, not certain: check it in Detection & settings" : undefined}>
+            {m.arm === "right" ? "Right-arm" : "Left-arm"}{m.arm_conf != null && m.arm_conf < 0.7 ? "?" : ""}</span>}
         </div>
       </div>
       <div className="hfoot">

@@ -2,13 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import type { AnalysisMeta, AnalysisResult, EventKey, Metric, Rating } from "../types";
 import { EVENTS, EVENT_HEX, RATING_LABEL, VIEW_LABEL } from "../lib/constants";
-import { fmt, unitLabel } from "../lib/format";
+import { dateTime, fmt, unitLabel } from "../lib/format";
 import { EVENT_RATE } from "../engine/progress";
 import Header from "./Header";
 import FramePlayer from "./FramePlayer";
 import ErrorBoundary from "./ErrorBoundary";
 import { IAlert, IBack, IChevronRight } from "./Icons";
 import { SiteFooter } from "./Landing";
+import { usePageTitle } from "../lib/title";
 
 const ORDER: Record<Rating, number> = { good: 0, watch: 1, risk: 2, info: 3, unrated: 4 };
 
@@ -19,12 +20,16 @@ export default function ComparePage({ a, b, go }: { a: string; b: string; go: (t
   const [error, setError] = useState<string | null>(null);
   const [ev, setEv] = useState<EventKey>("br");
   const [overlay, setOverlay] = useState({ skeleton: true, angles: true, trail: false });
+  usePageTitle(data[0] && data[1] ? `Compare: ${data[0].meta.name} vs ${data[1].meta.name}` : "Compare");
 
   useEffect(() => {
     Promise.all([api.get(a), api.get(b)])
       .then(([x, y]) => {
         if (!x.result || !y.result) throw new Error("Both analyses must be finished before they can be compared.");
-        setData([{ meta: x.meta, result: x.result }, { meta: y.meta, result: y.result }]);
+        // A is always the earlier delivery, so "Improved" / "Worse" read as progress whichever was picked first
+        const pair: [Loaded, Loaded] = [{ meta: x.meta, result: x.result }, { meta: y.meta, result: y.result }];
+        if ((pair[0].meta.created ?? 0) > (pair[1].meta.created ?? 0)) pair.reverse();
+        setData(pair);
       })
       .catch((e) => setError((e as Error).message));
   }, [a, b]);
@@ -75,7 +80,10 @@ export default function ComparePage({ a, b, go }: { a: string; b: string; go: (t
       <div className="card player">
         <div className="cmp-side-head">
           <span className={`cmp-tag ${label === "B" ? "b" : ""}`} aria-label={`Delivery ${label}`}>{label}</span>
-          <b className="grow" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={d.meta.name}>{d.meta.name}</b>
+          <div className="grow" style={{ minWidth: 0 }}>
+            <b style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={d.meta.name}>{d.meta.name}</b>
+            <span className="faint" style={{ fontSize: 12 }}>{dateTime(d.meta.created)}</span>
+          </div>
           <span className="chip hide-sm">{VIEW_LABEL[d.result.view.view]}</span>
           {d.result.coaching.score !== null && <span className="score-pill static">{d.result.coaching.score}<small>/100</small></span>}
         </div>
@@ -103,7 +111,7 @@ export default function ComparePage({ a, b, go }: { a: string; b: string; go: (t
           <div className="an-head-main">
             <button type="button" className="back-link" onClick={() => go("/")}><IBack size={15} /> Your analyses</button>
             <h1 className="an-title">Side by side</h1>
-            <p className="muted" style={{ margin: 0 }}>Both deliveries at the same moment of the action. Pick the moment below.</p>
+            <p className="muted" style={{ margin: 0 }}>Both deliveries at the same moment of the action. A is the earlier one, B the later one: "Improved" means B is better.</p>
           </div>
         </div>
         <div className="cmp-bar">
@@ -134,7 +142,7 @@ export default function ComparePage({ a, b, go }: { a: string; b: string; go: (t
           <div className="table-scroll">
             <table className="cmp">
               <thead>
-                <tr><th>Metric</th><th>A</th><th>B</th><th>Change (B − A)</th><th /></tr>
+                <tr><th>Metric</th><th>A (earlier)</th><th>B (later)</th><th>Change (B − A)</th><th /></tr>
               </thead>
               <tbody>
                 {rows.map(({ key, a: ma, b: mb }) => <Row key={key} a={ma} b={mb} fps={Math.min(data[0]!.result.fps_real, data[1]!.result.fps_real)} />)}
@@ -180,7 +188,7 @@ function Row({ a, b, fps }: { a?: Metric; b?: Metric; fps: number }) {
       <td className="muted cmp-name" style={{ fontWeight: 600 }}>{m.label}</td>
       {cell(a, "A")}
       {cell(b, "B")}
-      <td className="mono" data-label="Change">{d === null ? <span className="faint">not comparable</span> : `${d > 0 ? "+" : ""}${fmt(d, Math.abs(d) < 10 ? 1 : 0)}${unitLabel(m.unit)}`}</td>
+      <td className="mono" data-label="Change B − A">{d === null ? <span className="faint">not comparable</span> : `${d > 0 ? "+" : ""}${fmt(d, Math.abs(d) < 10 ? 1 : 0)}${unitLabel(m.unit)}`}</td>
       <td className="cmp-verdict">{verdict && verdict !== "same" && <span className={`chip ${verdict === "better" ? "good" : "risk"}`}>{verdict === "better" ? "Improved" : "Worse"}</span>}</td>
     </tr>
   );

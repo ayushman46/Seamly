@@ -884,6 +884,7 @@ html:has(.report), body:has(.report), body:has(.report) #root { background: #e7e
 .rp-head { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
 .rp-brand { display: flex; align-items: center; gap: 8px; color: #b8182a; font-weight: 800; font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; }
 .rp-sub { color: #4b5563; font-size: 12.5px; }
+.rp-player { font-weight: 650; font-size: 14.5px; color: #111827; margin: -2px 0 4px; }
 .rp-score { text-align: center; border: 3px solid #1fbf7f; border-radius: 16px; padding: 10px 18px; min-width: 104px; }
 .rp-score b { display: block; font-family: var(--font-display); font-size: 38px; line-height: 1; color: #0b1220; }
 .rp-score span { font-size: 11px; font-weight: 800; color: #047857; text-transform: uppercase; letter-spacing: 0.06em; }

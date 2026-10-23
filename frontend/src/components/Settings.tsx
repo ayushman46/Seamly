@@ -12,8 +12,10 @@ export default function Settings({ result, busy, onRecompute, onRerun, playerId,
   const [players, setPlayers] = useState<Player[]>([]);
   useEffect(() => { api.players().then(setPlayers).catch(() => undefined); }, []);
   const stature = Math.round(result.skeleton.stature_m * 100);
-  const [height, setHeight] = useState(String(stature));
-  useEffect(() => setHeight(String(stature)), [stature]);   // follow resets / re-analyses
+  const entered = result.skeleton.height_source === "user";
+  // an assumed height is shown as a hint, not as if someone had typed it
+  const [height, setHeight] = useState(entered ? String(stature) : "");
+  useEffect(() => setHeight(entered ? String(stature) : ""), [stature, entered]);   // follow resets / re-analyses
   const sel = result.bowler;
   return (
     <div className="settings-grid">
@@ -52,9 +54,9 @@ export default function Settings({ result, busy, onRecompute, onRerun, playerId,
           </select>
         </div>
         <div className="field">
-          <label>Bowler height (cm) — scales distances ({result.skeleton.height_source === "user" ? "entered" : "default"})</label>
+          <label>Bowler height (cm) — scales distances{entered ? " (entered)" : `: ${stature} cm assumed, enter the real height for accurate metres`}</label>
           <div className="row">
-            <input className="input" style={{ width: 120 }} aria-label="Bowler height in centimetres" inputMode="numeric" value={height} onChange={(e) => setHeight(e.target.value.replace(/[^0-9]/g, ""))} />
+            <input className="input" style={{ width: 120 }} aria-label="Bowler height in centimetres" inputMode="numeric" placeholder={entered ? undefined : `e.g. ${stature}`} value={height} onChange={(e) => setHeight(e.target.value.replace(/[^0-9]/g, ""))} />
             <button className="btn sm" disabled={busy || !height} onClick={() => {
               const h = Number(height);
               if (h >= 120 && h <= 230) onRecompute({ height_m: h / 100 }, `Height set to ${h} cm`);

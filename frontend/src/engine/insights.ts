@@ -337,7 +337,7 @@ export function practicePlan(result: InsightsResult, player: InsightsPlayer | nu
         if (drillBalls + sets * x.reps > drillCap) continue;   // not even one set fits today's load: leave it out
         drillBalls += sets * x.reps;
       }
-      const reps = x.reps > 1 ? ` (${sets} x ${x.reps})` : "";
+      const reps = x.reps > 1 ? ` (${sets} × ${x.reps})` : "";
       items.push({ text: x.text + reps, detail: title ? `Focus: ${title}` : null });
     }
     const left = budget - warm - drillBalls;
@@ -346,9 +346,9 @@ export function practicePlan(result: InsightsResult, player: InsightsPlayer | nu
     if (overs >= 1) {
       const ov = (n: number) => `${n} over${n > 1 ? "s" : ""}`;
       if (w === 1) {
-        items.push({ text: `Short run-up (5-7 steps): ${ov(overs)} focusing only on "${cue}".` });
+        items.push({ text: `Short run-up (5–7 steps): ${ov(overs)} focusing only on “${cue}”.` });
       } else {
-        let txt = `Full run-up: ${ov(overs)} at about 80% effort, keeping "${cue}".`;
+        let txt = `Full run-up: ${ov(overs)} at about 80% effort, keeping “${cue}”.`;
         if (second >= 1) txt += ` Rest at least 20 minutes, then an optional second spell of up to ${ov(second)}.`;
         items.push({ text: txt });
       }

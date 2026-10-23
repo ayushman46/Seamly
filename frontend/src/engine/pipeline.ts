@@ -38,6 +38,7 @@ export const STAGES: [string, string, number][] = [
 
 export { AnalysisError, SLOWMO_CHOICES, MIN_FPS, DEFAULT_HEIGHT_M, MAX_VIDEO_SECONDS, optionsFrom, type Options } from "./common";
 import { AnalysisError, SLOWMO_CHOICES, MIN_FPS, DEFAULT_HEIGHT_M, MAX_VIDEO_SECONDS, optionsFrom, type Options } from "./common";
+import { modelsCached } from "../lib/modelCache";
 
 const FRAME_JPEG_MAX_SIDE = 1280;
 const FRAME_JPEG_QUALITY = 0.85;
@@ -222,8 +223,9 @@ export async function analyseVideo(file: Blob, options: Partial<Options>, onProg
   let lastProgress: Parameters<ProgressCb>[0] | null = null;
   const prog = new Progress((p) => { lastProgress = p; onProgress?.(p); });
   const t0 = performance.now();
-  prog.stage("probe", 0, "Loading the analysis models (first time only)");
-  const models = await loadModels((f) => prog.stage("probe", 0.9 * f, "Loading the analysis models (first time only)"));
+  const loading = (await modelsCached()) ? "Loading the analysis models" : "Downloading the analysis models (first time only, about 70 MB)";
+  prog.stage("probe", 0, loading);
+  const models = await loadModels((f) => prog.stage("probe", 0.9 * f, loading));
   prog.stage("probe", 0.92, "Reading video");
   let src: FrameSource;
   try {
@@ -464,6 +466,7 @@ export interface Overrides {
   latest_events?: EventKey[];
   bowling_arm?: "auto" | "left" | "right";
   height_m?: number | null;
+  default_height_m?: number | null;   // stature to assume when none is entered (e.g. typical for the player's age)
   view?: ViewInfo["view"];
   gender?: number;
 }
@@ -487,7 +490,7 @@ export async function stageB(A: StageA, overrides: Overrides = {}, onProgress?: 
     ...(overrides.height_m !== undefined ? { height_m: overrides.height_m } : {}) });
   const fps = meta.fps;
   const realFps = fps * opts.slowmo_factor;
-  const height = opts.height_m ?? DEFAULT_HEIGHT_M;
+  const height = opts.height_m ?? overrides.default_height_m ?? DEFAULT_HEIGHT_M;
   const sweep = meta.sweep;
   const depthW = meta.pose3d === "sam3d" ? 20 : null;
   prog.stage("events", 0.1);

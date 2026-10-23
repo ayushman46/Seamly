@@ -25,7 +25,7 @@ export const MIN_CHANGE_KEY: Record<string, number> = { release_height_pct: 8.0 
 // one frame earlier or later differs by about this / fps, so smaller changes can't be told from timing noise.
 export const EVENT_RATE: Record<string, number> = {
   trunk_forward_br: 450.0, trunk_flexion_ffc_br: 500.0, trunk_lateral_br: 200.0, front_knee_br: 150.0, front_knee_ffc: 150.0,
-  front_knee_flexion: 150.0, back_knee_bfc: 250.0, hip_shoulder_sep_bfc: 150.0, head_offset_br: 200.0,
+  front_knee_flexion: 150.0, back_knee_bfc: 250.0, hip_shoulder_sep_bfc: 150.0, head_offset_br: 200.0, release_height_pct: 100.0,
 };
 // shown on the progress page, in this order (when measured)
 export const KEY_METRICS = ["release_height_pct", "front_knee_br", "trunk_lateral_br", "trunk_flexion_ffc_br",
@@ -71,10 +71,10 @@ export function improved(key: string, before: number, after: number, unit: strin
   const rule = BETTER[key];
   let tol = has(MIN_CHANGE_KEY, key) ? MIN_CHANGE_KEY[key] : has(MIN_CHANGE, unit) ? MIN_CHANGE[unit] : 0.0;
   if (unit === "ms" && fps) tol = pyMax(tol, 1000.0 / fps);
-  // angles and heights read at an event move a lot when it lands one frame earlier or later at low frame rates
-  // (trunk lean can change ~10 deg per frame at 25 fps): demand a proportionally bigger change
+  // a value read at an event differs by about its speed / fps when the event lands one frame either side
+  else if (fps && has(EVENT_RATE, key)) tol = pyMax(tol, EVENT_RATE[key] / fps);
+  // other angles and heights: demand a proportionally bigger change at low frame rates
   else if (fps && fps < 60) tol *= 60.0 / fps;
-  if (fps && has(EVENT_RATE, key)) tol = pyMax(tol, EVENT_RATE[key] / fps);
   if (rule === undefined || Math.abs(after - before) < tol) return null;
   if (Array.isArray(rule)) {
     const [, lo, hi] = rule;
@@ -98,7 +98,7 @@ function betterOf(key: string, a: number, b: number): number {
 function betterLabel(key: string): string | null {
   const rule = BETTER[key];
   if (rule === undefined) return null;
-  if (Array.isArray(rule)) return `${pyFormat(rule[1], 0)}-${pyFormat(rule[2], 0)}`;
+  if (Array.isArray(rule)) return `${pyFormat(rule[1], 0)}–${pyFormat(rule[2], 0)}`;
   return rule;
 }
 
@@ -185,8 +185,11 @@ export function playerProgress(player: PlayerProfile, analyses: AnalysisIn[]): P
       for (const [k, v] of Object.entries(cur.metrics)) {
         const pv = prev.metrics[k];
         if (!pv || v.reliability !== "measured" || pv.reliability !== "measured" || !has(BETTER, k)) continue;
-        sinceLast.push({ key: k, label: v.label, unit: v.unit, before: pv.value, after: v.value,
-          improved: improved(k, pv.value, v.value, v.unit, fps) });
+        // a value not rated against a norm in both sessions (e.g. "info") gets no better/worse verdict
+        const RATED = ["good", "watch", "risk"];
+        const rated = RATED.includes(v.rating) && RATED.includes(pv.rating);
+        sinceLast.push({ key: k, label: v.label, unit: v.unit, before: pv.value, after: v.value, rated,
+          improved: rated ? improved(k, pv.value, v.value, v.unit, fps) : null });
       }
       const rank = (d: { improved: boolean | null }) => (d.improved === null ? 2 : 0) + (!d.improved ? 1 : 0);
       sinceLast.sort((a, b) => rank(a) - rank(b));

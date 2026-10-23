@@ -4,6 +4,7 @@ import { MODE, api } from "../api";
 import type { AnalysisMeta, AnalysisResult, EventKey, Insights } from "../types";
 import { EVENTS, SLOWMO_OPTIONS, VIEW_LABEL } from "../lib/constants";
 import { dateTime, fmt, realSec } from "../lib/format";
+import { modelsCached } from "../lib/modelCache";
 import Header from "./Header";
 import FramePlayer from "./FramePlayer";
 import Timeline from "./Timeline";
@@ -19,6 +20,7 @@ import { BackHealthCard, SummaryCard } from "./InsightsCard";
 import { setCurrentPlayer } from "../lib/player";
 import { IAlert, IBack, ICheck, IChevronDown, IClock, ICube, IDownload, IFile, IFilm, IInfo, ILock, INext, IPause, IPlay, IPrev, IRefresh, IVideo } from "./Icons";
 import { SiteFooter } from "./Landing";
+import { usePageTitle } from "../lib/title";
 
 // three.js is large: the 3D viewer loads as its own chunk so the player and metrics appear first
 const Viewer3D = lazyPage(() => import("./Viewer3D"));
@@ -51,6 +53,7 @@ export default function AnalysisPage({ id, go, initialTab }: { id: string; go: (
   const [meta, setMeta] = useState<AnalysisMeta | null>(null);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  usePageTitle(meta?.name);
 
   const load = useCallback(async () => {
     try {
@@ -135,6 +138,8 @@ function ProcRing({ value }: { value: number }) {
 }
 
 function Processing({ meta, go }: { meta: AnalysisMeta; go: (to: string) => void }) {
+  const [cached, setCached] = useState(true);
+  useEffect(() => { if (MODE === "browser") void modelsCached().then(setCached); }, []);
   const cur = STAGES.findIndex(([k]) => k === meta.stage);
   const p = meta.progress || 0;
   const queued = meta.status === "queued";
@@ -194,7 +199,7 @@ function Processing({ meta, go }: { meta: AnalysisMeta; go: (to: string) => void
             )}
             <p>
               {MODE === "browser"
-                ? "A short clip of one delivery usually takes 15–40 seconds on a recent laptop; phones, older devices and long or high-speed (240 fps) clips take longer. The first analysis also downloads the analysis models (about 70 MB, once). The estimate above updates as it goes."
+                ? "A short clip of one delivery usually takes 15–40 seconds on a recent laptop; phones, older devices and long or high-speed (240 fps) clips take longer. " + (cached ? "" : "This first one also downloads the analysis models (about 70 MB, once). ") + "The estimate above updates as it goes."
                 : "A short clip of one delivery takes about 30–60 seconds; long or high-speed (240 fps) clips up to about two minutes."}
             </p>
           </div>
@@ -546,7 +551,7 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
                   <a role="menuitem" href={api.objUrl(id, frame)} download={`${fileBase}-frame-${frame}.obj`} onClick={() => setMenu(false)}><ICube size={15} /> 3D mesh of this frame (.obj)</a>
                   <a role="menuitem" href={api.exportUrl(id, "csv")} download={`${fileBase}-angles.csv`} onClick={() => setMenu(false)}><IFile size={15} /> Joint-angle time series (.csv)</a>
                   <a role="menuitem" href={api.exportUrl(id, "json")} download={`${fileBase}-analysis.json`} onClick={() => setMenu(false)}><IFile size={15} /> Full analysis (.json)</a>
-                  {api.hasVideo(id) && <a role="menuitem" href={api.videoUrl(id)} download={videoName} onClick={() => setMenu(false)}><IVideo size={15} /> Original video</a>}
+                  {api.hasVideo(id) && <a role="menuitem" href={api.videoUrl(id)} download={videoName} onClick={() => setMenu(false)}><IVideo size={15} /> Original video (.{ext})</a>}
                   <div className="menu-sep" />
                   <button role="menuitem" onClick={() => { setMenu(false); go(`/r/${id}`); }}><IFilm size={15} /> Coaching report (print / PDF)</button>
                 </div>
@@ -624,7 +629,7 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
           </div>
           <div role="tabpanel" id="tab-panel" aria-labelledby={`tab-${tab}`}>
           <ErrorBoundary label="This tab">
-          {tab === "coach" && <CoachingPanel result={result} onJump={(k) => jumpTo(k as EventKey)} />}
+          {tab === "coach" && <CoachingPanel result={result} onJump={(k) => jumpTo(k as EventKey)} age={ins?.player?.age_group} />}
           {tab === "metrics" && <MetricsPanel result={result} selected={selMetric} onSelect={(k, evKey) => { setSelMetric(k === selMetric ? null : k); const e = evKey ? result.events[evKey as EventKey] : null; if (e) { setPlaying(false); setFrame(e.frame); } }} />}
           {tab === "charts" && <Charts result={result} frame={frame} onSeek={(f) => { setPlaying(false); setFrame(f); }} />}
           {tab === "frame" && <Inspector result={result} frame={frame} onSetEvent={setEvent} busy={busy} />}

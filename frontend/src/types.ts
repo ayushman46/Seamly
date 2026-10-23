@@ -124,6 +124,7 @@ export interface AnalysisMeta {
   elapsed: number | null;
   size_mb: number | null;
   input_type?: string | null;   // MIME type of the uploaded video
+  arm_conf?: number | null;     // confidence of the detected bowling arm (1 = set by the user)
   queue_position?: number | null;
   notice?: string | null;   // e.g. a failed re-analysis that fell back to the previous result
   suggest?: { slowmo_factor?: number } | null;   // option change that would make a failed analysis work
@@ -163,7 +164,7 @@ export interface PlayerProgress {
   sessions: SessionSummary[];
   trends: Record<string, { label: string; unit: string; better: string | null; good: [number | null, number | null] | null; norm: string | null; points: { id: string; created: number; value: number; rating: string }[] }>;
   best: Record<string, { id: string; created: number; value: number; label: string; unit: string }>;
-  since_last: { key: string; label: string; unit: string; before: number; after: number; improved: boolean | null }[];
+  since_last: { key: string; label: string; unit: string; before: number; after: number; rated?: boolean; improved: boolean | null }[];
   compared_to: { id: string; created: number; view: View } | null;
   focus: { key: string; headline: string; title: string; sessions: number; first_value: number | null; latest_value: number | null } | null;
   stats: { count: number; best_score: number | null; latest_score: number | null; first_score: number | null; first: number | null; last: number | null };

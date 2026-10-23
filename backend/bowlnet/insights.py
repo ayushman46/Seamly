@@ -290,7 +290,7 @@ def practice_plan(result: dict, player: dict | None = None) -> dict:
                 if drill_balls + sets * d["reps"] > drill_cap:
                     continue   # not even one set fits today's load: leave it out
                 drill_balls += sets * d["reps"]
-            reps = f" ({sets} x {d['reps']})" if d["reps"] > 1 else ""
+            reps = f" ({sets} × {d['reps']})" if d["reps"] > 1 else ""
             items.append({"text": d["text"] + reps, "detail": f"Focus: {title}" if title else None})
         left = budget - warm - drill_balls
         overs = min(spell_overs, left // 6)
@@ -298,9 +298,9 @@ def practice_plan(result: dict, player: dict | None = None) -> dict:
         if overs >= 1:
             ov = lambda n: f"{n} over{'s' if n > 1 else ''}"
             if w == 1:
-                items.append({"text": f"Short run-up (5-7 steps): {ov(overs)} focusing only on \"{cue}\"."})
+                items.append({"text": f"Short run-up (5–7 steps): {ov(overs)} focusing only on “{cue}”."})
             else:
-                txt = f"Full run-up: {ov(overs)} at about 80% effort, keeping \"{cue}\"."
+                txt = f"Full run-up: {ov(overs)} at about 80% effort, keeping “{cue}”."
                 if second >= 1:
                     txt += f" Rest at least 20 minutes, then an optional second spell of up to {ov(second)}."
                 items.append({"text": txt})

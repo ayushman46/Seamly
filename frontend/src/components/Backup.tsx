@@ -7,16 +7,19 @@ type Note = { kind: "ok" | "error"; text: string } | null;
 
 const mb = (bytes: number) => (bytes < 1e6 ? "under 1 MB" : `${Math.round(bytes / 1e6)} MB`);
 
-function restoredText(r: { analyses: number; players: number; skipped: number }): string {
+function restoredText(r: { analyses: number; players: number; skipped: number; videos: number }): string {
   const parts = [];
   if (r.analyses) parts.push(`${r.analyses} ${r.analyses === 1 ? "analysis" : "analyses"}`);
   if (r.players) parts.push(`${r.players} ${r.players === 1 ? "player" : "players"}`);
-  const added = parts.length ? `Restored ${parts.join(" and ")}.` : "Nothing new to restore.";
-  return r.skipped ? `${added} ${r.skipped} already in this browser ${r.skipped === 1 ? "was" : "were"} left as ${r.skipped === 1 ? "it was" : "they were"}.` : added;
+  let text = parts.length ? `Restored ${parts.join(" and ")}.` : r.videos ? "" : "Nothing new to restore.";
+  if (r.videos) text += `${text ? " " : ""}Added the original video to ${r.videos} ${r.videos === 1 ? "analysis" : "analyses"} that didn't have it.`;
+  const kept = r.skipped - r.videos;
+  if (kept > 0) text += ` ${kept} already in this browser ${kept === 1 ? "was" : "were"} left as ${kept === 1 ? "it was" : "they were"}.`;
+  return text;
 }
 
 /** Restoring from a backup file: a hidden file input, its busy state and the outcome. */
-function useRestore(onRestored: () => void, onStart?: () => void) {
+function useRestore(onRestored: (text: string) => void, onStart?: () => void) {
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<Note>(null);
@@ -28,8 +31,9 @@ function useRestore(onRestored: () => void, onStart?: () => void) {
     setNote(null);
     onStart?.();
     try {
-      setNote({ kind: "ok", text: restoredText(await api.restore(f)) });
-      onRestored();
+      const text = restoredText(await api.restore(f));
+      setNote({ kind: "ok", text });
+      onRestored(text);
     } catch (er) {
       setNote({ kind: "error", text: (er as Error).message });
     } finally {
@@ -51,10 +55,11 @@ function NoteLine({ note }: { note: Note }) {
 }
 
 /** Workspace card: download every analysis and player as one file, or add those from a backup. */
-export function BackupPanel({ onRestored }: { onRestored: () => void }) {
+export function BackupPanel({ onRestored, restored }: { onRestored: (text: string) => void; restored?: string | null }) {
   const [videos, setVideos] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [note, setNote] = useState<Note>(null);
+  // a restore made from the first-visit page lands here (that page is replaced by this workspace)
+  const [note, setNote] = useState<Note>(restored ? { kind: "ok", text: restored } : null);
   const restore = useRestore(onRestored, () => setNote(null));
   const download = async () => {
     setBusy(true);
@@ -63,13 +68,13 @@ export function BackupPanel({ onRestored }: { onRestored: () => void }) {
     try {
       const { blob, analyses, players } = await api.backup(videos);
       if (!analyses && !players) { setNote({ kind: "error", text: "There's nothing to back up yet: analyse a delivery or create a player first." }); return; }
-      const name = backupName();
+      const name = backupName(new Date(), videos);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url; a.download = name;
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
-      setNote({ kind: "ok", text: `Saved ${name} (${mb(blob.size)}: ${analyses} ${analyses === 1 ? "analysis" : "analyses"}, ${players} ${players === 1 ? "player" : "players"}). Open Seamly on the other device and choose “Restore a backup”.` });
+      setNote({ kind: "ok", text: `Saved ${name} (${mb(blob.size)}: ${analyses} ${analyses === 1 ? "analysis" : "analyses"}, ${players} ${players === 1 ? "player" : "players"}; the samples and unfinished analyses aren't included). Open Seamly on the other device and choose “Restore a backup”.` });
     } catch (er) {
       setNote({ kind: "error", text: (er as Error).message });
     } finally {
@@ -106,7 +111,7 @@ export function BackupPanel({ onRestored }: { onRestored: () => void }) {
 }
 
 /** For a browser with nothing in it yet: bring analyses over from another device. */
-export function RestoreLink({ onRestored }: { onRestored: () => void }) {
+export function RestoreLink({ onRestored }: { onRestored: (text: string) => void }) {
   const restore = useRestore(onRestored);
   return (
     <div style={{ textAlign: "center" }}>

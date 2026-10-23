@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { AnalysisResult } from "../types";
 import { EVENTS, EVENT_HEX, SERIES_INFO, measuredForView, physical } from "../lib/constants";
 import { fmt, unitLabel } from "../lib/format";
@@ -42,7 +42,16 @@ function Chart({ k, result, frame, onSeek }: { k: string; result: AnalysisResult
   const data = useMemo(() => result.series[k].map((v) => physical(k, v)), [result, k]);
   const svg = useRef<SVGSVGElement>(null);
   const f0 = result.frames.start;
-  const W = 600, H = 170, P = { l: 40, r: 10, t: 10, b: 22 };
+  // drawn at the width it is shown at (a stretched viewBox squashed the labels sideways on phones)
+  const [W, setW] = useState(600);
+  useEffect(() => {
+    const el = svg.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setW(Math.max(240, Math.round(el.clientWidth || 600))));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const H = 170, P = { l: 40, r: 10, t: 10, b: 22 };
   const reliable = measuredForView(k, info.plane, result.view.view);
   const { lo, hi, path } = useMemo(() => {
     const v = data.filter((x) => isFinite(x));
@@ -58,7 +67,8 @@ function Chart({ k, result, frame, onSeek }: { k: string; result: AnalysisResult
     const y = (val: number) => P.t + (1 - (val - lo) / (hi - lo)) * (H - P.t - P.b);
     const path = data.map((val, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(val).toFixed(1)}`).join("");
     return { lo, hi, path };
-  }, [data, k]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, k, W]);
   const n = data.length;
   const x = (i: number) => P.l + (i / Math.max(1, n - 1)) * (W - P.l - P.r);
   const y = (val: number) => P.t + (1 - (val - lo) / (hi - lo)) * (H - P.t - P.b);
@@ -79,11 +89,11 @@ function Chart({ k, result, frame, onSeek }: { k: string; result: AnalysisResult
         </div>
         <span className="mono" style={{ fontSize: 15, fontWeight: 700 }}>{fmt(data[i], 1)}{unitLabel(info.unit)}</span>
       </div>
-      <svg ref={svg} className="chart" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" onClick={click}>
+      <svg ref={svg} className="chart" viewBox={`0 0 ${W} ${H}`} onClick={click}>
         {ticks.map((t) => (
           <g key={t}>
             <line x1={P.l} x2={W - P.r} y1={y(t)} y2={y(t)} stroke="#1f2a3d" strokeDasharray="3 4" />
-            <text x={P.l - 6} y={y(t) + 4} fill="#6f7d94" fontSize="11" textAnchor="end">{t.toFixed(0)}</text>
+            <text x={P.l - 6} y={y(t) + 4} fill="#6f7d94" fontSize="11" textAnchor="end">{fmt(t, 0)}</text>
           </g>
         ))}
         {(() => {

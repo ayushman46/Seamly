@@ -1,5 +1,6 @@
+import { fmt } from "../lib/format";
 /** Small SVG line chart for values over sessions, with an optional "good" band and clickable points. */
-export default function Trend({ points, band, height = 90, color = "var(--accent)", format = (v) => v.toFixed(0), onPick }: {
+export default function Trend({ points, band, height = 90, color = "var(--accent)", format = (v) => fmt(v, 0), onPick }: {
   points: { value: number; label: string; id?: string; rating?: string }[];
   band?: [number | null, number | null] | null;
   height?: number;

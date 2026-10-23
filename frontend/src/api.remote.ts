@@ -78,5 +78,5 @@ export const api = {
   hasVideo: (_id: string) => true,
   // the server keeps its own data: backups are for the in-browser build
   backup: async (_includeVideos: boolean): Promise<{ blob: Blob; analyses: number; players: number }> => { throw new Error("Backups are made on the Seamly server itself."); },
-  restore: async (_file: Blob): Promise<{ analyses: number; players: number; skipped: number }> => { throw new Error("Backups are restored on the Seamly server itself."); },
+  restore: async (_file: Blob): Promise<{ analyses: number; players: number; skipped: number; videos: number }> => { throw new Error("Backups are restored on the Seamly server itself."); },
 };

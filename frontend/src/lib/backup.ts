@@ -65,5 +65,5 @@ export async function decodeBackup(file: Blob): Promise<{ header: BackupHeader; 
   return { header, files };
 }
 
-export const backupName = (d = new Date()) =>
-  `seamly-backup-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}${BACKUP_EXT}`;
+export const backupName = (d = new Date(), videos = false) =>
+  `seamly-backup-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}${videos ? "-with-videos" : ""}${BACKUP_EXT}`;
