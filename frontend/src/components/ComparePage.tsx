@@ -3,6 +3,7 @@ import { api } from "../api";
 import type { AnalysisMeta, AnalysisResult, EventKey, Metric, Rating } from "../types";
 import { EVENTS, EVENT_HEX, RATING_LABEL, VIEW_LABEL } from "../lib/constants";
 import { fmt, unitLabel } from "../lib/format";
+import { EVENT_RATE } from "../engine/progress";
 import Header from "./Header";
 import FramePlayer from "./FramePlayer";
 import ErrorBoundary from "./ErrorBoundary";
@@ -155,7 +156,9 @@ export default function ComparePage({ a, b, go }: { a: string; b: string; go: (t
 function resolution(m: Metric, fps: number): number {
   if (m.unit === "ms") return Math.max(20, 1000 / fps);
   const base = m.key === "release_height_pct" ? 8 : m.unit === "% height" ? 2 : m.unit === "cm" ? 5 : 3;
-  return fps < 60 ? base * (60 / fps) : base;
+  const scaled = fps < 60 ? base * (60 / fps) : base;
+  // and never less than what one frame of timing moves the value (trunk lean at release moves ~15° a frame at 25 fps)
+  return EVENT_RATE[m.key] ? Math.max(scaled, EVENT_RATE[m.key] / fps) : scaled;
 }
 
 function Row({ a, b, fps }: { a?: Metric; b?: Metric; fps: number }) {

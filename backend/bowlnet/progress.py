@@ -20,6 +20,11 @@ BETTER = {
 # (timings: at least one frame of the slower clip, see improved(); release height: its stated +/- 8 points)
 MIN_CHANGE = {"deg": 3.0, "% height": 2.0, "ms": 20.0, "cm": 5.0}
 MIN_CHANGE_KEY = {"release_height_pct": 8.0}
+# how fast each value typically moves around the event it is read at (units per second, conservative). A reading
+# one frame earlier or later differs by about this / fps, so smaller changes can't be told from timing noise.
+EVENT_RATE = {"trunk_forward_br": 450.0, "trunk_flexion_ffc_br": 500.0, "trunk_lateral_br": 200.0,
+              "front_knee_br": 150.0, "front_knee_ffc": 150.0, "front_knee_flexion": 150.0, "back_knee_bfc": 250.0,
+              "hip_shoulder_sep_bfc": 150.0, "head_offset_br": 200.0}
 # shown on the progress page, in this order (when measured)
 KEY_METRICS = ("release_height_pct", "front_knee_br", "trunk_lateral_br", "trunk_flexion_ffc_br", "head_offset_br",
                "ffc_to_br_ms", "stride_length_pct", "hip_shoulder_sep_bfc", "back_knee_bfc")
@@ -62,6 +67,8 @@ def improved(key: str, before: float, after: float, unit: str, fps: float | None
         # angles and heights read at an event move a lot when it lands one frame earlier or later at low frame
         # rates (trunk lean can change ~10 deg per frame at 25 fps): demand a proportionally bigger change
         tol *= 60.0 / fps
+    if fps and key in EVENT_RATE:
+        tol = max(tol, EVENT_RATE[key] / fps)
     if rule is None or abs(after - before) < tol:
         return None
     if isinstance(rule, tuple):
