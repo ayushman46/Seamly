@@ -435,6 +435,9 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;            // browser / OS shortcuts
       const el = e.target as HTMLElement | null;
+      // single-key shortcuts only while nothing else has focus or focus is in the video player, so they never
+      // clash with screen-reader keys or typing elsewhere on the page
+      if (el && el !== document.body && !el.closest?.(".card.player")) return;
       if (el?.closest?.("input, select, textarea, [contenteditable], [role=tablist], [role=menu]")) return;   // they use the arrows
       if (el?.closest?.("button, a") && (e.key === " " || e.key === "Enter")) return;   // native activation
       if (e.key === " " || e.key === "k") { e.preventDefault(); setPlaying((p) => !p); }

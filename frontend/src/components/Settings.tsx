@@ -22,41 +22,41 @@ export default function Settings({ result, busy, onRecompute, onRerun, playerId,
       <div className="stack">
         <div role="heading" aria-level={3} className="card-title">Corrections</div>
         <div className="field">
-          <label>Player (groups this delivery into their progress)</label>
-          <select className="input" style={{ width: 260, maxWidth: "100%" }} value={playerId ?? ""} disabled={busy} aria-label="Player"
+          <label htmlFor="set-player">Player (groups this delivery into their progress)</label>
+          <select id="set-player" className="input" style={{ width: 260, maxWidth: "100%" }} value={playerId ?? ""} disabled={busy}
             onChange={(e) => onAssign(e.target.value || null)}>
             <option value="">No player</option>
             {players.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </div>
         <div className="field">
-          <label>Bowling arm (detected: {result.bowling_arm.arm}, {Math.round(result.bowling_arm.confidence * 100)}% agreement)</label>
-          <div className="seg">
+          <label id="set-arm">Bowling arm (detected: {result.bowling_arm.arm}, {Math.round(result.bowling_arm.confidence * 100)}% agreement)</label>
+          <div className="seg" role="group" aria-labelledby="set-arm">
             {["right", "left"].map((a) => (
               <button key={a} className={result.bowling_arm.arm === a ? "on" : ""} aria-pressed={result.bowling_arm.arm === a} disabled={busy} onClick={() => onRecompute({ bowling_arm: a }, `Bowling arm set to ${a}`)}>{a === "right" ? "Right-arm" : "Left-arm"}</button>
             ))}
           </div>
         </div>
         <div className="field">
-          <label>Camera view (detected: {VIEW_LABEL[result.view.view]})</label>
-          <div className="seg">
+          <label id="set-view">Camera view (detected: {VIEW_LABEL[result.view.view]})</label>
+          <div className="seg" role="group" aria-labelledby="set-view">
             {(["side_on", "behind", "front_on"] as const).map((v) => (
               <button key={v} className={result.view.view === v ? "on" : ""} aria-pressed={result.view.view === v} disabled={busy} onClick={() => onRecompute({ view: v }, `View set to ${VIEW_LABEL[v]}`)}>{VIEW_LABEL[v]}</button>
             ))}
           </div>
         </div>
         <div className="field">
-          <label>Clip speed (use if the video plays in slow motion; re-analyses the video)</label>
-          <select className="input" style={{ width: 230, maxWidth: "100%" }} aria-label="Clip speed" disabled={busy}
+          <label htmlFor="set-speed">Clip speed (use if the video plays in slow motion; re-analyses the video)</label>
+          <select id="set-speed" className="input" style={{ width: 230, maxWidth: "100%" }} disabled={busy}
             value={String(Math.round(result.options.slowmo_factor || 1))}
             onChange={(e) => onRerun({ slowmo_factor: Number(e.target.value) })}>
             {SLOWMO_OPTIONS.map((o) => <option key={o.value} value={String(o.value)}>{o.label}</option>)}
           </select>
         </div>
         <div className="field">
-          <label>Bowler height (cm) — scales distances{entered ? " (entered)" : `: ${stature} cm assumed, enter the real height for accurate metres`}</label>
+          <label htmlFor="set-height">Bowler height (cm) — scales distances{entered ? " (entered)" : `: ${stature} cm assumed, enter the real height for accurate metres`}</label>
           <div className="row">
-            <input className="input" style={{ width: 120 }} aria-label="Bowler height in centimetres" inputMode="numeric" placeholder={entered ? undefined : `e.g. ${stature}`} value={height} onChange={(e) => setHeight(e.target.value.replace(/[^0-9]/g, ""))} />
+            <input id="set-height" className="input" style={{ width: 120 }} inputMode="numeric" placeholder={entered ? undefined : `e.g. ${stature}`} value={height} onChange={(e) => setHeight(e.target.value.replace(/[^0-9]/g, ""))} />
             <button className="btn sm" disabled={busy || !height} onClick={() => {
               const h = Number(height);
               if (h >= 120 && h <= 230) onRecompute({ height_m: h / 100 }, `Height set to ${h} cm`);
