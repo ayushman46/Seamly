@@ -64,7 +64,9 @@ export default function FramePlayer({ id, result, frame, overlay, selMetric, hud
     return () => { cancelled = true; };
   }, [id, f0, f1, n]);
 
-  // smoothed bowler crop window for auto-zoom (broadcast footage: bowler is small)
+  const portrait = result.video.height > result.video.width;
+  const stageAspect = portrait ? 4 / 5 : 16 / 9;
+  // smoothed bowler crop window for auto-zoom (broadcast footage: bowler is small), shaped like the stage
   const crops = useMemo(() => {
     const out: [number, number, number, number][] = [];
     const W = result.video.width * result.display_scale, H = result.video.height * result.display_scale;
@@ -75,7 +77,7 @@ export default function FramePlayer({ id, result, frame, overlay, selMetric, hud
       const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
       const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2;
       const h = Math.max(Math.max(...ys) - Math.min(...ys), (Math.max(...xs) - Math.min(...xs)) * 9 / 16) * 1.9;
-      const hh = Math.min(H, Math.max(h, H * 0.28)), ww = Math.min(W, hh * (W / H));
+      const hh = Math.min(H, Math.max(h, H * 0.28)), ww = Math.min(W, hh * stageAspect);
       let c: [number, number, number, number] = [cx - ww / 2, cy - hh / 2, ww, hh];
       if (prev) c = c.map((v, k) => prev![k] * 0.75 + v * 0.25) as typeof c;
       c[0] = Math.max(0, Math.min(W - c[2], c[0])); c[1] = Math.max(0, Math.min(H - c[3], c[1]));
@@ -85,7 +87,7 @@ export default function FramePlayer({ id, result, frame, overlay, selMetric, hud
     // backward pass to remove lag
     for (let t = n - 2; t >= 0; t--) out[t] = out[t].map((v, k) => v * 0.5 + out[t + 1][k] * 0.5) as typeof out[number];
     return out;
-  }, [kp, kc, n, result.video, result.display_scale]);
+  }, [kp, kc, n, result.video, result.display_scale, stageAspect]);
 
   const autoZoom = useMemo(() => {
     const H = result.video.height * result.display_scale;
@@ -108,7 +110,8 @@ export default function FramePlayer({ id, result, frame, overlay, selMetric, hud
     }
     const W = result.video.width * result.display_scale, H = result.video.height * result.display_scale;
     const crop = zoomOn ? crops[t] : [0, 0, W, H];
-    const cw = 1280, ch = 720;
+    // portrait phone clips get a portrait stage (4:5), landscape ones 16:9
+    const [cw, ch] = portrait ? [720, 900] : [1280, 720];
     if (c.width !== cw) { c.width = cw; c.height = ch; }
     ctx.fillStyle = "#03050a";
     ctx.fillRect(0, 0, cw, ch);
@@ -220,10 +223,10 @@ export default function FramePlayer({ id, result, frame, overlay, selMetric, hud
         ctx.fillText(text, bx + 6 * ui, by + bh / 2);
       }
     }
-  }, [frame, loaded, overlay, selMetric, zoomOn, crops, kp, kc, n, f0, result, B, F]);
+  }, [frame, loaded, overlay, selMetric, zoomOn, crops, kp, kc, n, f0, result, B, F, portrait]);
 
   return (
-    <div className="player-stage">
+    <div className="player-stage" style={portrait ? { aspectRatio: "4 / 5", maxHeight: "72vh" } : undefined}>
       <canvas ref={canvas} role="img" aria-label={`Video frame ${frame} with the bowler's skeleton and joint angles drawn on top`} />
       <div className="player-hud">
         {hud && <span className="chip" style={{ color: "#fff", borderColor: "#fff" }}>{hud}</span>}
