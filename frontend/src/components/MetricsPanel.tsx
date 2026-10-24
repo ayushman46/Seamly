@@ -16,7 +16,8 @@ export default function MetricsPanel({ result, selected, onSelect }: { result: A
       <div className="faint" style={{ fontSize: 12.5, lineHeight: 1.6, maxWidth: 900 }}>
         Tap or click a metric to highlight it on the video and jump to its event. <b className="muted">Measured</b> values come from the joints visible in this camera
         view. <b className="muted">Estimate</b> values are shown for reference but not rated (for example, when an event was placed from typical timing).
-        Metrics this camera angle can't see are left blank, with the angle that measures them.
+        Metrics this camera angle can't see are left blank, with the angle that measures them. Most reference ranges come from
+        studies of elite adult bowlers: for juniors they show the direction to grow in, not a target to hit now.
       </div>
       {GROUPS.map((g) => {
         const ms = (g.keys.map((k) => by.get(k)).filter(Boolean) as Metric[]).filter((m) => !withheld(m));
