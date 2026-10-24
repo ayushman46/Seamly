@@ -3,7 +3,7 @@ import { api } from "../api";
 import type { AnalysisMeta, AnalysisResult, EventKey, Metric, Rating } from "../types";
 import { EVENTS, EVENT_HEX, RATING_LABEL, VIEW_LABEL } from "../lib/constants";
 import { dateTime, fmt, unitLabel } from "../lib/format";
-import { EVENT_RATE } from "../engine/progress";
+import { changeTolerance, improved } from "../engine/progress";
 import Header from "./Header";
 import FramePlayer from "./FramePlayer";
 import OverlayCompare from "./OverlayCompare";
@@ -175,8 +175,8 @@ export default function ComparePage({ a, b, go, overlay: startOverlay }: { a: st
             </table>
           </div>
           <p className="faint" style={{ fontSize: 12, marginTop: 10 }}>
-            Greyed values rest on an estimated moment and aren't compared. Differences smaller than one frame (timings) or a few degrees
-            (angles) are within measurement error.
+            Greyed values rest on an estimated moment and aren't compared. "Within error": the rating changed, but by less than one
+            camera measures at this frame rate (a frame for timings; for angles a few degrees, more at 25–30 fps).
             {unseen.length > 0 && <> Neither clip's camera angle measures: {unseen.join(", ")}.</>}
           </p>
         </div>
@@ -186,26 +186,20 @@ export default function ComparePage({ a, b, go, overlay: startOverlay }: { a: st
   );
 }
 
-/** Smallest difference one camera can resolve (matches the progress page): a frame for timings, a few degrees or
- *  points for angles and heights, more at low frame rates where an event can land a frame either side. */
-function resolution(m: Metric, fps: number): number {
-  if (m.unit === "ms") return Math.max(20, 1000 / fps);
-  const base = m.key === "release_height_pct" ? 8 : m.unit === "% height" ? 2 : m.unit === "cm" ? 5 : 3;
-  const scaled = fps < 60 ? base * (60 / fps) : base;
-  // and never less than what one frame of timing moves the value (trunk lean at release moves ~15° a frame at 25 fps)
-  return EVENT_RATE[m.key] ? Math.max(scaled, EVENT_RATE[m.key] / fps) : scaled;
-}
-
 function Row({ a, b, fps, judge = true }: { a?: Metric; b?: Metric; fps: number; judge?: boolean }) {
   const m = a ?? b!;
   const comparable = !!a && !!b && a.value !== null && b.value !== null && a.reliability === "measured" && b.reliability === "measured";
   const d = comparable ? (b!.value as number) - (a!.value as number) : null;
-  let verdict: "better" | "worse" | "same" | "noise" | null = null;
-  const res = resolution(m, fps);
-  if (judge && comparable && a!.rating in ORDER && b!.rating in ORDER && ORDER[a!.rating] <= 2 && ORDER[b!.rating] <= 2) {
-    const moved = ORDER[b!.rating] < ORDER[a!.rating] ? "better" : ORDER[b!.rating] > ORDER[a!.rating] ? "worse" : "same";
-    // a change of rating smaller than what one camera resolves at this frame rate isn't called either way
-    verdict = Math.abs(d!) >= res ? moved : moved === "same" ? null : "noise";
+  // the same rule as the player page: a change is called only when it is bigger than one camera resolves at this
+  // frame rate; a smaller one that still moved the rating is marked as within the error
+  let verdict: "better" | "worse" | "noise" | null = null;
+  const res = changeTolerance(m.key, m.unit, fps);
+  // values with a target range only ("info" ones have none, as on the player page)
+  const rated = (x?: Metric) => !!x && x.rating in ORDER && ORDER[x.rating] <= 2;
+  if (judge && comparable && rated(a) && rated(b)) {
+    const imp = improved(m.key, a!.value as number, b!.value as number, m.unit, fps);
+    verdict = imp === true ? "better" : imp === false ? "worse"
+      : a!.rating !== b!.rating && a!.rating in ORDER && b!.rating in ORDER && ORDER[a!.rating] <= 2 && ORDER[b!.rating] <= 2 ? "noise" : null;
   }
   const cell = (x: Metric | undefined, side: "A" | "B") => (
     <td className={!x || x.reliability === "estimate" ? "faint" : ""} data-label={side}>

@@ -159,6 +159,7 @@ export interface SessionSummary {
   score: number | null;
   grade: string | null;
   view: View;
+  arm?: string;
   fps_real?: number | null;
   top: { key: string; headline: string; title: string } | null;
   metrics: Record<string, { label: string; unit: string; value: number; rating: string; reliability: string }>;

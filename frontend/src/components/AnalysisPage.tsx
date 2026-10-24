@@ -356,6 +356,7 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
     setPlaying(false);
     setFrame(e.frame);
     scrollToEl(playerRef.current);
+    playerRef.current?.focus({ preventScroll: true });   // the frame keys (← → 1–5) work from here at once
   };
   const openCoaching = () => {
     setTab("coach");
@@ -382,6 +383,11 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
       setMeta(await api.patch(id, { player_id: pid }));
       // distances use the player's height (from their profile, else typical for their age): recompute with it
       await recompute({}, pid ? "Added to the player's progress" : "Removed from the player");
+      // a delivery with the other bowling arm would mix two actions in their progress: say so
+      const pl = pid ? (await api.players().catch(() => [])).find((p) => p.id === pid) : undefined;
+      if (pl && (pl.arm === "left" || pl.arm === "right") && pl.arm !== result.bowling_arm.arm) {
+        flash(`This delivery is ${result.bowling_arm.arm}-arm but ${pl.name}'s profile says ${pl.arm}-arm. Check the bowling arm above, or the player.`, true);
+      }
     } catch (e) {
       flash((e as Error).message, true);
     }
@@ -481,8 +487,10 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
       setResult(r.result);
       setMeta(r.meta);
       flash(message);
+      return r.result;
     } catch (e) {
       flash((e as Error).message, true);
+      return null;
     } finally {
       if (--pending.current === 0) setBusy(false);
     }
@@ -496,7 +504,14 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
     if (who) await api.updatePlayer(who.id, { arm }).catch(() => undefined);
   };
 
-  const setEvent = useCallback((k: EventKey, fr: number) => recompute({ events: { [k]: fr } }, `${EVENTS.find((e) => e.key === k)!.label} set to frame ${fr} — metrics updated`), [recompute]);
+  const setEvent = useCallback(async (k: EventKey, fr: number) => {
+    const label = EVENTS.find((e) => e.key === k)!.label;
+    const r = await recompute({ events: { [k]: fr } }, `${label} set to frame ${fr} — metrics updated`);
+    // the delivery's order is kept (back-foot contact, front-foot contact, release, follow-through): a marker put
+    // where that order can't hold is placed back
+    const got = r?.events[k]?.frame;
+    if (r && got !== undefined && got !== fr) flash(`${label} can't be at frame ${fr} without breaking the order of the delivery: kept at frame ${got}`, true);
+  }, [recompute, flash]);
 
   const resetEdits = async () => {
     setBusy(true);
@@ -613,7 +628,7 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
           : <div className="skeleton-box verdict-skel" />}
         <div className="an-grid">
           <div className="stack">
-            <div className="card player" ref={playerRef}>
+            <div className="card player" ref={playerRef} tabIndex={-1}>
               <ErrorBoundary label="The video player"><FramePlayer id={id} result={result} frame={frame} overlay={overlay} selMetric={selMetric} hud={cur} /></ErrorBoundary>
               <div className="controls">
                 <div className="ctrl-group">
@@ -642,6 +657,10 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
               {edited.length > 0 && (
                 <div className="edited-row">
                   <span className="chip watch">You moved: {edited.map((k) => EVENTS.find((e) => e.key === k)?.short).join(", ")}</span>
+                  {(() => {
+                    const moved = EVENTS.filter((e) => result.events[e.key]?.method === "constrained").map((e) => e.short);
+                    return moved.length > 0 && <span className="faint" style={{ fontSize: 12.5 }}>{moved.join(", ")} moved too, to keep the delivery in order</span>;
+                  })()}
                   <button className="btn sm ghost" disabled={busy} onClick={resetEdits}>Reset to automatic</button>
                 </div>
               )}

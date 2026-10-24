@@ -11,14 +11,10 @@ const CAT: Record<string, { label: string; icon: JSX.Element; cls: string }> = {
   legality: { label: "Elbow screen", icon: <IAlert size={13} />, cls: "risk" },
 };
 
-// priorities whose number is a share of the bowler's height
-const HEIGHT_BASED = new Set(["release_height_pct", "stride_length_pct"]);
-
 export default function CoachingPanel({ result, ins, onJump, age, style }: {
   result: AnalysisResult; ins?: Insights | null; onJump: (eventKey: string) => void; age?: string | null; style?: string | null;
 }) {
   const c = result.coaching;
-  const guessedHeight = result.skeleton.height_source !== "user";
   return (
     <div className="coach-grid">
       <div className="stack">
@@ -46,12 +42,6 @@ export default function CoachingPanel({ result, ins, onJump, age, style }: {
                   {ev && <button className="btn sm ghost" onClick={() => onJump(ev)} aria-label={`Show in video: ${p.headline}`}><IEye size={12} /> Show in video</button>}
                 </div>
                 <h4>{p.headline}</h4>
-                {guessedHeight && HEIGHT_BASED.has(p.key) && (
-                  <div className="notice warn" style={{ margin: "6px 0", fontSize: 12.5 }}>
-                    This is measured against a guessed height of {result.skeleton.stature_m.toFixed(2)} m. Enter the real height in
-                    Detection &amp; settings (or the player profile) for an exact figure.
-                  </div>
-                )}
                 <div className="muted" style={{ fontSize: 13 }}>{p.why}</div>
                 <div className="cue">“{p.drill.cue}”</div>
                 <details className="drills-more">

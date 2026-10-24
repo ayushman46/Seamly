@@ -12,6 +12,7 @@ export default function ShareSummary({ meta, result, ins, fileBase }: { meta: An
   const [hideName, setHideName] = useState(false);
   const closeRef = useRef<HTMLButtonElement>(null);
   const openRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const name = hideName ? "seamly-summary.png" : `${fileBase}-summary.png`;
 
   const make = async (hide = hideName) => {
@@ -34,7 +35,18 @@ export default function ShareSummary({ meta, result, ins, fileBase }: { meta: An
   useEffect(() => {
     if (!open) return;
     closeRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { close(); return; }
+      // keep Tab inside the dialog: the page behind it stays out of reach until it closes
+      if (e.key !== "Tab" || !dialogRef.current) return;
+      const items = [...dialogRef.current.querySelectorAll<HTMLElement>("button:not([disabled]), input:not([disabled]), a[href]")];
+      if (!items.length) return;
+      // moved by hand: Safari's Tab skips buttons by default, which would let focus out to the page behind
+      e.preventDefault();
+      const at = items.indexOf(document.activeElement as HTMLElement);
+      const next = at < 0 ? (e.shiftKey ? items.length - 1 : 0) : (at + (e.shiftKey ? -1 : 1) + items.length) % items.length;
+      items[next].focus();
+    };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -64,7 +76,8 @@ export default function ShareSummary({ meta, result, ins, fileBase }: { meta: An
       </button>
       {err && !card && <span className="faint" role="alert" style={{ fontSize: 12 }}><IAlert size={13} /> {err}</span>}
       {card && (
-        <div className="share-overlay" role="dialog" aria-modal="true" aria-label="Summary image" onClick={(e) => { if (e.target === e.currentTarget) close(); }}>
+        <div className="share-overlay" role="dialog" aria-modal="true" aria-label="Summary image" onClick={(e) => { if (e.target === e.currentTarget) close(); }}
+          ref={dialogRef}>
           <div className="share-sheet card">
             <div className="row" style={{ marginBottom: 10 }}>
               <b className="grow">Summary image</b>

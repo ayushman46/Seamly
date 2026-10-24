@@ -149,7 +149,9 @@ SCORE_WEIGHTS = {
     "back_knee_bfc": 0.5, "ffc_to_br_ms": 0.3, "head_offset_br": 0.5, "trunk_forward_br": 0.4,
 }
 RATING_POINTS = {"good": 1.0, "watch": 0.55, "risk": 0.15}
-# a "watch" reading within one measurement step of its target is borderline: still listed, but ranked below clear misses
+# a "watch" reading within one measurement step of its target is borderline: still listed, but ranked below clear misses.
+# The ranking weight ramps up smoothly over two steps, so a degree either side of a boundary (a frame decoded slightly
+# differently in another browser) doesn't reorder the plan.
 BORDER_STEP = {"deg": 3.0, "% height": 3.0, "cm": 5.0}
 MIN_SCORED = 3
 
@@ -189,8 +191,8 @@ def coach(metrics: list[dict], view: str, fps: float) -> dict:
         gap = (lo - v) if lo is not None and v < lo else (v - hi) if hi is not None and v > hi else 0.0
         step = 1000.0 / fps if m.get("unit") == "ms" and fps else BORDER_STEP.get(m.get("unit"), 0.0)
         borderline = m["rating"] == "watch" and 0 < gap <= step
-        if borderline:
-            sev *= 0.5
+        if m["rating"] == "watch" and step and 0 < gap < 2 * step:
+            sev *= 0.5 + 0.25 * gap / step
         issues.append({
             "key": key, "category": cat, "severity": round(sev, 2), "rating": m["rating"], "borderline": borderline,
             # trunk lean keeps its sign (a negative value leans back); a true minus sign for display

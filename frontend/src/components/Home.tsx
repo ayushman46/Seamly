@@ -55,6 +55,11 @@ export default function Home({ go }: { go: (to: string) => void }) {
     setAdding(false);
     refreshPlayers();
   };
+  // made from the uploader: a first player turns the page into the workspace, whose uploader sits elsewhere
+  const createFromUploader = async (fields: Partial<Player>) => {
+    await createPlayer(fields);
+    window.setTimeout(() => document.getElementById("analyse")?.scrollIntoView({ block: "center" }), 120);
+  };
   const shown = items && (filter === "all" ? items : items.filter((m) => (filter === "none" ? !m.player_id : m.player_id === filter)));
   const nameOf = (pid?: string | null) => players.find((p) => p.id === pid)?.name;
   const togglePick = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p.slice(-1), id]));
@@ -100,7 +105,7 @@ export default function Home({ go }: { go: (to: string) => void }) {
   };
 
   const uploader = (
-    <Uploader go={go} disabled={disabled} health={health} players={players} current={current} onChoose={choosePlayer} onCreate={createPlayer}
+    <Uploader go={go} disabled={disabled} health={health} players={players} current={current} onChoose={choosePlayer} onCreate={createFromUploader}
       onDemo={demo} demoBusy={demoBusy} demoError={demoErr} attention={attention} compact={returning} />
   );
 
@@ -114,7 +119,7 @@ export default function Home({ go }: { go: (to: string) => void }) {
           <div className="container ws">
             <div className="ws-head">
               <div>
-                <h1 className="ws-title">Ready for the next delivery?</h1>
+                <h1 className="ws-title">{items && items.length === 0 ? "Analyse your first delivery" : "Ready for the next delivery?"}</h1>
                 <p className="muted" style={{ margin: 0 }}>
                   {MODE === "browser" ? "Everything here is saved in this browser, on this device." : "Analyses and players saved on your Seamly server."}
                 </p>

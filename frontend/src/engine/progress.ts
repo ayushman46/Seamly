@@ -69,12 +69,7 @@ export function summarise(result: ResultLike): Summary {
  * fps: real frame rate of the slower of the two clips (a timing can't resolve less than one frame). */
 export function improved(key: string, before: number, after: number, unit: string, fps: number | null = null): boolean | null {
   const rule = BETTER[key];
-  let tol = has(MIN_CHANGE_KEY, key) ? MIN_CHANGE_KEY[key] : has(MIN_CHANGE, unit) ? MIN_CHANGE[unit] : 0.0;
-  if (unit === "ms" && fps) tol = pyMax(tol, 1000.0 / fps);
-  // a value read at an event differs by about its speed / fps when the event lands one frame either side
-  else if (fps && has(EVENT_RATE, key)) tol = pyMax(tol, EVENT_RATE[key] / fps);
-  // other angles and heights: demand a proportionally bigger change at low frame rates
-  else if (fps && fps < 60) tol *= 60.0 / fps;
+  const tol = changeTolerance(key, unit, fps);
   if (rule === undefined || Math.abs(after - before) < tol) return null;
   if (Array.isArray(rule)) {
     const [, lo, hi] = rule;
@@ -83,6 +78,17 @@ export function improved(key: string, before: number, after: number, unit: strin
     return dist(after) < dist(before);
   }
   return rule === "higher" ? after > before : after < before;
+}
+
+/** The smallest change in this value worth calling: about what one camera resolves at this frame rate. */
+export function changeTolerance(key: string, unit: string, fps: number | null = null): number {
+  let tol = has(MIN_CHANGE_KEY, key) ? MIN_CHANGE_KEY[key] : has(MIN_CHANGE, unit) ? MIN_CHANGE[unit] : 0.0;
+  if (unit === "ms" && fps) tol = pyMax(tol, 1000.0 / fps);
+  // a value read at an event differs by about its speed / fps when the event lands one frame either side
+  else if (fps && has(EVENT_RATE, key)) tol = pyMax(tol, EVENT_RATE[key] / fps);
+  // other angles and heights: demand a proportionally bigger change at low frame rates
+  else if (fps && fps < 60) tol *= 60.0 / fps;
+  return tol;
 }
 
 function betterOf(key: string, a: number, b: number): number {

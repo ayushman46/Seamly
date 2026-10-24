@@ -65,10 +65,7 @@ export default function ReportPage({ id, go }: { id: string; go: (to: string) =>
         <ol className="rp-prio">
           {c.priorities.map((p) => (
             <li key={p.key}>
-              <b>{p.headline}</b> <em>— {RATING_LABEL[p.rating]}{p.borderline ? " (borderline)" : ""} · {p.evidence}</em>
-              {r.skeleton.height_source !== "user" && (p.key === "release_height_pct" || p.key === "stride_length_pct") && (
-                <div className="rp-note">Measured against an assumed height of {r.skeleton.stature_m.toFixed(2)} m; enter the real height for an exact figure.</div>
-              )}
+              <b>{p.headline}</b> <em>— {RATING_LABEL[p.rating]}{p.borderline ? " (borderline)" : ""}</em>
               <div>{p.why}</div>
               <div className="rp-cue">Cue: “{p.drill.cue}”</div>
               <ul>{drillsForAge(p.drill.drills, ins?.player?.age_group).map((d) => <li key={d}>{d}</li>)}</ul>

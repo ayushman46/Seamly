@@ -33,7 +33,7 @@ export const SERIES_INFO: Record<string, { label: string; unit: string; plane: "
   hip_alignment: { label: "Hip alignment", unit: "deg", plane: "transverse", help: "180 = side-on, 270 = front-on" },
   hip_shoulder_separation: { label: "Hip-shoulder separation", unit: "deg", plane: "transverse", help: "Shoulders minus hips" },
   bowling_arm_elevation: { label: "Bowling arm elevation", unit: "deg", plane: "any", help: "90 = arm straight up" },
-  bowling_wrist_height_pct: { label: "Bowling wrist height", unit: "% height", plane: "any", help: "Above the ground" },
+  bowling_wrist_height_pct: { label: "Bowling wrist height (3D model)", unit: "% height", plane: "any", help: "Wrist above the ground; release height is measured on the video, at the ball" },
   elbow_flexion_front: { label: "Front elbow flexion", unit: "deg", plane: "sagittal", help: "Non-bowling arm" },
 };
 

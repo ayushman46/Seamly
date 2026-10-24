@@ -448,7 +448,7 @@ export const SAMPLES = {
 };
 export type SampleName = keyof typeof SAMPLES;
 // bump when the bundled sample analyses are regenerated, so a browser that imported an older copy gets the new one
-const SAMPLE_VERSION = 10;
+const SAMPLE_VERSION = 11;
 
 /** Import a precomputed sample analysis (opens instantly: no models to download). */
 async function importSample(which: SampleName): Promise<string> {
@@ -715,8 +715,15 @@ export const api = {
   },
   updatePlayer: async (pid: string, body: Partial<Player>): Promise<Player> => {
     await loadAll();
-    const p = { ...(await requirePlayer(pid)), ...cleanPlayer(body) };
+    const before = await requirePlayer(pid);
+    const p = { ...before, ...cleanPlayer(body) };
     await db.put("player", pid, p);
+    // a new height (or age group, which sets the assumed height) rescales this player's analyses that have no height
+    // of their own: redo their measurements with it
+    if (p.height_cm !== before.height_cm || p.age_group !== before.age_group) {
+      const mine = [...metas.values()].filter((m) => m.player_id === pid && m.status === "done" && !m.options?.height_m && !m.overrides?.height_m);
+      await Promise.all(mine.map((m) => serial(m.id, () => applyEdit(m.id, m.overrides ?? {})).catch(() => undefined)));
+    }
     return playerOut(p);
   },
   /** Record a day's bowling for a player (matches, club nets, training): kept with their profile. */

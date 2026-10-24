@@ -6,7 +6,7 @@ import { fmt } from "../lib/format";
 
 export default function Settings({ result, busy, onRecompute, onRerun, playerId, onAssign }: {
   id: string; result: AnalysisResult; busy: boolean; playerId: string | null; onAssign: (pid: string | null) => Promise<void>;
-  onRecompute: (body: { bowling_arm?: string; height_m?: number; view?: string }, msg: string) => Promise<void>;
+  onRecompute: (body: { bowling_arm?: string; height_m?: number; view?: string }, msg: string) => Promise<unknown>;
   onRerun: (body: { candidate?: number; slowmo_factor?: number }) => Promise<void>;
 }) {
   const [players, setPlayers] = useState<Player[]>([]);

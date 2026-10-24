@@ -41,7 +41,7 @@ import { AnalysisError, SLOWMO_CHOICES, MIN_FPS, DEFAULT_HEIGHT_M, MAX_VIDEO_SEC
 import { modelsCached } from "../lib/modelCache";
 
 const FRAME_JPEG_MAX_SIDE = 1280;
-const FRAME_JPEG_QUALITY = 0.85;
+const FRAME_JPEG_QUALITY = 0.78;   // ~40% smaller than 0.85 on grassy footage (storage, backups), still sharp when zoomed
 
 export type ProgressCb = (p: { stage: string; label: string; progress: number; detail?: string | null; elapsed: number }) => void;
 

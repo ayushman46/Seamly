@@ -163,7 +163,9 @@ const has = (o: object, k: string): boolean => Object.prototype.hasOwnProperty.c
 // headline values that keep their sign (a negative trunk lean is a lean backwards, not a small forward one)
 const SIGNED = new Set(["trunk_flexion_ffc_br", "trunk_forward_br"]);
 
-// a "watch" reading within one measurement step of its target is borderline: still listed, but ranked below clear misses
+// a "watch" reading within one measurement step of its target is borderline: still listed, but ranked below clear misses.
+// The ranking weight ramps up smoothly over two steps, so a degree either side of a boundary (a frame decoded slightly
+// differently in another browser) doesn't reorder the plan.
 const BORDER_STEP: Record<string, number> = { deg: 3.0, "% height": 3.0, cm: 5.0 };
 
 export function coach(metrics: Metric[], view: string, fps: number): CoachingOut {
@@ -202,7 +204,7 @@ export function coach(metrics: Metric[], view: string, fps: number): CoachingOut
     const gap = lo !== null && v < lo ? lo - v : hi !== null && v > hi ? v - hi : 0.0;
     const step = m.unit === "ms" && fps ? 1000.0 / fps : BORDER_STEP[m.unit] ?? 0.0;
     const borderline = m.rating === "watch" && gap > 0 && gap <= step;
-    if (borderline) sev *= 0.5;
+    if (m.rating === "watch" && step && gap > 0 && gap < 2 * step) sev *= 0.5 + 0.25 * gap / step;
     issues.push({
       key, category: cat, severity: pyRound(sev, 2), rating: m.rating, borderline,
       // trunk lean keeps its sign (a negative value leans back); a true minus sign for display

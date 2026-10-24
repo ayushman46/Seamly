@@ -6,7 +6,7 @@
 import { EVENT_RATE, KEY_METRICS, MIN_CHANGE, MIN_CHANGE_KEY } from "../engine/progress";
 import type { SessionSummary, View } from "../types";
 
-type Session = Pick<SessionSummary, "view" | "fps_real" | "metrics">;
+type Session = Pick<SessionSummary, "view" | "arm" | "fps_real" | "metrics">;
 
 export type Steadiness = "steady" | "some" | "varies";
 export interface ConsistencyRow {
@@ -24,7 +24,8 @@ export interface ConsistencyRow {
 export function consistency(sessions: Session[], last = 6): { view: View | null; rows: ConsistencyRow[] } {
   const latest = sessions[sessions.length - 1];
   if (!latest) return { view: null, rows: [] };
-  const same = sessions.filter((s) => s.view === latest.view).slice(-last);
+  // like with like: the same camera angle and the same bowling arm as the latest delivery
+  const same = sessions.filter((s) => s.view === latest.view && (s.arm ?? latest.arm) === latest.arm).slice(-last);
   const rows: ConsistencyRow[] = [];
   for (const key of KEY_METRICS) {
     const pts = same.filter((s) => s.metrics[key]?.reliability === "measured");
