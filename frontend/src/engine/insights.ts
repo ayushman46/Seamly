@@ -221,7 +221,7 @@ interface PlanLimits extends Limits {
  */
 function limitsFor(age: string, style: string): PlanLimits | null {
   if (has(LIMITS, age)) {
-    const src = style !== "spin" ? CA_SOURCE : `${CA_SOURCE} (pace limits, used as a safe ceiling for young spinners)`;
+    const src = style !== "spin" ? CA_SOURCE : `${CA_SOURCE}; pace limits, used as a safe ceiling for young spinners`;
     return { ...LIMITS[age], age_group: age, label: AGE_LABEL[age], source: src, between_spells_min: 20,
       preseason_weeks: PRESEASON_WEEKS[age] };
   }

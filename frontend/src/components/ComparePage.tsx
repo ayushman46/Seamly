@@ -74,6 +74,8 @@ export default function ComparePage({ a, b, go }: { a: string; b: string; go: (t
       </>
     );
   }
+  // two different players' deliveries: differences, not progress
+  const otherBowler = !!x.meta.player_id && !!y.meta.player_id && x.meta.player_id !== y.meta.player_id;
   const side = (d: Loaded, label: string) => {
     const e = d.result.events[ev];
     return (
@@ -137,6 +139,11 @@ export default function ComparePage({ a, b, go }: { a: string; b: string; go: (t
             <IAlert size={16} /> <div>The two clips were filmed from different angles ({VIEW_LABEL[x.result.view.view]} vs {VIEW_LABEL[y.result.view.view]}). Only metrics measured reliably in both are comparable.</div>
           </div>
         )}
+        {otherBowler && (
+          <div className="notice" style={{ marginTop: 14 }}>
+            <IAlert size={16} /> <div>These are two different bowlers, so the table shows how they differ rather than whether anyone improved.</div>
+          </div>
+        )}
         <div className="card card-pad" style={{ marginTop: 18 }}>
           <div role="heading" aria-level={2} className="card-title">Metric by metric</div>
           <div className="table-scroll">
@@ -145,7 +152,7 @@ export default function ComparePage({ a, b, go }: { a: string; b: string; go: (t
                 <tr><th>Metric</th><th>A (earlier)</th><th>B (later)</th><th>Change (B − A)</th><th><span className="sr-only">Verdict</span></th></tr>
               </thead>
               <tbody>
-                {rows.map(({ key, a: ma, b: mb }) => <Row key={key} a={ma} b={mb} fps={Math.min(data[0]!.result.fps_real, data[1]!.result.fps_real)} />)}
+                {rows.map(({ key, a: ma, b: mb }) => <Row key={key} a={ma} b={mb} fps={Math.min(data[0]!.result.fps_real, data[1]!.result.fps_real)} judge={!otherBowler} />)}
               </tbody>
             </table>
           </div>
@@ -169,12 +176,12 @@ function resolution(m: Metric, fps: number): number {
   return EVENT_RATE[m.key] ? Math.max(scaled, EVENT_RATE[m.key] / fps) : scaled;
 }
 
-function Row({ a, b, fps }: { a?: Metric; b?: Metric; fps: number }) {
+function Row({ a, b, fps, judge = true }: { a?: Metric; b?: Metric; fps: number; judge?: boolean }) {
   const m = a ?? b!;
   const comparable = !!a && !!b && a.value !== null && b.value !== null && a.reliability === "measured" && b.reliability === "measured";
   const d = comparable ? (b!.value as number) - (a!.value as number) : null;
   let verdict: "better" | "worse" | "same" | null = null;
-  if (comparable && Math.abs(d!) >= resolution(m, fps) && a!.rating in ORDER && b!.rating in ORDER && ORDER[a!.rating] <= 2 && ORDER[b!.rating] <= 2) {
+  if (judge && comparable && Math.abs(d!) >= resolution(m, fps) && a!.rating in ORDER && b!.rating in ORDER && ORDER[a!.rating] <= 2 && ORDER[b!.rating] <= 2) {
     verdict = ORDER[b!.rating] < ORDER[a!.rating] ? "better" : ORDER[b!.rating] > ORDER[a!.rating] ? "worse" : "same";
   }
   const cell = (x: Metric | undefined, side: "A" | "B") => (

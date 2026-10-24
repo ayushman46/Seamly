@@ -71,7 +71,8 @@ export async function renderShareCard(meta: AnalysisMeta, r: AnalysisResult, ins
   wrap(ctx, who, PAD, 176, W - 2 * PAD, 52, 1);
   ctx.fillStyle = C.muted; ctx.font = `500 24px ${FONT}`;
   const view = r.view.view === "side_on" ? "Side-on" : r.view.view === "behind" ? "From behind" : "Front-on";
-  ctx.fillText(`${dateTime(meta.created)} · ${view} · ${r.bowling_arm.arm === "right" ? "Right-arm" : "Left-arm"} · ${Math.round(r.fps_real)} fps`, PAD, 218);
+  const unsure = r.bowling_arm.source !== "user" && r.bowling_arm.confidence < 0.7;
+  ctx.fillText(`${dateTime(meta.created)} · ${view} · ${r.bowling_arm.arm === "right" ? "Right-arm" : "Left-arm"}${unsure ? " (not certain)" : ""} · ${Math.round(r.fps_real)} fps`, PAD, 218);
 
   // release frame around the bowler, with the skeleton
   const IX = PAD, IY = 250, IW = W - 2 * PAD, IH = 560;

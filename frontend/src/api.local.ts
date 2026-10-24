@@ -18,6 +18,7 @@ import { insights as buildInsights } from "./engine/insights";
 import { frameObj } from "./engine/body";
 import { playerProgress, summarise } from "./engine/progress";
 import { BACKUP_VERSION, FILE_NAME, decodeBackup, encodeBackup, type BackupAnalysis } from "./lib/backup";
+import { isoDate, parseOvers } from "./lib/bowlingLog";
 
 type Meta = AnalysisMeta & {
   overrides?: Overrides;
@@ -383,16 +384,21 @@ function cleanPlayer(f: Partial<Player>): Partial<StoredPlayer> {
   return out;
 }
 
-/** A valid bowling-log entry, or null (dates as YYYY-MM-DD, overs 0.1–60). */
-function cleanLog(e: { id?: unknown; date?: unknown; overs?: unknown; kind?: unknown } | null | undefined): BowlingLogEntry | null {
-  const date = typeof e?.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(e.date) && !Number.isNaN(Date.parse(e.date)) ? e.date : null;
-  const overs = Number(e?.overs);
+/** A valid bowling-log entry, or null. Balls 1–360 (60 overs); dates as YYYY-MM-DD, not in the future. Older entries
+ *  saved overs as a number; those are read in cricket notation (4.3 = 4 overs and 3 balls). */
+function cleanLog(e: { id?: unknown; date?: unknown; balls?: unknown; overs?: unknown; kind?: unknown } | null | undefined): BowlingLogEntry | null {
+  const tomorrow = isoDate(new Date(Date.now() + 86400000));   // a day's slack for time zones
+  const date = typeof e?.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(e.date) && !Number.isNaN(Date.parse(e.date)) && e.date <= tomorrow ? e.date : null;
+  const balls = typeof e?.balls === "number" ? Math.round(e.balls) : e?.overs !== undefined ? parseOvers(String(e.overs)) : null;
   const kind = e?.kind === "match" || e?.kind === "nets" || e?.kind === "training" ? e.kind : null;
-  if (!date || !kind || !(overs > 0 && overs <= 60)) return null;
-  return { id: typeof e?.id === "string" && /^[0-9a-z]{4,40}$/i.test(e.id) ? e.id : "", date, overs: Math.round(overs * 10) / 10, kind };
+  if (!date || !kind || balls === null || !(balls > 0 && balls <= 360)) return null;
+  return { id: typeof e?.id === "string" && /^[0-9a-z]{4,40}$/i.test(e.id) ? e.id : "", date, balls, kind };
 }
 
 function playerOut(p: StoredPlayer): Player {
+  if (p.log?.some((x) => typeof (x as { balls?: unknown }).balls !== "number")) {
+    p = { ...p, log: p.log.map(cleanLog).filter((x): x is BowlingLogEntry => !!x) };
+  }
   const mine = [...metas.values()].filter((m) => m.player_id === p.id && m.status === "done").sort((a, b) => (a.created ?? 0) - (b.created ?? 0));
   const last = mine[mine.length - 1];
   return { ...p, analyses: mine.length, latest_score: last ? last.score ?? null : null, last_analysis: last ? last.created : null } as Player;
@@ -708,10 +714,12 @@ export const api = {
     return playerOut(p);
   },
   /** Record a day's bowling for a player (matches, club nets, training): kept with their profile. */
-  addLog: async (pid: string, e: { date: string; overs: number; kind: string }): Promise<Player> => {
+  addLog: async (pid: string, e: { date: string; overs: string; kind: string }): Promise<Player> => {
     await loadAll();
     const p = await requirePlayer(pid);
-    const entry = cleanLog(e);
+    if (parseOvers(e.overs) === null) throw new Error("Enter overs the cricket way: 4 for four overs, 4.3 for four overs and three balls.");
+    if (e.date > isoDate(new Date(Date.now() + 86400000))) throw new Error("That date is in the future: log bowling once it has happened.");
+    const entry = cleanLog({ date: e.date, overs: e.overs, kind: e.kind });
     if (!entry) throw new Error("Enter the date and how many overs were bowled (up to 60).");
     entry.id = db.newId();
     const log = [entry, ...(p.log ?? [])].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 400);

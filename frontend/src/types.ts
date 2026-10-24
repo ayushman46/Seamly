@@ -150,7 +150,7 @@ export interface Player {
 }
 
 /** One day's bowling, as entered by the player or parent. */
-export interface BowlingLogEntry { id: string; date: string; overs: number; kind: "match" | "nets" | "training" }
+export interface BowlingLogEntry { id: string; date: string; balls: number; kind: "match" | "nets" | "training" }
 
 export interface SessionSummary {
   id: string;

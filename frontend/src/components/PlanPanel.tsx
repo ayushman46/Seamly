@@ -13,7 +13,7 @@ function retestIcs(day: Date, who: string | null, id: string): Blob {
   const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Seamly//Practice plan//EN", "BEGIN:VEVENT",
     `UID:seamly-retest-${id}-${ymd(day)}@seamly`, `DTSTAMP:${stamp}`, `DTSTART;VALUE=DATE:${ymd(day)}`, `DTEND;VALUE=DATE:${ymd(next)}`,
     `SUMMARY:Seamly re-test${who ? `: ${who}` : ""}`,
-    "DESCRIPTION:Film one delivery from the same spot as last time\\, analyse it in Seamly and compare the two.",
+    "DESCRIPTION:Re-test day: film your deliveries from the same spot as last time\\, analyse the best one in Seamly and compare.",
     "END:VEVENT", "END:VCALENDAR"];
   return new Blob([lines.join("\r\n") + "\r\n"], { type: "text/calendar" });
 }

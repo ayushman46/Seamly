@@ -174,7 +174,7 @@ def _limits(age: str, style: str) -> dict | None:
     adult pace bowlers get the 17-19 pattern as general guidance; adult spinners have no fixed limits."""
     lim = LIMITS.get(age)
     if lim:
-        src = CA_SOURCE if style != "spin" else f"{CA_SOURCE} (pace limits, used as a safe ceiling for young spinners)"
+        src = CA_SOURCE if style != "spin" else f"{CA_SOURCE}; pace limits, used as a safe ceiling for young spinners"
         return {**lim, "age_group": age, "label": AGE_LABEL[age], "source": src,
                 "between_spells_min": 20, "preseason_weeks": PRESEASON_WEEKS[age]}
     if style == "spin":
