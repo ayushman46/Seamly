@@ -268,8 +268,7 @@ function HistoryCard({ m, go, onDeleted, picked, onPick, player }: { m: Analysis
     }
   };
   return (
-    <div className={`card hcard ${picked ? "picked" : ""}`} onClick={() => go(`/a/${m.id}`)} role="link" tabIndex={0} aria-label={`Open ${m.name}, ${ago(m.created)}${m.score !== null ? `, score ${m.score}` : ""}`}
-      onKeyDown={(e) => { if (e.key === "Enter" && e.target === e.currentTarget) go(`/a/${m.id}`); }}>
+    <div className={`card hcard ${picked ? "picked" : ""}`}>
       <div className="hthumb" style={{ backgroundImage: thumb }}>
         {m.status === "done" && m.score !== null && (
           <span className="score-pill">{m.score}<small>/100</small></span>
@@ -287,7 +286,9 @@ function HistoryCard({ m, go, onDeleted, picked, onPick, player }: { m: Analysis
         )}
       </div>
       <div className="hbody">
-        <div className="hname" title={m.name}>{m.name}</div>
+        <a className="hname hcard-link" href={`#/a/${m.id}`} title={m.name}
+          aria-label={`Open ${m.name}, ${ago(m.created)}${m.score !== null ? `, score ${m.score}` : ""}`}
+          onClick={(e) => { if (!e.metaKey && !e.ctrlKey && !e.shiftKey && e.button === 0) { e.preventDefault(); go(`/a/${m.id}`); } }}>{m.name}</a>
         <div className="hmeta">
           {player && <span className="chip info">{player}</span>}
           {m.view && <span className="chip">{VIEW_LABEL[m.view]}</span>}
