@@ -20,7 +20,7 @@ export default function Viewer3D({ id, result, frame }: { id: string; result: An
   const st = useRef<{
     renderer: THREE.WebGLRenderer; scene: THREE.Scene; camera: THREE.PerspectiveCamera; controls: OrbitControls;
     mesh?: THREE.Mesh; geom?: THREE.BufferGeometry; data?: MeshData; skel: THREE.LineSegments; joints: THREE.InstancedMesh;
-    ghosts: THREE.Group; follow: THREE.Vector3; raf: number;
+    ghosts: THREE.Group; follow: THREE.Vector3; raf: number; invalidate: () => void;
   } | null>(null);
   const [mode, setMode] = useState<"mesh" | "both" | "skeleton">("both");
   const [preset, setPreset] = useState<Preset>(result.view.view === "side_on" ? "side_r" : "behind");
@@ -37,7 +37,7 @@ export default function Viewer3D({ id, result, frame }: { id: string; result: An
   // ---------- init scene once ----------
   useEffect(() => {
     const el = host.current!;
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     el.appendChild(renderer.domElement);
@@ -89,23 +89,29 @@ export default function Viewer3D({ id, result, frame }: { id: string; result: An
     const ghosts = new THREE.Group();
     scene.add(ghosts);
 
-    const s = { renderer, scene, camera, controls, skel, joints, ghosts, follow: new THREE.Vector3(), raf: 0 };
+    // draw only when something changed (a frame, the camera, a setting), not 60 times a second: a phone's battery
+    // and the page's scrolling are worth more than an idle animation loop
+    const s = { renderer, scene, camera, controls, skel, joints, ghosts, follow: new THREE.Vector3(), raf: 0, invalidate: () => undefined as void };
+    const draw = () => {
+      s.raf = 0;
+      const moving = controls.update();   // true while the orbit is still easing to a stop
+      renderer.render(scene, camera);
+      if (moving) s.raf = requestAnimationFrame(draw);
+    };
+    s.invalidate = () => { if (!s.raf) s.raf = requestAnimationFrame(draw); };
+    controls.addEventListener("change", s.invalidate);
+    controls.addEventListener("start", s.invalidate);
     st.current = s;
     const resize = () => {
       const w = el.clientWidth, h = el.clientHeight;
       renderer.setSize(w, h, false);
       camera.aspect = w / Math.max(1, h);
       camera.updateProjectionMatrix();
+      s.invalidate();
     };
     const ro = new ResizeObserver(resize);
     ro.observe(el);
     resize();
-    const loop = () => {
-      controls.update();
-      renderer.render(scene, camera);
-      s.raf = requestAnimationFrame(loop);
-    };
-    loop();
     return () => {
       cancelAnimationFrame(s.raf);
       ro.disconnect();
@@ -148,6 +154,7 @@ export default function Viewer3D({ id, result, frame }: { id: string; result: An
         s.scene.add(mesh);
         Object.assign(s, { mesh, geom, data });
         setStatus("ready");
+        s.invalidate();
       })
       .catch(() => !cancelled && setStatus("error"));
     return () => { cancelled = true; };
@@ -198,6 +205,7 @@ export default function Viewer3D({ id, result, frame }: { id: string; result: An
       s.controls.target.add(delta);
       s.camera.position.add(delta);
     }
+    s.invalidate();
   }, [frame, mode, follow, result, f0, parents, bowlingIdx, frontIdx, status]);
 
   // ---------- camera presets ----------
@@ -209,11 +217,12 @@ export default function Viewer3D({ id, result, frame }: { id: string; result: An
     const tgt = new THREE.Vector3(P[0], 1.0, P[2]);
     const d = 5.2;
     const off: Record<Preset, [number, number, number]> = {
-      side_r: [d, 0.5, 0], side_l: [-d, 0.5, 0], behind: [0, 0.8, d], front: [0, 0.6, -d], top: [0.01, d + 1.5, 0.01],
+      side_r: [d, 0.5, 0], side_l: [-d, 0.5, 0], behind: [0, 0.8, d], front: [0, 0.6, -d], top: [0.01, 4.2, 0.01],
     };
     s.controls.target.copy(tgt);
     s.camera.position.set(tgt.x + off[preset][0], tgt.y + off[preset][1], tgt.z + off[preset][2]);
     s.controls.update();
+    s.invalidate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preset]);
 
@@ -223,6 +232,7 @@ export default function Viewer3D({ id, result, frame }: { id: string; result: An
     if (!s) return;
     disposeTree(s.ghosts);
     s.ghosts.clear();
+    s.invalidate();
     if (!ghost || !s.data) return;
     (["bfc", "ffc", "br"] as EventKey[]).forEach((k) => {
       const e = result.events[k];
@@ -233,9 +243,10 @@ export default function Viewer3D({ id, result, frame }: { id: string; result: An
       g.setAttribute("position", new THREE.BufferAttribute(arr, 3));
       g.setIndex(new THREE.BufferAttribute(s.data!.index, 1));
       g.computeVertexNormals();
-      const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: new THREE.Color(EVENT_HEX[k]), transparent: true, opacity: 0.22, depthWrite: false }));
+      const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: new THREE.Color(EVENT_HEX[k]), transparent: true, opacity: 0.16, depthWrite: false }));
       s.ghosts.add(m);
     });
+    s.invalidate();
   }, [ghost, status, result.events, f0]);
 
   useEffect(() => {
