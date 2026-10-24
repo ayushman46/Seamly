@@ -221,7 +221,7 @@ export function Features() {
     { icon: <IChat size={20} />, title: "A plain-English summary", text: "What's working, the one or two things to fix first and why, and a short cue to take into the nets. No jargon you need a sports-science degree for." },
     { icon: <IShield size={20} />, title: "Back-health check", text: "Screens for action patterns that research links to lower-back stress in young fast bowlers, such as a big side-bend. A prompt to talk to a coach — not a diagnosis." },
     { icon: <ICalendar size={20} />, title: "Two-week practice plan", text: "Drills for your top fix, strength days and a re-test, with bowling loads kept within Cricket Australia's junior workload guidelines for the player's age." },
-    { icon: <IUsers size={20} />, title: "Player profiles & progress", text: "Keep a profile for yourself, your child or each bowler you coach. See scores and key angles session by session, personal bests and what changed since last time." },
+    { icon: <IUsers size={20} />, title: "Player profiles & progress", text: "Keep a profile for yourself, your child or each bowler you coach. See scores and key angles session by session and what changed since last time, and log every match and net session against safe weekly limits." },
     { icon: <IColumns size={20} />, title: "Side-by-side compare", text: "Put two deliveries next to each other at the same moment of the action, with a metric-by-metric table of what changed between them." },
     { icon: <IFile size={20} />, title: "Share, report & export", text: "Send a one-image summary to a coach or parent, or print a one-page coaching report as a PDF. Export the joint angles (CSV), the full analysis (JSON) or a 3D frame (OBJ), or back everything up in one file." },
   ];
