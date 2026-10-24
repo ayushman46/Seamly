@@ -21,6 +21,7 @@ import { setCurrentPlayer } from "../lib/player";
 import { IAlert, IBack, ICheck, IChevronDown, IClock, ICube, IDownload, IFile, IFilm, IInfo, ILock, INext, IPause, IPlay, IPrev, IRefresh, IVideo } from "./Icons";
 import { SiteFooter } from "./Landing";
 import { usePageTitle } from "../lib/title";
+import ShareSummary from "./ShareSummary";
 
 // three.js is large: the 3D viewer loads as its own chunk so the player and metrics appear first
 const Viewer3D = lazyPage(() => import("./Viewer3D"));
@@ -568,6 +569,7 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
               </select>
             )}
             <button className="btn" onClick={() => go(`/r/${id}`)}><IFile size={15} /> Report</button>
+            <ShareSummary meta={meta} result={result} ins={ins} fileBase={fileBase} />
             <div className="rel" ref={menuRef} onBlur={(e) => { if (!menuRef.current?.contains(e.relatedTarget as Node | null)) setMenu(false); }}>
               <button ref={menuBtn} className="btn" onClick={() => setMenu((m) => !m)} aria-expanded={menu} aria-controls="export-list"><IDownload size={15} /> Export <IChevronDown size={14} /></button>
               {menu && (
