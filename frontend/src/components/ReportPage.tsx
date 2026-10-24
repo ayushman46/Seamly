@@ -25,19 +25,19 @@ export default function ReportPage({ id, go }: { id: string; go: (to: string) =>
   }, [data, ins]);
   if (error) {
     return (
-      <div className="report">
+      <main className="report" id="main" tabIndex={-1}>
         <div className="report-bar no-print"><button className="btn" onClick={() => go("/")}>← Back to Seamly</button></div>
         <p><b>Couldn't build this report.</b> {error}</p>
-      </div>
+      </main>
     );
   }
-  if (!data) return <div className="report" aria-busy="true"><p className="rp-note">Preparing the report…</p></div>;
+  if (!data) return <main className="report" id="main" tabIndex={-1} aria-busy="true"><p className="rp-note">Preparing the report…</p></main>;
   const { meta, result: r } = data;
   const c = r.coaching;
   const measured = r.metrics.filter((m) => m.value !== null && m.reliability === "measured");
   const estimates = r.metrics.filter((m) => m.reliability === "estimate");
   return (
-    <div className="report">
+    <main className="report" id="main" tabIndex={-1}>
       <div className="report-bar no-print">
         <button className="btn" onClick={() => go(`/a/${id}`)}>← Back to analysis</button>
         <button className="btn primary" onClick={() => window.print()}>Print / save as PDF</button>
@@ -140,7 +140,7 @@ export default function ReportPage({ id, go }: { id: string; go: (to: string) =>
         <span>{DISCLAIMER}</span>
         <span>Made with Seamly · github.com/ayushman46/Seamly</span>
       </footer>
-    </div>
+    </main>
   );
 }
 

@@ -143,7 +143,7 @@ export default function Timeline({ id, result, frame, onSeek, onSetEvent, edited
                 setDrag(dragRef.current);
               }}
             >
-              <span className="flag" style={{ background: EVENT_HEX[e.key], opacity: info.confidence < 0.4 && info.method !== "user" ? 0.65 : 1 }}>{e.short}{info.method === "timing_prior" || info.method === "constrained" || rearContact ? "?" : ""}</span>
+              <span className={`flag ${info.confidence < 0.4 && info.method !== "user" ? "unsure" : ""}`} style={{ background: EVENT_HEX[e.key] }}>{e.short}{info.method === "timing_prior" || info.method === "constrained" || rearContact ? "?" : ""}</span>
               <span className="stem" style={{ background: EVENT_HEX[e.key], height: 30 + 17 * (rows[e.key] ?? 0) }} />
             </div>
           );

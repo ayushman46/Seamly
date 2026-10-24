@@ -204,8 +204,9 @@ const FAQS: { q: string; a: ReactNode }[] = [
     q: "How accurate is it?",
     a: (
       <>
-        <p>It's an estimate from a single video, not a lab measurement. Even on a clear, steady side-on clip, expect angles to be out by several
-          degrees — and by more on blurry, zoomed, distant or low-frame-rate clips. A single camera simply can't see everything a multi-camera lab can.</p>
+        <p>It's an estimate from a single video, not a lab measurement. On a rendered delivery where every angle is known exactly, Seamly
+          found the key moments within one frame and the angles within 4°, from the side and from behind. Real clips that are blurry,
+          zoomed, distant or low-frame-rate are less precise: a single camera can't see everything a multi-camera lab can.</p>
         <p>Seamly is upfront about this: every metric shows a confidence, angles your camera view can't see are left out rather than guessed,
           and foot contacts that are hard to see are flagged for you to check. Use the numbers to guide practice, and compare clips filmed the same way.</p>
       </>
@@ -213,7 +214,7 @@ const FAQS: { q: string; a: ReactNode }[] = [
   },
   {
     q: "Is this an ICC bowling-action (legality) test?",
-    a: <p>No. Testing elbow extension against the ICC's 15° limit needs a multi-camera lab. Seamly shows elbow bend as a coaching guide only and never gives a legality verdict.</p>,
+    a: <p>No. Testing elbow extension against the ICC's 15° limit needs a multi-camera lab. Seamly shows elbow extension from side-on slow-motion clips for reference only: it is never rated, scored or used as a verdict.</p>,
   },
   {
     q: "Is the back-health check medical advice?",

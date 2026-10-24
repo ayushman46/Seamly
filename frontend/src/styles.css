@@ -646,8 +646,9 @@ input[type="checkbox"] { accent-color: var(--c-accent); width: 16px; height: 16p
 .tl-head { position: absolute; top: 11px; width: 4px; height: 24px; margin-left: -2px; border-radius: 3px; background: #fff; box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.14), 0 2px 6px rgba(0, 0, 0, 0.5); }
 /* only the flag label is grabbable: a higher flag's stem runs down across the labels below it */
 .tl-ev { position: absolute; top: 0; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; pointer-events: none; outline: none; }
-.tl-ev .flag { position: relative; z-index: 2; font-size: 10px; font-weight: 700; letter-spacing: 0.04em; padding: 1px 6px; border-radius: 5px; color: #0b0f17; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4); pointer-events: auto; cursor: grab; touch-action: none; }
+.tl-ev .flag { position: relative; z-index: 2; font-size: 10px; font-weight: 700; letter-spacing: 0.04em; padding: 1px 6px; border-radius: 5px; color: #0b0b0c; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4); pointer-events: auto; cursor: grab; touch-action: none; }
 .tl-ev .flag::after { content: ""; position: absolute; inset: -3px -5px; }
+.tl-ev .flag.unsure { outline: 1.5px dashed rgba(255, 255, 255, 0.75); outline-offset: 1px; }   /* low confidence: marked, not faded (fading failed contrast) */
 .tl-ev .stem { width: 2px; height: 30px; opacity: 0.9; }
 .tl-ev.dragging { z-index: 3; }
 .tl-ev.dragging .flag { cursor: grabbing; }
@@ -730,7 +731,7 @@ svg.chart { width: 100%; height: 170px; display: block; cursor: crosshair; }
 .plan-day { border: 1px solid var(--c-line); border-radius: var(--r-md); padding: 12px; background: var(--c-sunken); display: flex; flex-direction: column; gap: 7px; min-width: 0; }
 .plan-day.bowling { border-color: #223d58; }
 .plan-day.film { border-color: var(--c-accent-line); background: var(--c-accent-soft); }
-.plan-day.rest { opacity: 0.75; }
+.plan-day.rest { background: transparent; }   /* quieter by its plain background: lowered opacity failed text contrast */
 .plan-title { font-weight: 700; font-size: var(--fs-sm); }
 .plan-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; font-size: 12.5px; }
 .plan-items label { display: flex; gap: 8px; align-items: flex-start; cursor: pointer; line-height: 1.45; }
@@ -740,7 +741,7 @@ svg.chart { width: 100%; height: 170px; display: block; cursor: crosshair; }
 .chip.kind-bowling { color: #bae6fd; }
 .chip.kind-strength { color: #ddd6fe; }
 .chip.kind-film { color: #bbf7d0; border-color: var(--c-accent-line); }
-.chip.kind-rest { color: var(--c-text-3); }
+.chip.kind-rest { color: var(--c-text-2); }
 
 /* =====================================================================
    Player page
@@ -803,7 +804,7 @@ html:has(.report), body:has(.report), body:has(.report) #root { background: #e7e
 .rp-kino figure { margin: 0; min-width: 0; }
 .rp-kino canvas { width: 100%; aspect-ratio: 4 / 5; border-radius: 8px; background: #111; display: block; }
 .rp-kino figcaption { font-size: 11px; margin-top: 5px; color: #374151; }
-.rp-kino figcaption span { color: #fff; font-weight: 700; padding: 1px 5px; border-radius: 4px; margin-right: 3px; }
+.rp-kino figcaption span { color: #0b0b0c; font-weight: 700; padding: 1px 5px; border-radius: 4px; margin-right: 3px; }
 .rp-missing { aspect-ratio: 4 / 5; display: grid; place-items: center; background: #f3f4f6; border-radius: 8px; color: #6b7280; font-size: 11px; }
 .rp-prio { padding-left: 20px; }
 .rp-prio > li { margin-bottom: 14px; }
