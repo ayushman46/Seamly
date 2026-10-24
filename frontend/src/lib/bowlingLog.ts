@@ -71,3 +71,30 @@ export function weekCheck(log: BowlingLogEntry[], today: Date, limits: LogLimits
   const balls = perDay.reduce((n, d) => n + d.balls, 0);
   return { from, to, days: perDay.length, balls, perDay, warnings };
 }
+
+export interface Workload {
+  acute: number;      // balls in the last 7 days, today included
+  chronic: number;    // average balls a week over the last 28 days
+  ratio: number;      // acute / chronic
+  zone: "low" | "ok" | "high" | "spike";
+}
+
+/**
+ * Acute:chronic workload ratio from the log: this week's balls against the weekly average of the last four weeks.
+ * Spikes well above the bowler's usual load went with more injuries in fast bowlers (Hulin et al. 2014, BJSM);
+ * 0.8–1.3 is the range usually aimed for. Needs three weeks of logging to mean anything, else null.
+ */
+export function workload(log: BowlingLogEntry[], today: Date): Workload | null {
+  const t = isoDate(today);
+  const from28 = addDays(t, -27), from7 = addDays(t, -6);
+  const inRange = log.filter((e) => e.date >= from28 && e.date <= t);
+  const first = inRange.reduce<string | null>((m, e) => (m === null || e.date < m ? e.date : m), null);
+  if (!first || first > addDays(t, -20)) return null;
+  const sum = (xs: BowlingLogEntry[]) => xs.reduce((n, e) => n + e.balls, 0);
+  const acute = sum(inRange.filter((e) => e.date >= from7));
+  const chronic = sum(inRange) / 4;
+  if (chronic <= 0) return null;
+  const ratio = acute / chronic;
+  return { acute, chronic, ratio, zone: ratio < 0.8 ? "low" : ratio <= 1.3 ? "ok" : ratio <= 1.5 ? "high" : "spike" };
+}
+

@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { api } from "../api";
 import type { BowlingLogEntry, Player } from "../types";
 import { bowlingLimits } from "../engine/insights";
-import { formatOvers, isoDate, weekCheck } from "../lib/bowlingLog";
+import { formatOvers, isoDate, weekCheck, workload } from "../lib/bowlingLog";
 import { IAlert, ICheck, IPlus, ITrash } from "./Icons";
 
 const KIND: Record<BowlingLogEntry["kind"], string> = { match: "Match", nets: "Club nets", training: "Training / drills" };
@@ -17,6 +17,7 @@ export default function BowlingLog({ player, onChange }: { player: Player; onCha
   const log = useMemo(() => player.log ?? [], [player.log]);
   const limits = bowlingLimits(player.age_group, player.style);
   const week = useMemo(() => weekCheck(log, new Date(), limits), [log, limits]);
+  const load = useMemo(() => workload(log, new Date()), [log]);
   const recent = log.slice(0, 12);
 
   const add = async () => {
@@ -72,7 +73,19 @@ export default function BowlingLog({ player, onChange }: { player: Player; onCha
       <div className="row wrap" style={{ gap: 8, marginTop: 14 }}>
         <span className="chip">This week: {week.days} bowling {week.days === 1 ? "day" : "days"}{limits ? ` (limit ${limits.days_week})` : ""}</span>
         <span className="chip">{formatOvers(week.balls)} overs</span>
+        {load && (
+          <span className={`chip ${load.zone === "ok" ? "good" : load.zone === "high" ? "watch" : load.zone === "spike" ? "risk" : ""}`}
+            title="Balls in the last 7 days against the average week of the last 4 weeks (acute:chronic ratio). 0.8–1.3 is the usual range.">
+            Load {load.ratio.toFixed(1)}× the 4-week average
+          </span>
+        )}
       </div>
+      {load && (load.zone === "high" || load.zone === "spike") && (
+        <div className="notice warn" role="status" style={{ marginTop: 10 }}>
+          <IAlert size={16} />
+          <div>This week is {load.ratio.toFixed(1)}× {player.name}'s usual week. Sudden jumps in bowling load went with more injuries in fast bowlers (Hulin et al. 2014): build up over a few weeks instead.</div>
+        </div>
+      )}
       {week.warnings.length > 0 ? (
         <div className="notice warn" role="status" style={{ marginTop: 10 }}>
           <IAlert size={16} />

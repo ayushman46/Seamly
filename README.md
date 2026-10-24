@@ -27,7 +27,7 @@ Film one delivery on your phone. Seamly finds the bowler and marks the key momen
 - **Two-week practice plan** that respects the [Cricket Australia junior pace bowling guidelines](https://play.cricket.com.au/community/resources/player-safety/junior-bowling-guidelines/guidelines) for the player's age group: overs per spell, bowling days per week and rest days. It is dated from the coming Monday, and the re-test day can be added to the phone's calendar.
 - **Player profiles and progress over time**: score and measurement trends, personal bests, "since last time", the current focus, and one tap to overlay the latest delivery on the best one filmed from the same angle.
 - **Consistency**: how much each key measurement moves from ball to ball over a player's last six deliveries from the same angle, judged against what one camera can resolve at those frame rates.
-- **Bowling log**: record matches, club nets and practice per player; each week is checked against the age group's limits (bowling days, overs a day, rest days).
+- **Bowling log**: record matches, club nets and practice per player; each week is checked against the age group's limits (bowling days, overs a day, rest days), and once three weeks are logged, this week's load is set against the 4-week average (acute:chronic ratio, with a warning above 1.3).
 - **Compare two deliveries** side by side, or **overlaid**: both skeletons on one canvas, lined up at the hips, scaled to body size and matched phase by phase (each clip's own back-foot contact, front-foot contact and release line up), with a slider and play-through. Print a **coaching report**, and export **CSV / JSON / OBJ**.
 - **Share summary**: one image (release frame with skeleton, score, verdict and the top fixes with cues) to send to a coach or parent through the phone's share sheet.
 - **Works offline after the first analysis.** A service worker keeps the app and the models, so you can film and analyse at the nets with no signal.
@@ -74,6 +74,8 @@ The first analysis downloads about 70 MB of models, which the browser caches aft
 | Stride length | 52.8% | 49.8% | 49.3% |
 
 Full sources for every threshold are in [`docs/RESEARCH.md`](docs/RESEARCH.md).
+
+Tested in Chrome (WebGPU), Safari's engine (WebKit, on an emulated iPhone) and Firefox (WebAssembly: a full analysis of the club clip took about 2.5 minutes headless). The club clip gets the same verdict and top fix in all three; WebKit reads the front knee a degree differently (158° against 157°) because it decodes the video slightly differently. Not yet tested on a physical phone.
 
 ## Develop
 

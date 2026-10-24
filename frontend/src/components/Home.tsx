@@ -386,7 +386,7 @@ function Uploader({ go, disabled, health, players, current, onChoose, onCreate, 
         )}
       </div>
       {health && !health.ok && (
-        <div className="notice error" style={{ marginBottom: 14 }}><IAlert size={16} /> <div>The analysis engine isn't available right now ({health.missing_models.join(", ")}). Try reloading the page, or use a recent version of Chrome, Edge or Safari.</div></div>
+        <div className="notice error" style={{ marginBottom: 14 }}><IAlert size={16} /> <div>The analysis engine isn't available right now ({health.missing_models.join(", ")}). Try reloading the page, or use a recent version of Chrome, Edge, Safari or Firefox.</div></div>
       )}
       <div
         ref={zone}

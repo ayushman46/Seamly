@@ -1,6 +1,6 @@
 /** Weekly bowling-log check (lib/bowlingLog.ts) against the age-group limits, counted in balls. */
 import { describe, expect, it } from "vitest";
-import { formatOvers, parseOvers, weekCheck, type LogLimits } from "../src/lib/bowlingLog";
+import { formatOvers, parseOvers, weekCheck, workload, type LogLimits } from "../src/lib/bowlingLog";
 import type { BowlingLogEntry } from "../src/types";
 
 const U13: LogLimits = { day: 8, days_week: 3, rule: "At least one day off after every bowling day.", label: "11–12" };
@@ -62,3 +62,21 @@ describe("bowling log week check", () => {
     expect(weekCheck([e("2026-10-26", "30"), e("2026-10-27", "30")], WED, null).warnings).toEqual([]);
   });
 });
+
+describe("acute:chronic workload", () => {
+  const day = (n: number) => { const d = new Date(2026, 9, 28 + n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+  it("needs three weeks of logging", () => {
+    expect(workload([e(day(-10), "6"), e(day(-2), "6")], WED)).toBeNull();
+  });
+  it("is about 1 for a steady load and flags a spike", () => {
+    const steady = [-27, -24, -20, -17, -13, -10, -6, -3].map((d) => e(day(d), "5"));
+    const w = workload(steady, WED)!;
+    expect(w.acute).toBe(60);           // two sessions of 5 overs this week
+    expect(w.chronic).toBe(60);         // 8 sessions × 30 balls over 4 weeks
+    expect(w.zone).toBe("ok");
+    const spike = workload([...steady, e(day(-1), "8"), e(day(0), "8")], WED)!;
+    expect(spike.ratio).toBeGreaterThan(1.5);
+    expect(spike.zone).toBe("spike");
+  });
+});
+
