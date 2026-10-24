@@ -24,6 +24,8 @@ export default function Viewer3D({ id, result, frame }: { id: string; result: An
   } | null>(null);
   const [mode, setMode] = useState<"mesh" | "both" | "skeleton">("both");
   const [preset, setPreset] = useState<Preset>(result.view.view === "side_on" ? "side_r" : "behind");
+  const [presetN, setPresetN] = useState(0);   // a click on the current preset re-applies it
+  const [orbited, setOrbited] = useState(false);   // moved by hand since the last preset: no preset is highlighted
   const [ghost, setGhost] = useState(false);
   const [follow, setFollow] = useState(true);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
@@ -101,6 +103,7 @@ export default function Viewer3D({ id, result, frame }: { id: string; result: An
     s.invalidate = () => { if (!s.raf) s.raf = requestAnimationFrame(draw); };
     controls.addEventListener("change", s.invalidate);
     controls.addEventListener("start", s.invalidate);
+    controls.addEventListener("start", () => setOrbited(true));   // fired by the user's drag/zoom only
     st.current = s;
     const resize = () => {
       const w = el.clientWidth, h = el.clientHeight;
@@ -217,14 +220,15 @@ export default function Viewer3D({ id, result, frame }: { id: string; result: An
     const tgt = new THREE.Vector3(P[0], 1.0, P[2]);
     const d = 5.2;
     const off: Record<Preset, [number, number, number]> = {
-      side_r: [d, 0.5, 0], side_l: [-d, 0.5, 0], behind: [0, 0.8, d], front: [0, 0.6, -d], top: [0.01, 4.2, 0.01],
+      side_r: [d, 0.5, 0], side_l: [-d, 0.5, 0], behind: [0, 0.8, d], front: [0, 0.6, -d], top: [0, 4.2, 0.02],   // top: pitch runs up the screen
     };
     s.controls.target.copy(tgt);
     s.camera.position.set(tgt.x + off[preset][0], tgt.y + off[preset][1], tgt.z + off[preset][2]);
     s.controls.update();
     s.invalidate();
+    setOrbited(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [preset]);
+  }, [preset, presetN]);
 
   // ---------- ghost bodies at key events ----------
   useEffect(() => {
@@ -291,7 +295,10 @@ export default function Viewer3D({ id, result, frame }: { id: string; result: An
       </div>
       <div className="viewer-bar">
         <div className="seg">
-          {PRESETS.map((p) => <button key={p.key} className={preset === p.key ? "on" : ""} aria-pressed={preset === p.key} title={p.title} onClick={() => setPreset(p.key)}>{p.label}</button>)}
+          {PRESETS.map((p) => {
+            const on = preset === p.key && !orbited;
+            return <button key={p.key} className={on ? "on" : ""} aria-pressed={on} title={p.title} onClick={() => { setPreset(p.key); setPresetN((n) => n + 1); }}>{p.label}</button>;
+          })}
         </div>
         <div className="seg">
           {(["mesh", "both", "skeleton"] as const).map((m) => <button key={m} className={mode === m ? "on" : ""} aria-pressed={mode === m} onClick={() => setMode(m)}>{m === "both" ? "Body + bones" : m === "mesh" ? "Body" : "Bones"}</button>)}

@@ -418,13 +418,12 @@ export function practicePlan(result: InsightsResult, player: InsightsPlayer | nu
   }
   const notes: string[] = [];
   if (lim) {
-    notes.push(`Bowling limits for ${lim.label} bowlers (${lim.source}): at most ${lim.spell} overs per spell`
-      + (lim.day ? ` and ${lim.day} overs (${lim.day * 6} deliveries) per day` : "")
-      + `, up to ${lim.days_week} bowling days a week. ${lim.rule} `
-      + `Take at least ${lim.between_spells_min} minutes between spells at training. Every delivery `
-      + "counts, including warm-up and drill balls: each session in the plan is counted and stays well inside the limit. Warm-up and drill balls are bowled in short sets with breaks; only the spell is bowled straight through.");
-    notes.push("These sessions are all of the week's bowling: club nets and matches count as bowling days too, so "
-      + "swap a session out for them rather than adding them on top.");
+    notes.push(`Limits for ${lim.label} bowlers: at most ${lim.spell} overs a spell`
+      + (lim.day ? ` and ${lim.day} overs a day` : "")
+      + `, ${lim.days_week} bowling days a week. ${lim.rule} `
+      + `Rest at least ${lim.between_spells_min} minutes between spells. Warm-up and drill balls count `
+      + "too; every session here stays inside the limits.");
+    notes.push("Matches and club nets are bowling days too: swap a session for them rather than adding them on top.");
     if (lim.preseason_weeks) {
       notes.push(`Coming back after a break? Build up over about ${lim.preseason_weeks} weeks before bowling flat out.`);
     }

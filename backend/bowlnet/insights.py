@@ -355,13 +355,12 @@ def practice_plan(result: dict, player: dict | None = None) -> dict:
         weeks.append({"title": "Week 1: learn the movement" if w == 1 else week2, "days": days})
     notes = []
     if lim:
-        notes.append(f"Bowling limits for {lim['label']} bowlers ({lim['source']}): at most {lim['spell']} overs per "
-                     "spell" + (f" and {lim['day']} overs ({lim['day'] * 6} deliveries) per day" if lim["day"] else "") +
-                     f", up to {lim['days_week']} bowling days a week. {lim['rule']} "
-                     f"Take at least {lim['between_spells_min']} minutes between spells at training. Every delivery "
-                     "counts, including warm-up and drill balls: each session in the plan is counted and stays well inside the limit. Warm-up and drill balls are bowled in short sets with breaks; only the spell is bowled straight through.")
-        notes.append("These sessions are all of the week's bowling: club nets and matches count as bowling days too, so "
-                     "swap a session out for them rather than adding them on top.")
+        notes.append(f"Limits for {lim['label']} bowlers: at most {lim['spell']} overs a spell"
+                     + (f" and {lim['day']} overs a day" if lim["day"] else "")
+                     + f", {lim['days_week']} bowling days a week. {lim['rule']} "
+                     f"Rest at least {lim['between_spells_min']} minutes between spells. Warm-up and drill balls count "
+                     "too; every session here stays inside the limits.")
+        notes.append("Matches and club nets are bowling days too: swap a session for them rather than adding them on top.")
         if lim.get("preseason_weeks"):
             notes.append(f"Coming back after a break? Build up over about {lim['preseason_weeks']} weeks before bowling flat out.")
         if age in JUNIOR:

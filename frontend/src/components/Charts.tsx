@@ -73,7 +73,14 @@ function Chart({ k, result, frame, onSeek }: { k: string; result: AnalysisResult
   const x = (i: number) => P.l + (i / Math.max(1, n - 1)) * (W - P.l - P.r);
   const y = (val: number) => P.t + (1 - (val - lo) / (hi - lo)) * (H - P.t - P.b);
   const i = Math.max(0, Math.min(n - 1, frame - f0));
-  const ticks = [lo, (lo + hi) / 2, hi];
+  // round tick values (1, 2 or 5 × a power of ten) inside the plotted range
+  const ticks = (() => {
+    const raw = (hi - lo) / 3, mag = 10 ** Math.floor(Math.log10(raw));
+    const step = [1, 2, 5, 10].map((m) => m * mag).find((s) => s >= raw) ?? 10 * mag;
+    const out: number[] = [];
+    for (let t = Math.ceil(lo / step) * step; t <= hi + 1e-9; t += step) out.push(Math.round(t * 1e6) / 1e6);
+    return out;
+  })();
   const click = (e: React.MouseEvent) => {
     const r = svg.current!.getBoundingClientRect();
     const fx = ((e.clientX - r.left) / r.width) * W;
@@ -93,8 +100,8 @@ function Chart({ k, result, frame, onSeek }: { k: string; result: AnalysisResult
         aria-label={`${info.label} through the delivery, from ${fmt(Math.min(...data.filter(Number.isFinite)), 0)} to ${fmt(Math.max(...data.filter(Number.isFinite)), 0)}${unitLabel(info.unit)}; ${fmt(data[i], 1)}${unitLabel(info.unit)} at this frame`}>
         {ticks.map((t) => (
           <g key={t}>
-            <line x1={P.l} x2={W - P.r} y1={y(t)} y2={y(t)} stroke="#1f2a3d" strokeDasharray="3 4" />
-            <text x={P.l - 6} y={y(t) + 4} fill="#6f7d94" fontSize="11" textAnchor="end">{fmt(t, 0)}</text>
+            <line x1={P.l} x2={W - P.r} y1={y(t)} y2={y(t)} stroke="var(--c-line)" strokeDasharray="3 4" />
+            <text x={P.l - 6} y={y(t) + 4} fill="var(--c-text-3)" fontSize="11" textAnchor="end">{fmt(t, 0)}</text>
           </g>
         ))}
         {(() => {

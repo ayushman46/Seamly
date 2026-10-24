@@ -236,7 +236,7 @@ export default function PlayerPage({ pid, go }: { pid: string; go: (to: string) 
                     );
                   })}
                 </div>
-                <div className="faint" style={{ fontSize: 12, marginTop: 8 }}>Only values measured reliably for each clip's camera angle are plotted. The shaded band is the good range.</div>
+                <div className="faint" style={{ fontSize: 12, marginTop: 8 }}>Only values measured reliably for each clip's camera angle are plotted. Where a card has a shaded band, that is the good range.</div>
               </section>
             )}
 
