@@ -27,11 +27,14 @@ type Meta = AnalysisMeta & {
   started?: number;
   finished?: number;
   gen?: string;     // storage generation of the frames + mesh ("" for imported samples); replaced atomically on re-analysis
+  auto_events?: Partial<Record<EventKey, number>>;   // the frames detected automatically (before any marker edits)
   owner?: string;   // tab running/queueing the analysis
 };
 type StoredPlayer = Omit<Player, "analyses" | "latest_score" | "last_analysis">;
 
 /** How sure the bowling arm is (1 when the user set it), kept with the metadata so lists can mark a guess. */
+const autoEvents = (r: AnalysisResult) =>
+  Object.fromEntries(Object.entries(r.events).filter(([, e]) => e).map(([k, e]) => [k, e!.frame])) as Partial<Record<EventKey, number>>;
 const armConf = (r: AnalysisResult) => (r.bowling_arm.source === "user" ? 1 : Math.round(r.bowling_arm.confidence * 100) / 100);
 
 const now = () => Date.now() / 1000;
@@ -281,7 +284,8 @@ async function runJob(id: string) {
     const cur = metas.get(id);
     if (!cur) throw new AnalysisError("This analysis was deleted.");
     const done = { ...cur, status: "done", progress: 1, stage: "done", stage_label: "Complete", finished: now(), score: c.score, grade: c.grade,
-      view: result.view.view, arm: result.bowling_arm.arm, arm_conf: armConf(result), thumb_frame: result.events.br.frame, timing_s: result.timing_s,
+      view: result.view.view, arm: result.bowling_arm.arm, arm_conf: armConf(result), auto_events: overrides.events ? undefined : autoEvents(result),
+      thumb_frame: result.events.br.frame, timing_s: result.timing_s,
       summary: summarise(result), error: null, previous: null, suggest: null, elapsed: result.timing_s, gen, overrides, updated: now() } as Meta;
     // one transaction: stage A, result and the metadata pointing at the new generation commit together
     await db.write(["stagea", "result", "meta"], (st) => { st.stagea.put(A.stageA, id); st.result.put(result, id); st.meta.put(done, id); });
@@ -452,7 +456,8 @@ async function importSample(which: SampleName): Promise<string> {
   const t = now();
   const m = { ...newMeta(s.id, s.name, video?.size ?? 0, (bundle.meta.options ?? {}) as Partial<Options>, null, "video/mp4"),
     ...bundle.meta, id: s.id, name: s.name, created: t, updated: t, status: "done", progress: 1, stage: "done", stage_label: "Complete",
-    error: null, notice: null, player_id: have?.player_id ?? null, gen: "", sample_version: SAMPLE_VERSION, arm_conf: armConf(r) } as Meta;
+    error: null, notice: null, player_id: have?.player_id ?? null, gen: "", sample_version: SAMPLE_VERSION, arm_conf: armConf(r),
+    auto_events: bundle.meta.overrides?.events ? undefined : autoEvents(r) } as Meta;
   metas.set(s.id, m);
   await db.put("meta", s.id, m);
   results.delete(s.id); meshBufs.delete(s.id); dropUrls(s.id);
@@ -598,7 +603,10 @@ export const api = {
       const merged: Overrides = { ...prev, ...over };
       if (over.events) {
         const ev = { ...(prev.events ?? {}), ...over.events };
-        merged.events = Object.fromEntries(Object.entries(ev).filter(([k, v]) => ["bfc", "ffc", "uah", "br", "ft"].includes(k) && v !== null && v !== undefined));
+        // a marker put back on the frame found automatically is no longer an edit
+        const auto = meta.auto_events ?? {};
+        merged.events = Object.fromEntries(Object.entries(ev).filter(([k, v]) => ["bfc", "ffc", "uah", "br", "ft"].includes(k) && v !== null && v !== undefined
+          && auto[k as EventKey] !== v));
       }
       return applyEdit(id, merged, Object.keys(over.events ?? {}) as EventKey[]);
     }),
