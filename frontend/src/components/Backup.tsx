@@ -85,13 +85,12 @@ export function BackupPanel({ onRestored, restored }: { onRestored: (text: strin
     <section className="ws-section" aria-labelledby="backup-title">
       <div className="card card-pad backup-card">
         <div className="backup-text">
-          <h2 id="backup-title" style={{ fontSize: 17, margin: 0 }}>Back up or move to another device</h2>
+          <h2 id="backup-title" style={{ fontSize: 17, margin: 0 }}>Backup</h2>
           <p className="muted" style={{ margin: "6px 0 0", fontSize: 13.5 }}>
-            Your analyses are stored only in this browser, and clearing its site data deletes them. Download a backup file to keep a
-            copy, or to carry your players and progress to a new phone or computer.
+            Everything lives in this browser only. Keep a backup file, or use it to move to another device.
           </p>
           <label className="pick" style={{ marginTop: 10, paddingLeft: 0 }}>
-            <input type="checkbox" checked={videos} onChange={(e) => setVideos(e.target.checked)} /> Include the original videos (bigger file; lets you re-analyse them later)
+            <input type="checkbox" checked={videos} onChange={(e) => setVideos(e.target.checked)} /> Include the videos (bigger file, lets you re-analyse later)
           </label>
         </div>
         <div className="backup-actions">

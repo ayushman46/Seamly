@@ -186,7 +186,7 @@ export default function FramePlayer({ id, result, frame, overlay, selMetric, hud
         const tw = ctx.measureText(text).width;
         const bh = 22 * ui;
         const [bx, by] = place(tx - tw / 2 - 6 * ui, ty - bh / 2, tw + 12 * ui, bh);
-        ctx.fillStyle = "rgba(5,8,13,0.78)";
+        ctx.fillStyle = "rgba(10,10,11,0.78)";
         ctx.fillRect(bx, by, tw + 12 * ui, bh);
         ctx.fillStyle = col; ctx.textAlign = "center"; ctx.textBaseline = "middle";
         ctx.fillText(text, bx + (tw + 12 * ui) / 2, by + bh / 2);
@@ -218,7 +218,7 @@ export default function FramePlayer({ id, result, frame, overlay, selMetric, hud
         const tw = ctx.measureText(text).width;
         const bh = 22 * ui;
         const [bx, by] = place(sh[0] + 12, sh[1] - 10 - bh, tw + 12 * ui, bh);
-        ctx.fillStyle = "rgba(5,8,13,0.78)"; ctx.fillRect(bx, by, tw + 12 * ui, bh);
+        ctx.fillStyle = "rgba(10,10,11,0.78)"; ctx.fillRect(bx, by, tw + 12 * ui, bh);
         ctx.fillStyle = "#7dd3fc"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
         ctx.fillText(text, bx + 6 * ui, by + bh / 2);
       }

@@ -16,7 +16,7 @@ import Settings from "./Settings";
 import ErrorBoundary from "./ErrorBoundary";
 import FrameCard from "./FrameCard";
 import PlanPanel from "./PlanPanel";
-import { BackHealthCard, SummaryCard } from "./InsightsCard";
+import { Verdict } from "./InsightsCard";
 import { setCurrentPlayer } from "../lib/player";
 import { IAlert, IBack, ICheck, IChevronDown, IClock, ICube, IDownload, IFile, IFilm, IInfo, ILock, INext, IPause, IPlay, IPrev, IRefresh, IVideo } from "./Icons";
 import { SiteFooter } from "./Landing";
@@ -169,7 +169,6 @@ function Processing({ meta, go }: { meta: AnalysisMeta; go: (to: string) => void
           <div className="proc-head">
             <ProcRing value={p} />
             <div className="grow">
-              <span className="eyebrow">{queued ? "Waiting to start" : MODE === "browser" ? "Analysing on this device" : "Analysing"}</span>
               <h1 className="proc-title">
                 {queued
                   ? meta.queue_position ? `In the queue — ${meta.queue_position} ahead of you` : "Starting…"
@@ -206,15 +205,11 @@ function Processing({ meta, go }: { meta: AnalysisMeta; go: (to: string) => void
               <div className="notice warn" role="status"><IAlert size={16} /> <div><b>Paused.</b> Seamly only analyses while this tab is visible (browsers slow down or stop video decoding in background tabs). Come back to this tab and it carries on.</div></div>
             )}
             {MODE === "browser" ? (
-              <div className="notice ok"><ILock size={16} /> <div><b>Your video isn't being uploaded.</b> Everything happens on this device, so keep this tab open until it finishes.</div></div>
+              <div className="notice ok"><ILock size={16} /> <div>Your video stays on this device. Keep this tab open until it finishes.</div></div>
             ) : (
               <div className="notice"><IInfo size={16} /> <div>You can leave this page — the analysis keeps running on your Seamly server and will appear in your history.</div></div>
             )}
-            <p>
-              {MODE === "browser"
-                ? "A short clip of one delivery usually takes 15–40 seconds on a recent laptop; phones, older devices and long or high-speed (240 fps) clips take longer. " + (cached ? "" : "This first one also downloads the analysis models (about 70 MB, once). ") + "The estimate above updates as it goes."
-                : "A short clip of one delivery takes about 30–60 seconds; long or high-speed (240 fps) clips up to about two minutes."}
-            </p>
+            {MODE === "browser" && !cached && <p>This first one also downloads the analysis models (about 70 MB, once).</p>}
           </div>
         </div>
       </main>
@@ -254,7 +249,6 @@ function Failed({ meta, go, onRetry }: { meta: AnalysisMeta; go: (to: string) =>
           <div className="proc-head">
             <span className="empty-icon" style={{ width: 56, height: 56, borderRadius: 16, color: "var(--c-watch)" }}><IAlert size={26} /></span>
             <div className="grow">
-              <span className="eyebrow brand">Analysis stopped</span>
               <h1 className="proc-title">We couldn't analyse this clip</h1>
               <div className="proc-name" title={meta.name}>{meta.name}</div>
             </div>
@@ -362,6 +356,10 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
     setPlaying(false);
     setFrame(e.frame);
     scrollToEl(playerRef.current);
+  };
+  const openCoaching = () => {
+    setTab("coach");
+    scrollToEl(tabsRef.current);
   };
   const openSettings = () => {
     setTab("settings");
@@ -604,12 +602,9 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
             </div>
           </div>
         )}
-        {result.coaching.capture_tips.length > 0 && result.fps_real < 90 && (
-          <div className="notice" style={{ marginBottom: 14 }}>
-            <IInfo size={16} /> <div>{result.coaching.capture_tips[0]}</div>
-          </div>
-        )}
-        {ins && <SummaryCard ins={ins} onPlan={openPlan} onJump={(k) => jumpTo(k as EventKey)} />}
+        {ins || insErr
+          ? <Verdict result={result} ins={ins} onPlan={openPlan} onCoaching={openCoaching} onJump={jumpTo} />
+          : <div className="skeleton-box verdict-skel" />}
         <div className="an-grid">
           <div className="stack">
             <div className="card player" ref={playerRef}>
@@ -638,6 +633,12 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
                 </div>
               </div>
               <Timeline result={result} frame={frame} onSeek={(f) => { setPlaying(false); setFrame(f); }} onSetEvent={setEvent} edited={edited} id={id} busy={busy} />
+              {edited.length > 0 && (
+                <div className="edited-row">
+                  <span className="chip watch">You moved: {edited.map((k) => EVENTS.find((e) => e.key === k)?.short).join(", ")}</span>
+                  <button className="btn sm ghost" disabled={busy} onClick={resetEdits}>Reset to automatic</button>
+                </div>
+              )}
             </div>
           </div>
           <div className="stack">
@@ -647,8 +648,6 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
               </Suspense>
             </ErrorBoundary>
             <FrameCard result={result} frame={frame} onOpen={() => setTab("frame")} onConfirm={setEvent} busy={busy} />
-            <ScoreCard result={result} edited={edited} busy={busy} onReset={resetEdits} />
-            {ins && <BackHealthCard ins={ins} />}
           </div>
         </div>
 
@@ -670,7 +669,7 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
           </div>
           <div role="tabpanel" id="tab-panel" aria-labelledby={`tab-${tab}`}>
           <ErrorBoundary label="This tab">
-          {tab === "coach" && <CoachingPanel result={result} onJump={(k) => jumpTo(k as EventKey)} age={ins?.player?.age_group} style={ins?.player?.style} />}
+          {tab === "coach" && <CoachingPanel result={result} ins={ins} onJump={(k) => jumpTo(k as EventKey)} age={ins?.player?.age_group} style={ins?.player?.style} />}
           {tab === "metrics" && <MetricsPanel result={result} selected={selMetric} onSelect={(k, evKey) => { setSelMetric(k === selMetric ? null : k); const e = evKey ? result.events[evKey as EventKey] : null; if (e) { setPlaying(false); setFrame(e.frame); } }} />}
           {tab === "charts" && <Charts result={result} frame={frame} onSeek={(f) => { setPlaying(false); setFrame(f); }} />}
           {tab === "frame" && <Inspector result={result} frame={frame} onSetEvent={setEvent} busy={busy} />}
@@ -689,47 +688,5 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
       <div className="sr-only" role="status" aria-live="polite">{toast?.text ?? (busy ? "Updating the results…" : "")}</div>
       {toast && <div className={`toast ${toast.error ? "error" : ""}`} aria-hidden="true">{toast.text}</div>}
     </>
-  );
-}
-
-function ScoreCard({ result, edited, busy, onReset }: { result: AnalysisResult; edited: EventKey[]; busy: boolean; onReset: () => void }) {
-  const c = result.coaching;
-  const score = c.score ?? 0;
-  const R = 50, C = 2 * Math.PI * R;
-  const col = score >= 85 ? "#4ade80" : score >= 70 ? "#3ddc97" : score >= 55 ? "#fbbf24" : "#f87171";
-  return (
-    <div className="card card-pad">
-      <div className="score-wrap">
-        <div className="ring">
-          <svg width="118" height="118" viewBox="0 0 118 118">
-            <circle cx="59" cy="59" r={R} stroke="var(--c-line-2)" strokeWidth="10" fill="none" />
-            {c.score !== null && c.score !== undefined && (
-              <circle cx="59" cy="59" r={R} stroke={col} strokeWidth="10" fill="none" strokeLinecap="round" strokeDasharray={`${(C * score) / 100} ${C}`} />
-            )}
-          </svg>
-          <div className="val"><div><b>{c.score ?? "–"}</b><small>{c.grade ?? "No score"}</small></div></div>
-        </div>
-        <div>
-          <div role="heading" aria-level={2} className="card-title" style={{ marginBottom: 6 }}>Action score</div>
-          <div className="muted" style={{ fontSize: 13, lineHeight: 1.55 }}>
-            {c.score === null || c.score === undefined
-              ? "Not enough reliably measured metrics in this clip for a fair score. Confirm the event markers on the timeline, or add a side-on clip."
-              : `Based on the ${c.score_breakdown.length} checkpoints this camera view measures reliably: one in the target range counts in full, a "watch" about half, a "risk" very little (weighted by how sure each measurement is). It rates the action, not playing level.`}
-          </div>
-          {c.priorities[0] && (
-            <div style={{ marginTop: 8 }}>
-              <span className="faint" style={{ fontSize: 12 }}>Top priority</span>
-              <div style={{ fontWeight: 700 }}>{c.priorities[0].headline}</div>
-            </div>
-          )}
-          {edited.length > 0 && (
-            <div className="row" style={{ marginTop: 10 }}>
-              <span className="chip watch">Events edited: {edited.map((k) => EVENTS.find((e) => e.key === k)?.short).join(", ")}</span>
-              <button className="btn sm ghost" disabled={busy} onClick={onReset}>Reset to auto</button>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
   );
 }

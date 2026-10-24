@@ -1,7 +1,8 @@
 import { drillsForAge } from "../lib/player";
-import type { AnalysisResult } from "../types";
+import type { AnalysisResult, Insights } from "../types";
 import { RATING_LABEL } from "../lib/constants";
 import { IAlert, IBolt, ICheck, IPlay, IShield, ITarget } from "./Icons";
+import { BackHealth } from "./InsightsCard";
 
 const CAT: Record<string, { label: string; icon: JSX.Element; cls: string }> = {
   pace: { label: "Pace", icon: <IBolt size={13} />, cls: "info" },
@@ -13,7 +14,9 @@ const CAT: Record<string, { label: string; icon: JSX.Element; cls: string }> = {
 // priorities whose number is a share of the bowler's height
 const HEIGHT_BASED = new Set(["release_height_pct", "stride_length_pct"]);
 
-export default function CoachingPanel({ result, onJump, age, style }: { result: AnalysisResult; onJump: (eventKey: string) => void; age?: string | null; style?: string | null }) {
+export default function CoachingPanel({ result, ins, onJump, age, style }: {
+  result: AnalysisResult; ins?: Insights | null; onJump: (eventKey: string) => void; age?: string | null; style?: string | null;
+}) {
   const c = result.coaching;
   const guessedHeight = result.skeleton.height_source !== "user";
   return (
@@ -39,7 +42,8 @@ export default function CoachingPanel({ result, onJump, age, style }: { result: 
                     {RATING_LABEL[p.rating]}{p.borderline ? " · borderline" : ""}
                   </span>
                   <span className={`chip ${cat.cls}`}>{cat.icon} {cat.label}</span>
-                  <span className="chip unrated" title="Strength of the published evidence">{p.evidence}</span>
+                  <span className="faint" style={{ fontSize: 12 }} title="Strength of the published evidence">{p.evidence}</span>
+                  <div className="grow" />
                   {ev && <button className="btn sm ghost" onClick={() => onJump(ev)} aria-label={`Show in video: ${p.headline}`}><IPlay size={11} /> Show in video</button>}
                 </div>
                 <h4>{p.headline}</h4>
@@ -51,8 +55,10 @@ export default function CoachingPanel({ result, onJump, age, style }: { result: 
                 )}
                 <div className="muted" style={{ fontSize: 13 }}>{p.why}</div>
                 <div className="cue">“{p.drill.cue}”</div>
-                <div style={{ marginTop: 10, fontWeight: 700, fontSize: 13 }}>{p.drill.title} — drills</div>
-                <ul className="drills">{drillsForAge(p.drill.drills, age).map((d) => <li key={d}>{d}</li>)}</ul>
+                <details className="drills-more">
+                  <summary>Drills: {p.drill.title.toLowerCase()}</summary>
+                  <ul className="drills">{drillsForAge(p.drill.drills, age).map((d) => <li key={d}>{d}</li>)}</ul>
+                </details>
               </div>
             </div>
           );
@@ -65,6 +71,7 @@ export default function CoachingPanel({ result, onJump, age, style }: { result: 
             {c.strengths.map((s) => <div key={s} className="row" style={{ gap: 8 }}><span className="chip good"><ICheck size={13} /></span><span>{s}</span></div>)}
           </div>
         ) : <div className="faint">Strengths appear here once enough metrics are measured reliably.</div>}
+        {ins?.back_health && <><div className="divider" /><BackHealth ins={ins} /></>}
         <div className="divider" />
         <div role="heading" aria-level={3} className="card-title">Get a better reading</div>
         <div className="stack" style={{ gap: 8 }}>
@@ -72,6 +79,11 @@ export default function CoachingPanel({ result, onJump, age, style }: { result: 
         </div>
         <div className="divider" />
         <div role="heading" aria-level={3} className="card-title">Score breakdown</div>
+        <p className="faint" style={{ fontSize: 12.5, margin: "0 0 10px" }}>
+          {c.score === null || c.score === undefined
+            ? "Too few reliable measurements in this clip for a fair score. Check the event markers on the timeline, or film side-on."
+            : `From the ${c.score_breakdown.length} checkpoints this view measures reliably. It rates the action, not playing level.`}
+        </p>
         <div className="stack" style={{ gap: 6 }}>
           {c.score_breakdown.map((b) => (
             <div key={b.key} className="row" style={{ fontSize: 13 }}>

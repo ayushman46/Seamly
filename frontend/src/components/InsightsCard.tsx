@@ -1,93 +1,110 @@
-import type { EventKey, Insights } from "../types";
-import { EVENTS } from "../lib/constants";
+import type { AnalysisResult, EventKey, Insights } from "../types";
 import { fmt } from "../lib/format";
-import { IAlert, ICalendar, IChat, IPlay, IShield } from "./Icons";
+import { IArrowRight, ICalendar, IPlay } from "./Icons";
 
-/** "Your delivery in plain words": headline, what's working, what to fix first and why, how to see more. */
-export function SummaryCard({ ins, onJump, onPlan }: { ins: Insights; onJump: (k: EventKey) => void; onPlan: () => void }) {
-  const s = ins.summary;
+function ScoreRing({ score, grade }: { score: number | null | undefined; grade: string | null | undefined }) {
+  const R = 50, C = 2 * Math.PI * R;
+  const s = score ?? 0;
+  const col = s >= 85 ? "#4ade80" : s >= 70 ? "#3ddc97" : s >= 55 ? "#fbbf24" : "#f87171";
   return (
-    <div className="card card-pad summary-card">
-      <div className="row wrap" style={{ gap: 10, marginBottom: 8 }}>
-        <div role="heading" aria-level={2} className="card-title" style={{ margin: 0 }}><IChat size={14} /> Your delivery in plain words</div>
-        {ins.player && <span className="chip info">{ins.player.name}</span>}
-        <div className="grow" />
-        <button className="btn sm primary" onClick={onPlan}><ICalendar size={14} /> Your 2-week practice plan</button>
-      </div>
-      <div className="summary-headline">{s.headline}</div>
-      <div className="summary-grid">
-        {s.fixes.length > 0 && (
-          <div className="stack" style={{ gap: 10 }}>
-            <div className="faint summary-label">Work on</div>
-            {s.fixes.map((f, i) => {
-              const ev = f.event?.split("-").pop() as EventKey | undefined;
-              const label = ev ? EVENTS.find((e) => e.key === ev)?.label : null;
-              return (
-                <div key={f.title} className={`fix ${f.rating}`}>
-                  <div className="row" style={{ gap: 8 }}>
-                    <span className="fix-n">{i + 1}</span>
-                    <b className="grow">{f.title}</b>
-                    {ev && label && <button className="btn sm ghost" onClick={() => onJump(ev)} title={`Jump to ${label}`} aria-label={`Show me: ${f.title}, at ${label.toLowerCase()}`}><IPlay size={11} /> Show me</button>}
-                  </div>
-                  <div className="muted" style={{ fontSize: 13 }}>{f.what}.</div>
-                  <div style={{ fontSize: 13 }}>{f.why}</div>
-                  <div className="cue">Cue: “{f.cue}”</div>
-                </div>
-              );
-            })}
-          </div>
+    <div className="ring" role="img" aria-label={score === null || score === undefined ? "No action score for this clip" : `Action score ${score} out of 100, ${grade}`}>
+      <svg viewBox="0 0 118 118" aria-hidden="true">
+        <circle cx="59" cy="59" r={R} stroke="var(--c-line-2)" strokeWidth="9" fill="none" />
+        {score !== null && score !== undefined && (
+          <circle cx="59" cy="59" r={R} stroke={col} strokeWidth="9" fill="none" strokeLinecap="round" strokeDasharray={`${(C * s) / 100} ${C}`} />
         )}
-        <div className="stack" style={{ gap: 10 }}>
-          {s.working.length > 0 && (
-            <div>
-              <div className="faint summary-label">What's working</div>
-              <ul className="ticks">{s.working.map((w) => <li key={w}>{w}</li>)}</ul>
-            </div>
-          )}
-          {s.unlock.length > 0 && (
-            <div>
-              <div className="faint summary-label">See more next time</div>
-              <ul className="plain">{s.unlock.map((u) => <li key={u}>{u}</li>)}</ul>
-            </div>
-          )}
-          {s.notes.map((n) => <div key={n} className="notice" style={{ fontSize: 13 }}><IAlert size={16} /> <div>{n}</div></div>)}
-        </div>
-      </div>
+      </svg>
+      <div className="val" aria-hidden="true"><div><b>{score ?? "–"}</b><small>{grade ?? "No score"}</small></div></div>
     </div>
   );
 }
 
-const STATUS_TEXT = { ok: "No red flags", watch: "Worth watching", flag: "Discuss with a coach", unknown: "Not measurable" } as const;
+const BACK_SHORT = { ok: "No red flags", watch: "Worth watching", flag: "Talk to a coach", unknown: "Not measurable from this view" } as const;
 
-/** Lower-back technique screen for pace bowlers (never a diagnosis). */
-export function BackHealthCard({ ins }: { ins: Insights }) {
+/** The back-health line in a few words: a partial screen is never presented as an all-clear. */
+export function backHealthLine(b: NonNullable<Insights["back_health"]>): string {
+  if (b.overall === "ok" && b.measured < b.total) return `No red flags in the ${b.measured} of ${b.total} checks this view allows`;
+  return BACK_SHORT[b.overall];
+}
+
+/**
+ * The verdict at the top of an analysis: the score, the one-line summary, the one thing to work on (with its cue)
+ * and the few facts that change how to read it (what's working, back health, camera limits).
+ */
+export function Verdict({ result, ins, onJump, onPlan, onCoaching }: {
+  result: AnalysisResult; ins: Insights | null; onJump: (k: EventKey) => void; onPlan: () => void; onCoaching: () => void;
+}) {
+  const c = result.coaching;
+  const s = ins?.summary;
+  const fix = s?.fixes[0];
+  const p0 = c.priorities[0];
+  const headline = s?.headline ?? (p0 ? `Next: ${p0.headline}` : "No clear issues among what this view can measure.");
+  const ev = (fix?.event ?? p0?.event)?.split("-").pop() as EventKey | undefined;
+  const b = ins?.back_health ?? null;
+  const working = s?.working ?? c.strengths;
+  const slow = result.fps_real < 90;
+  return (
+    <section className="card verdict" aria-labelledby="verdict-title">
+      <ScoreRing score={c.score} grade={c.grade} />
+      <div className="verdict-main">
+        <h2 id="verdict-title" className="verdict-headline">{headline}</h2>
+        {fix ? (
+          <div className="verdict-fix">
+            <div className="muted">{fix.what}</div>
+            <div className="cue">“{fix.cue}”</div>
+          </div>
+        ) : p0 ? (
+          <div className="verdict-fix"><div className="cue">“{p0.drill.cue}”</div></div>
+        ) : null}
+        <div className="verdict-actions">
+          <button type="button" className="btn primary sm" onClick={onPlan}><ICalendar size={14} /> 2-week practice plan</button>
+          {ev && result.events[ev] && (
+            <button type="button" className="btn sm" onClick={() => onJump(ev)} aria-label={`Show me in the video${fix ? `: ${fix.title}` : ""}`}><IPlay size={11} /> Show me</button>
+          )}
+          {c.priorities.length > 0 && (
+            <button type="button" className="btn ghost sm" onClick={onCoaching}>All coaching <IArrowRight size={13} /></button>
+          )}
+        </div>
+      </div>
+      <dl className="verdict-facts">
+        {working.length > 0 && <div><dt>Working</dt><dd>{working.slice(0, 2).join(" · ")}</dd></div>}
+        {b && (
+          <div><dt>Back health</dt><dd><span className={`dot ${b.overall}`} aria-hidden="true" /> {backHealthLine(b)}</dd></div>
+        )}
+        <div>
+          <dt>Camera</dt>
+          <dd title={slow ? c.capture_tips[0] : undefined}>
+            {fmt(result.fps_real)} fps{slow ? ": timings are approximate. Slow motion (120–240 fps) is far more precise." : ", precise enough for timings."}
+          </dd>
+        </div>
+        {s?.notes.map((n) => <div key={n}><dt>Note</dt><dd>{n}</dd></div>)}
+      </dl>
+    </section>
+  );
+}
+
+/** Lower-back technique screen for pace bowlers (never a diagnosis), as a section of the Coaching tab. */
+export function BackHealth({ ins }: { ins: Insights }) {
   const b = ins.back_health;
   if (!b) return null;
-  // a partial screen isn't an all-clear: side-bend and mixed action (the main junior risks) need a clip from behind
-  const partial = b.overall === "ok" && b.measured < b.total;
-  const headline = partial
-    ? `${b.measured} of ${b.total} checks possible from this clip: no red flags in ${b.measured === 1 ? "it" : "those"}`
-    : b.overall === "unknown" ? "Couldn't check in this clip" : STATUS_TEXT[b.overall];
   return (
-    <div className="card card-pad">
-      <div className="row wrap" style={{ marginBottom: 12, gap: 8 }}>
-        <div role="heading" aria-level={2} className="card-title grow" style={{ margin: 0 }}><IShield size={14} /> Back-health check</div>
-        <span className={`chip multi ${b.overall === "ok" && !partial ? "good" : b.overall === "watch" ? "watch" : b.overall === "flag" ? "risk" : ""}`}>{headline}</span>
-      </div>
-      <div className="stack" style={{ gap: 10 }}>
+    <div>
+      <div role="heading" aria-level={3} className="card-title">Back health</div>
+      <div className="muted" style={{ fontSize: 13, marginBottom: 10 }}>{backHealthLine(b)}.</div>
+      <div className="stack" style={{ gap: 8 }}>
         {b.checks.map((c) => (
           <div key={c.key} className="row" style={{ gap: 8, alignItems: "flex-start" }}>
             <span className={`dot ${c.status}`} style={{ marginTop: 6 }} aria-hidden="true" />
-            <span className="sr-only">{STATUS_TEXT[c.status as keyof typeof STATUS_TEXT]}: </span>
+            <span className="sr-only">{BACK_SHORT[c.status as keyof typeof BACK_SHORT]}: </span>
             <div className="grow">
-              <b style={{ fontSize: 13 }}>{c.label}</b>{c.value !== null && <span className="faint"> · {fmt(c.value)}°</span>}
+              <span style={{ fontSize: 13, fontWeight: 600 }}>{c.label}</span>{c.value !== null && <span className="faint"> · {fmt(c.value)}°</span>}
               <div className="faint" style={{ fontSize: 12.5 }}>{c.text}</div>
             </div>
           </div>
         ))}
       </div>
-      <ul className="plain" style={{ marginTop: 14 }}>{b.advice.map((a) => <li key={a}>{a}</li>)}</ul>
-      <div className="faint" style={{ fontSize: 11.5, marginTop: 10 }}>{b.disclaimer}</div>
+      {b.advice.map((a) => <p key={a} className="faint" style={{ fontSize: 12.5, margin: "10px 0 0" }}>{a}</p>)}
+      <p className="faint" style={{ fontSize: 11.5, margin: "8px 0 0" }}>{b.disclaimer}</p>
     </div>
   );
 }

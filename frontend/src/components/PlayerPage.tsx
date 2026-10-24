@@ -3,6 +3,7 @@ import { api } from "../api";
 import type { Player, PlayerProgress } from "../types";
 import { VIEW_LABEL } from "../lib/constants";
 import { fmt, unitLabel } from "../lib/format";
+import { consistency } from "../lib/consistency";
 import { AGE_LABEL, STYLE_LABEL, setCurrentPlayer } from "../lib/player";
 import Header from "./Header";
 import PlayerForm from "./PlayerForm";
@@ -11,6 +12,8 @@ import BowlingLog from "./BowlingLog";
 import { IAlert, IBack, ICalendar, IChevronRight, ITrash, IUpload, IVideo } from "./Icons";
 import { SiteFooter } from "./Landing";
 import { usePageTitle } from "../lib/title";
+
+const STEADY = { steady: "Steady", some: "Some variation", varies: "Varies a lot" } as const;
 
 const dateOf = (ts: number | null) => (ts ? new Date(ts * 1000).toLocaleDateString(undefined, { day: "numeric", month: "short" }) : "–");
 const BETTER_TEXT: Record<string, string> = { higher: "higher is better", lower: "lower is better" };
@@ -59,6 +62,7 @@ export default function PlayerPage({ pid, go }: { pid: string; go: (to: string) 
   const s = data.stats;
   const upload = () => { setCurrentPlayer(p.id); go("/"); };
   const latest = data.sessions[data.sessions.length - 1];
+  const cons = consistency(data.sessions);
   const scorePts = data.sessions.filter((x) => x.score !== null).map((x) => ({ value: x.score as number, label: `${dateOf(x.created)} · ${x.name}`, id: x.id }));
 
   const save = async (fields: Partial<Player>) => {
@@ -92,7 +96,6 @@ export default function PlayerPage({ pid, go }: { pid: string; go: (to: string) 
             <div className="row wrap" style={{ gap: 16 }}>
               <div className="player-avatar">{p.name.slice(0, 1).toUpperCase()}</div>
               <div className="grow" style={{ minWidth: 200 }}>
-                <span className="eyebrow">Player</span>
                 <h1 className="profile-name">{p.name}</h1>
                 <div className="row wrap" style={{ gap: 6, marginTop: 10 }}>
                   <span className="chip">{AGE_LABEL[p.age_group]}</span>
@@ -185,6 +188,29 @@ export default function PlayerPage({ pid, go }: { pid: string; go: (to: string) 
                   {latest && <button className="btn primary" onClick={() => go(`/a/${latest.id}/plan`)}><ICalendar size={15} /> Open the practice plan</button>}
                 </div>
               </div>
+            )}
+
+            {cons.rows.length > 0 && cons.view && (
+              <section className="card card-pad" aria-labelledby="cons-title">
+                <div className="row wrap" style={{ gap: 8 }}>
+                  <div role="heading" aria-level={2} id="cons-title" className="card-title grow" style={{ margin: 0 }}>Consistency</div>
+                  <span className="faint" style={{ fontSize: 12 }}>last {Math.max(...cons.rows.map((r) => r.n))} deliveries · {VIEW_LABEL[cons.view].toLowerCase()}</span>
+                </div>
+                <p className="faint" style={{ fontSize: 12.5, margin: "6px 0 12px" }}>How much each measurement moves from ball to ball. A repeatable action is the base for accuracy.</p>
+                <div className="cons-list">
+                  {cons.rows.map((r) => {
+                    const d = r.unit === "ms" || r.unit === "cm" ? 0 : 1;
+                    return (
+                      <div key={r.key} className="cons-row">
+                        <span className="grow">{r.label}</span>
+                        <span className="mono faint">{fmt(r.mean, d)} ± {fmt(r.sd, d)}{unitLabel(r.unit)}</span>
+                        <span className={`chip ${r.level === "steady" ? "good" : r.level === "some" ? "watch" : "risk"}`}
+                          title={`One camera resolves about ±${fmt(r.noise, 0)}${unitLabel(r.unit)} here`}>{STEADY[r.level]}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
             )}
 
             {Object.keys(data.trends).length > 0 && (

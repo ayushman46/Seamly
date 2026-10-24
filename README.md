@@ -22,12 +22,13 @@ Film one delivery on your phone. Seamly finds the bowler and marks the key momen
   - hip–shoulder alignment and mixed-action screening
   - head position
   - rhythm timings
-- **Your delivery in plain words.** A verdict, what's working, and the one or two things to fix first. Each fix comes with a coaching cue, drills and a "Show me" button that jumps to the moment in the video.
+- **A verdict at the top.** The score, one line on the delivery, the one thing to fix first with its coaching cue, and the facts that change how to read it (what's working, back health, camera limits). The Coaching tab has every priority with drills and a "Show me" button that jumps to the moment in the video.
 - **Back-health check** for pace bowlers: side-bend at release, mixed action and a folding back leg. These are the technique factors linked to lower-back stress injuries in young fast bowlers.
 - **Two-week practice plan** that respects the [Cricket Australia junior pace bowling guidelines](https://play.cricket.com.au/community/resources/player-safety/junior-bowling-guidelines/guidelines) for the player's age group: overs per spell, bowling days per week and rest days. It is dated from the coming Monday, and the re-test day can be added to the phone's calendar.
 - **Player profiles and progress over time**: score and measurement trends, personal bests, "since last time" and the current focus.
+- **Consistency**: how much each key measurement moves from ball to ball over a player's last six deliveries from the same angle, judged against what one camera can resolve at those frame rates.
 - **Bowling log**: record matches, club nets and practice per player; each week is checked against the age group's limits (bowling days, overs a day, rest days).
-- **Compare two deliveries** side by side, print a **coaching report**, and export **CSV / JSON / OBJ**.
+- **Compare two deliveries** side by side, or **overlaid**: both skeletons on one canvas, lined up at the hips, scaled to body size and matched phase by phase (each clip's own back-foot contact, front-foot contact and release line up), with a slider and play-through. Print a **coaching report**, and export **CSV / JSON / OBJ**.
 - **Share summary**: one image (release frame with skeleton, score, verdict and the top fixes with cues) to send to a coach or parent through the phone's share sheet.
 - **Works offline after the first analysis.** A service worker keeps the app and the models, so you can film and analyse at the nets with no signal.
 - **Backup and restore.** One file carries every analysis and player to another browser, phone or computer. Nothing goes through a server.
@@ -57,7 +58,7 @@ video ─► exact frame times from the container (MP4/MOV via mp4box), frame-ac
       ─► NAVER Anny body model posed by IK, skinned in three.js
 ```
 
-The analysis engine (`frontend/src/engine/`) is a TypeScript port of the Python pipeline in `backend/bowlnet/`. Every stage after pose detection is checked against fixtures recorded from the Python pipeline (`frontend/tests/`, 325 tests). The results match Python exactly or to floating-point precision: events, metrics, coaching, insights, progress, the body-model binaries, and the skeleton fit to about 1 mm.
+The analysis engine (`frontend/src/engine/`) is a TypeScript port of the Python pipeline in `backend/bowlnet/`. The test suite (`frontend/tests/`, 346 tests) checks every stage after pose detection against fixtures recorded from the Python pipeline. The results match Python exactly or to floating-point precision: events, metrics, coaching, insights, progress, the body-model binaries, and the skeleton fit to about 1 mm.
 
 The first analysis downloads about 70 MB of models, which the browser caches afterwards. On a recent laptop a short clip takes about 15–30 s; phones take longer.
 

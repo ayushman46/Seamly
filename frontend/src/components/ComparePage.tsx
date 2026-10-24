@@ -6,6 +6,7 @@ import { dateTime, fmt, unitLabel } from "../lib/format";
 import { EVENT_RATE } from "../engine/progress";
 import Header from "./Header";
 import FramePlayer from "./FramePlayer";
+import OverlayCompare from "./OverlayCompare";
 import ErrorBoundary from "./ErrorBoundary";
 import { IAlert, IBack, IChevronRight } from "./Icons";
 import { SiteFooter } from "./Landing";
@@ -20,6 +21,7 @@ export default function ComparePage({ a, b, go }: { a: string; b: string; go: (t
   const [error, setError] = useState<string | null>(null);
   const [ev, setEv] = useState<EventKey>("br");
   const [overlay, setOverlay] = useState({ skeleton: true, angles: true, trail: false });
+  const [mode, setMode] = useState<"side" | "over">("side");
   usePageTitle(data[0] && data[1] ? `Compare: ${data[0].meta.name} vs ${data[1].meta.name}` : "Compare");
 
   useEffect(() => {
@@ -42,6 +44,10 @@ export default function ComparePage({ a, b, go }: { a: string; b: string; go: (t
     const keys = [...new Set([...mx.keys(), ...my.keys()])];
     return keys.map((k) => ({ key: k, a: mx.get(k), b: my.get(k) }));
   }, [data]);
+  // metrics neither clip could measure only get a mention under the table
+  const has = (m?: Metric) => !!m && m.value !== null;
+  const shownRows = rows.filter((r) => has(r.a) || has(r.b));
+  const unseen = rows.filter((r) => !has(r.a) && !has(r.b)).map((r) => (r.a ?? r.b)!.label);
 
   if (error) {
     return (
@@ -76,6 +82,7 @@ export default function ComparePage({ a, b, go }: { a: string; b: string; go: (t
   }
   // two different players' deliveries: differences, not progress
   const otherBowler = !!x.meta.player_id && !!y.meta.player_id && x.meta.player_id !== y.meta.player_id;
+  const sameView = x.result.view.view === y.result.view.view;
   const side = (d: Loaded, label: string) => {
     const e = d.result.events[ev];
     return (
@@ -125,15 +132,26 @@ export default function ComparePage({ a, b, go }: { a: string; b: string; go: (t
             ))}
           </div>
           <div className="grow" />
-          <div className="seg" role="group" aria-label="Overlays">
-            <button className={overlay.skeleton ? "on" : ""} aria-pressed={overlay.skeleton} onClick={() => setOverlay((o) => ({ ...o, skeleton: !o.skeleton }))}>Skeleton</button>
-            <button className={overlay.angles ? "on" : ""} aria-pressed={overlay.angles} onClick={() => setOverlay((o) => ({ ...o, angles: !o.angles }))}>Angles</button>
+          {mode === "side" && (
+            <div className="seg" role="group" aria-label="Overlays">
+              <button className={overlay.skeleton ? "on" : ""} aria-pressed={overlay.skeleton} onClick={() => setOverlay((o) => ({ ...o, skeleton: !o.skeleton }))}>Skeleton</button>
+              <button className={overlay.angles ? "on" : ""} aria-pressed={overlay.angles} onClick={() => setOverlay((o) => ({ ...o, angles: !o.angles }))}>Angles</button>
+            </div>
+          )}
+          <div className="seg" role="group" aria-label="Layout">
+            <button className={mode === "side" ? "on" : ""} aria-pressed={mode === "side"} onClick={() => setMode("side")}>Side by side</button>
+            <button className={mode === "over" ? "on" : ""} aria-pressed={mode === "over"} onClick={() => setMode("over")} disabled={!sameView}
+              title={sameView ? "Both bodies on top of each other" : "Overlay needs two clips filmed from the same angle"}>Overlay</button>
           </div>
         </div>
-        <div className="an-grid" style={{ gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)" }}>
-          {side(x, "A")}
-          {side(y, "B")}
-        </div>
+        {mode === "over" && sameView ? (
+          <ErrorBoundary label="The overlay"><OverlayCompare a={x.result} b={y.result} ev={ev} onEvent={setEv} /></ErrorBoundary>
+        ) : (
+          <div className="an-grid" style={{ gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)" }}>
+            {side(x, "A")}
+            {side(y, "B")}
+          </div>
+        )}
         {x.result.view.view !== y.result.view.view && (
           <div className="notice warn" style={{ marginTop: 14 }}>
             <IAlert size={16} /> <div>The two clips were filmed from different angles ({VIEW_LABEL[x.result.view.view]} vs {VIEW_LABEL[y.result.view.view]}). Only metrics measured reliably in both are comparable.</div>
@@ -152,12 +170,14 @@ export default function ComparePage({ a, b, go }: { a: string; b: string; go: (t
                 <tr><th>Metric</th><th>A (earlier)</th><th>B (later)</th><th>Change (B − A)</th><th><span className="sr-only">Verdict</span></th></tr>
               </thead>
               <tbody>
-                {rows.map(({ key, a: ma, b: mb }) => <Row key={key} a={ma} b={mb} fps={Math.min(data[0]!.result.fps_real, data[1]!.result.fps_real)} judge={!otherBowler} />)}
+                {shownRows.map(({ key, a: ma, b: mb }) => <Row key={key} a={ma} b={mb} fps={Math.min(data[0]!.result.fps_real, data[1]!.result.fps_real)} judge={!otherBowler} />)}
               </tbody>
             </table>
           </div>
           <p className="faint" style={{ fontSize: 12, marginTop: 10 }}>
-            Blank or greyed values can't be measured from that camera angle (or rest on an estimated event) and aren't compared. Differences smaller than the measurement resolution (one frame for timings, a few degrees for angles) shouldn't be over-interpreted.
+            Greyed values rest on an estimated moment and aren't compared. Differences smaller than one frame (timings) or a few degrees
+            (angles) are within measurement error.
+            {unseen.length > 0 && <> Neither clip's camera angle measures: {unseen.join(", ")}.</>}
           </p>
         </div>
       </main>

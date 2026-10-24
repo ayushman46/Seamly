@@ -8,7 +8,7 @@ import { AGE_LABEL } from "./player";
 import { dateTime } from "./format";
 
 const W = 1080, H = 1350, PAD = 64;
-const C = { bg: "#070a12", card: "#111827", line: "#243043", text: "#f1f5f9", muted: "#a5b1c3", faint: "#7c8aa0", accent: "#3ddc97",
+const C = { bg: "#0b0b0c", card: "#151517", line: "#2d2d32", text: "#f4f4f5", muted: "#a1a1aa", faint: "#8b8b93", accent: "#3ddc97",
   bowl: "#fb7185", front: "#34d399", red: "#e11d48" };
 const FONT = "Inter, -apple-system, 'Segoe UI', Roboto, sans-serif";
 

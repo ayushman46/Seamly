@@ -7,12 +7,12 @@ import { loadMesh, skinFrame, type MeshData } from "../lib/mesh";
 import { EVENT_HEX } from "../lib/constants";
 
 type Preset = "side_r" | "side_l" | "behind" | "front" | "top";
-const PRESETS: { key: Preset; label: string }[] = [
-  { key: "side_r", label: "Side (R)" },
-  { key: "side_l", label: "Side (L)" },
-  { key: "behind", label: "Behind" },
-  { key: "front", label: "Batter's view" },
-  { key: "top", label: "Top" },
+const PRESETS: { key: Preset; label: string; title: string }[] = [
+  { key: "side_r", label: "Side R", title: "Side-on, from the right" },
+  { key: "side_l", label: "Side L", title: "Side-on, from the left" },
+  { key: "behind", label: "Behind", title: "From behind the bowler" },
+  { key: "front", label: "Batter", title: "The batter's view" },
+  { key: "top", label: "Top", title: "From above" },
 ];
 
 export default function Viewer3D({ id, result, frame }: { id: string; result: AnalysisResult; frame: number }) {
@@ -283,15 +283,15 @@ export default function Viewer3D({ id, result, frame }: { id: string; result: An
         {active && <button type="button" ref={doneRef} className="btn sm viewer-done" onClick={release} aria-label="Done exploring the 3D body (Esc)">Done</button>}
         {status === "loading" && <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center" }}><div className="spinner" /></div>}
         {status === "error" && <div className="notice warn" style={{ position: "absolute", left: 12, right: 12, top: 12 }}>3D body model unavailable for this analysis.</div>}
-        <div className="viewer-legend"><span className="mouse">Drag to orbit · scroll to zoom · right-drag to pan</span><span className="touch">Drag to orbit · pinch to zoom · two-finger drag to pan</span></div>
+        {active && <div className="viewer-legend"><span className="mouse">Drag to orbit · scroll to zoom · right-drag to pan</span><span className="touch">Drag to orbit · pinch to zoom · two-finger drag to pan</span></div>}
         <div className="viewer-angle">
-          <span className="chip" style={{ background: "rgba(5,8,13,.72)" }}><span className="dot" style={{ background: "#fb7185" }} /> Bowling arm</span>
-          <span className="chip" style={{ background: "rgba(5,8,13,.72)" }}><span className="dot" style={{ background: "#34d399" }} /> Front side</span>
+          <span className="chip" style={{ background: "rgba(10,10,11,.72)" }}><span className="dot" style={{ background: "#fb7185" }} /> Bowling arm</span>
+          <span className="chip" style={{ background: "rgba(10,10,11,.72)" }}><span className="dot" style={{ background: "#34d399" }} /> Front side</span>
         </div>
       </div>
       <div className="viewer-bar">
         <div className="seg">
-          {PRESETS.map((p) => <button key={p.key} className={preset === p.key ? "on" : ""} aria-pressed={preset === p.key} onClick={() => setPreset(p.key)}>{p.label}</button>)}
+          {PRESETS.map((p) => <button key={p.key} className={preset === p.key ? "on" : ""} aria-pressed={preset === p.key} title={p.title} onClick={() => setPreset(p.key)}>{p.label}</button>)}
         </div>
         <div className="seg">
           {(["mesh", "both", "skeleton"] as const).map((m) => <button key={m} className={mode === m ? "on" : ""} aria-pressed={mode === m} onClick={() => setMode(m)}>{m === "both" ? "Mesh + bones" : m[0].toUpperCase() + m.slice(1)}</button>)}

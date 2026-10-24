@@ -151,7 +151,7 @@ export default function Timeline({ id, result, frame, onSeek, onSetEvent, edited
         <div className="tl-head" style={{ left: `${pct(frame)}%` }} />
       </div>
       <div className="row faint tl-help">
-        <span>Tap or drag to scrub · drag a flag to correct it (or use "Set this frame as" in the Frame tab)<span className="tl-keys"> · keys <kbd>←</kbd> <kbd>→</kbd> (shift ×5), <kbd>space</kbd>, <kbd>1</kbd>–<kbd>5</kbd> jump to events</span></span>
+        <span>Drag a flag to correct it<span className="tl-keys"> · keys <kbd>←</kbd> <kbd>→</kbd> (shift ×5), <kbd>space</kbd>, <kbd>1</kbd>–<kbd>5</kbd> events</span></span>
         <span className="mono" style={{ whiteSpace: "nowrap" }} title="Frames of the analysis window">{f0}–{f1 - 1}</span>
       </div>
       <div className="tl-legend faint">

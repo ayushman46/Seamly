@@ -11,7 +11,7 @@ export function scrollToId(id: string) {
   el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
 }
 
-const NAV: [string, string][] = [["how", "How it works"], ["features", "What you get"], ["privacy", "Privacy"], ["filming", "Filming guide"], ["faq", "FAQ"]];
+const NAV: [string, string][] = [["features", "What you get"], ["filming", "How to film"], ["faq", "Questions"]];
 
 export default function Header({ go, title, children, nav = false }: {
   go: (to: string) => void; title?: string; children?: ReactNode; nav?: boolean;

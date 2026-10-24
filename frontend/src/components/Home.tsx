@@ -8,8 +8,8 @@ import { modelsCached } from "../lib/modelCache";
 import { ago, fmt } from "../lib/format";
 import { VIEW_LABEL, SLOWMO_OPTIONS } from "../lib/constants";
 import Header, { scrollToId } from "./Header";
-import { CtaBand, Faq, Features, FilmingGuide, Hero, HowItWorks, Privacy, SiteFooter } from "./Landing";
-import { IAlert, ICheck, ICamera, IChevronRight, IColumns, IFrame, ILock, IPhone, IPlay, IPlus, ITrash, ITripod, IUsers, IVideo } from "./Icons";
+import { Faq, FilmingGuide, Hero, SiteFooter, WhatYouGet } from "./Landing";
+import { IAlert, ICheck, IChevronRight, IColumns, ILock, IPlus, ITrash, IUsers, IVideo } from "./Icons";
 
 const MAX_MB = 500;
 // a typical height for each age group, as the example in the height field
@@ -20,6 +20,10 @@ type Sample = "club" | "synthetic";
 
 function readReturning(): boolean {
   try { return localStorage.getItem(RETURNING_KEY) === "1"; } catch { return false; }
+}
+/** A new analysis exists: coming back to this page should open the workspace straight away. */
+function markReturning() {
+  try { localStorage.setItem(RETURNING_KEY, "1"); } catch { /* not remembered */ }
 }
 
 export default function Home({ go }: { go: (to: string) => void }) {
@@ -81,7 +85,10 @@ export default function Home({ go }: { go: (to: string) => void }) {
     setDemoErr(null);
     try {
       const { id } = await api.demo(which);
+      markReturning();
       go(`/a/${id}`);
+      // if this page is still showing later (the user came straight back), the links work again
+      window.setTimeout(() => setDemoBusy(null), 1500);
     } catch (e) {
       setDemoErr((e as Error).message);
       setDemoBusy(null);
@@ -99,7 +106,7 @@ export default function Home({ go }: { go: (to: string) => void }) {
 
   return (
     <>
-      <Header go={go} nav>
+      <Header go={go} nav={!returning}>
         <button type="button" className="btn primary sm" onClick={toUploader} aria-label="Analyse a delivery"><IVideo size={15} /> <span className="btn-label">Analyse a delivery</span><span className="btn-label-sm" aria-hidden="true">Analyse</span></button>
       </Header>
       <main id="main" tabIndex={-1}>
@@ -107,7 +114,6 @@ export default function Home({ go }: { go: (to: string) => void }) {
           <div className="container ws">
             <div className="ws-head">
               <div>
-                <span className="eyebrow">Your workspace</span>
                 <h1 className="ws-title">Ready for the next delivery?</h1>
                 <p className="muted" style={{ margin: 0 }}>
                   {MODE === "browser" ? "Everything here is saved in this browser, on this device." : "Analyses and players saved on your Seamly server."}
@@ -177,39 +183,18 @@ export default function Home({ go }: { go: (to: string) => void }) {
             <Hero onAnalyse={toUploader} onDemo={() => demo("club")} demoBusy={demoBusy !== null} demoError={demoErr} disabled={disabled} />
             <section className="section" id="analyse-section" style={{ paddingTop: 24, paddingBottom: 72 }} aria-labelledby="start-title">
               <div className="container">
-                <div className="section-head" style={{ marginBottom: 28 }}>
-                  <span className="eyebrow">Start here</span>
-                  <h2 className="section-title" id="start-title">Analyse your first delivery</h2>
-                </div>
-                <div className="start-grid">
+                <div className="start-solo">
+                  <h2 className="section-title start-title" id="start-title">Analyse your first delivery</h2>
                   {uploader}
-                  <div className="start-side">
-                    <div className="card card-pad" style={{ padding: 24 }}>
-                      <div role="heading" aria-level={2} className="card-title"><ICamera size={14} /> Before you film</div>
-                      <ul className="checklist">
-                        <li><span className="ck"><IPhone size={15} /></span><div><b>Side-on, 10–15 m away</b>Phone at hip height, level with the crease. Or film from behind the stumps.</div></li>
-                        <li><span className="ck"><IPlay size={13} /></span><div><b>Slow motion if you have it</b>120–240 fps makes timings far more precise.</div></li>
-                        <li><span className="ck"><IFrame size={15} /></span><div><b>Whole action in frame</b>Run-up to follow-through, feet visible.</div></li>
-                        <li><span className="ck"><ITripod size={15} /></span><div><b>Keep it still</b>Tripod or propped up — no panning or zoom.</div></li>
-                      </ul>
-                      <button type="button" className="btn link" style={{ marginTop: 18 }} onClick={() => scrollToId("filming")}>Read the full filming guide <IChevronRight size={14} /></button>
-                    </div>
-                    {MODE === "browser" && (
-                      <div className="notice ok"><ILock size={16} /> <div><b>Private by design.</b> Your clip is analysed right here in your browser and never uploaded. Results are saved on this device only.</div></div>
-                    )}
-                    {MODE === "browser" && <RestoreLink onRestored={(text) => { setRestored(text); refresh(); refreshPlayers(); }} />}
-                  </div>
+                  {MODE === "browser" && <RestoreLink onRestored={(text) => { setRestored(text); refresh(); refreshPlayers(); }} />}
                 </div>
               </div>
             </section>
           </>
         )}
-        <HowItWorks />
-        <Features />
-        <Privacy />
-        <FilmingGuide />
-        <Faq />
-        <CtaBand onAnalyse={toUploader} onDemo={() => demo("club")} demoBusy={demoBusy !== null} disabled={disabled} />
+        {!returning && <WhatYouGet />}
+        {!returning && <FilmingGuide />}
+        {!returning && <Faq />}
       </main>
       <SiteFooter />
     </>
@@ -238,7 +223,7 @@ function PlayersPanel({ players, current, adding, setAdding, onCreate, go }: {
         <div className="card card-pad players-empty">
           <span className="empty-icon" style={{ width: 40, height: 40, borderRadius: 12 }}><IUsers size={19} /></span>
           <b>Track a bowler's progress</b>
-          <span className="muted">Create a profile for yourself, your child or each bowler you coach. Seamly then shows what's improving, personal bests, the current focus and a practice plan pitched at their age.</span>
+          <span className="muted">One profile per bowler: progress, personal bests and a practice plan for their age.</span>
           <button className="btn primary sm" style={{ marginTop: 4 }} onClick={() => setAdding(true)}><IPlus size={14} /> Create a player</button>
         </div>
       ) : (
@@ -333,6 +318,9 @@ function Uploader({ go, disabled, health, players, current, onChoose, onCreate, 
     setHeight(player?.height_cm ? String(Math.round(player.height_cm)) : "");
   }, [player?.id, player?.arm, player?.height_cm]);
   const [slowmo, setSlowmo] = useState("1");
+  const [moreOpen, setMoreOpen] = useState(false);
+  const optionsSummary = [arm !== "auto" ? `${arm === "right" ? "Right" : "Left"}-arm` : "", height ? `${height} cm` : "",
+    slowmo !== "1" ? `${slowmo}× slow motion` : ""].filter(Boolean).join(" · ") || "arm, height, slow motion";
   // the "big first download" note only matters until the models are in this browser
   const [cached, setCached] = useState(false);
   useEffect(() => { if (MODE === "browser") void modelsCached().then(setCached); }, []);
@@ -376,6 +364,7 @@ function Uploader({ go, disabled, health, players, current, onChoose, onCreate, 
     setError(null);
     try {
       const { id } = await api.upload(file, { bowling_arm: arm, height_cm: h, slowmo_factor: Number(slowmo), player_id: player?.id ?? null }, setProg);
+      markReturning();
       go(`/a/${id}`);
     } catch (e) {
       setError((e as Error).message);
@@ -388,13 +377,13 @@ function Uploader({ go, disabled, health, players, current, onChoose, onCreate, 
   return (
     <div className={`card uploader ${compact ? "compact" : ""}`} id="analyse">
       <div className="uploader-head">
-        <h2>{compact ? "Analyse a delivery" : "Add your clip"}</h2>
+        {compact && <h2>Analyse a delivery</h2>}
         <div className="grow" />
         {health === null ? (
           <span className="engine-status"><div className="spinner sm" /> Starting the analysis engine…</span>
         ) : health.ok ? (
           <span className="engine-status" title={`Analysis engine: ${health.device}`}><span className="dot pulse" style={{ background: "var(--c-accent)" }} />
-            {MODE === "browser" ? "Ready · runs on this device" : "Ready"}</span>
+            Ready</span>
         ) : (
           <span className="engine-status" style={{ color: "#fecaca" }}><span className="dot" style={{ background: "var(--c-risk)" }} /> Engine unavailable</span>
         )}
@@ -402,26 +391,6 @@ function Uploader({ go, disabled, health, players, current, onChoose, onCreate, 
       {health && !health.ok && (
         <div className="notice error" style={{ marginBottom: 14 }}><IAlert size={16} /> <div>The analysis engine isn't available right now ({health.missing_models.join(", ")}). Try reloading the page, or use a recent version of Chrome, Edge or Safari.</div></div>
       )}
-      <div className="field" style={{ marginBottom: 14 }}>
-        <label htmlFor="who-bowling">Who's bowling?</label>
-        {creating ? (
-          <div className="card card-pad sunken">
-            <PlayerForm submitLabel="Create & select" onSave={async (p) => { await onCreate(p); setCreating(false); }} onCancel={() => setCreating(false)} />
-          </div>
-        ) : (
-          <select id="who-bowling" className="input" value={current ?? ""}
-            onChange={(e) => (e.target.value === "__new" ? (setCreating(true), setError(null)) : onChoose(e.target.value || null))}>
-            <option value="">Just this clip (no player)</option>
-            {players.map((p) => <option key={p.id} value={p.id}>{p.name} · {AGE_LABEL[p.age_group]} · {STYLE_LABEL[p.style]}</option>)}
-            <option value="__new">+ New player…</option>
-          </select>
-        )}
-        {!creating && (
-          <div className="hint">
-            {player ? `Goes into ${player.name}'s progress, with a practice plan for their age group.` : "Pick or create a player to track progress over time and get an age-appropriate practice plan."}
-          </div>
-        )}
-      </div>
       <div
         ref={zone}
         className={`dropzone ${over ? "over" : ""} ${file ? "has-file" : ""} ${flash ? "attention" : ""}`}
@@ -438,33 +407,50 @@ function Uploader({ go, disabled, health, players, current, onChoose, onCreate, 
         <div className="dz-sub">{file ? `${(file.size / 1e6).toFixed(1)} MB · choose again to change` : "MP4, MOV, AVI, MKV or WEBM · one delivery works best"}</div>
         {MODE === "browser" && <div className="dz-local"><ILock size={13} /> Stays on your device</div>}
       </div>
-      <div className="upload-opts">
-        {/* while a new player is being created, their form asks for arm and height itself */}
-        {!creating && <>
-        <div className="field">
-          <span className="label" id="arm-label">Bowling arm</span>
-          <div className="seg" role="group" aria-labelledby="arm-label">
-            {["auto", "right", "left"].map((a) => (
-              <button key={a} type="button" className={arm === a ? "on" : ""} aria-pressed={arm === a} onClick={() => setArm(a)}>{a === "auto" ? "Auto" : a[0].toUpperCase() + a.slice(1)}</button>
-            ))}
+      <div className="field" style={{ marginTop: 14 }}>
+        <label htmlFor="who-bowling">Who's bowling?</label>
+        {creating ? (
+          <div className="card card-pad sunken">
+            <PlayerForm submitLabel="Create & select" onSave={async (p) => { await onCreate(p); setCreating(false); }} onCancel={() => setCreating(false)} />
+          </div>
+        ) : (
+          <select id="who-bowling" className="input" value={current ?? ""}
+            onChange={(e) => (e.target.value === "__new" ? (setCreating(true), setError(null)) : onChoose(e.target.value || null))}>
+            <option value="">Just this clip (no player)</option>
+            {players.map((p) => <option key={p.id} value={p.id}>{p.name} · {AGE_LABEL[p.age_group]} · {STYLE_LABEL[p.style]}</option>)}
+            <option value="__new">+ New player…</option>
+          </select>
+        )}
+      </div>
+      <details className="upload-more" open={moreOpen} onToggle={(e) => setMoreOpen((e.target as HTMLDetailsElement).open)}>
+        <summary>Options <span className="faint">{optionsSummary}</span></summary>
+        <div className="upload-opts">
+          {/* while a new player is being created, their form asks for arm and height itself */}
+          {!creating && <>
+          <div className="field">
+            <span className="label" id="arm-label">Bowling arm</span>
+            <div className="seg" role="group" aria-labelledby="arm-label">
+              {["auto", "right", "left"].map((a) => (
+                <button key={a} type="button" className={arm === a ? "on" : ""} aria-pressed={arm === a} onClick={() => setArm(a)}>{a === "auto" ? "Auto" : a[0].toUpperCase() + a.slice(1)}</button>
+              ))}
+            </div>
+          </div>
+          <div className="field">
+            <label htmlFor="up-height">Height (cm, optional)</label>
+            <input id="up-height" className="input" inputMode="numeric" placeholder={`e.g. ${TYPICAL_CM[player?.age_group ?? "adult"] ?? 180}`} value={height} onChange={(e) => setHeight(e.target.value.replace(/[^0-9.]/g, ""))} />
+          </div>
+          </>}
+          <div className="field">
+            <label htmlFor="up-speed">Clip speed (slow motion?)</label>
+            <select id="up-speed" className="input" value={slowmo} onChange={(e) => setSlowmo(e.target.value)}>
+              {SLOWMO_OPTIONS.map((o) => <option key={o.value} value={String(o.value)}>{o.label}</option>)}
+            </select>
           </div>
         </div>
-        <div className="field">
-          <label htmlFor="up-height">Height (cm, optional)</label>
-          <input id="up-height" className="input" inputMode="numeric" placeholder={`e.g. ${TYPICAL_CM[player?.age_group ?? "adult"] ?? 180}`} value={height} onChange={(e) => setHeight(e.target.value.replace(/[^0-9.]/g, ""))} />
+        <div className="hint faint" style={{ fontSize: 12, marginTop: 10 }}>
+          Clip speed: only if the video plays back in slow motion when you watch it (phone slo-mo is usually 4× or 8×).
         </div>
-        </>}
-        <div className="field">
-          <label htmlFor="up-speed">Clip speed (slow motion?)</label>
-          <select id="up-speed" className="input" value={slowmo} onChange={(e) => setSlowmo(e.target.value)}>
-            {SLOWMO_OPTIONS.map((o) => <option key={o.value} value={String(o.value)}>{o.label}</option>)}
-          </select>
-        </div>
-      </div>
-      <div className="hint faint" style={{ fontSize: 12, marginTop: 10 }}>
-        Height turns distances into metres. Clip speed: if the video plays back in slow motion when you watch it, choose how
-        much slower (phone slo-mo is usually 4× or 8×). If it plays at normal speed, leave it on Normal speed.
-      </div>
+      </details>
       {shownError && <div className="notice error" role="alert" style={{ marginTop: 14 }}><IAlert size={16} /> <div>{shownError}</div></div>}
       <div style={{ flex: 1 }} />
       <div className="upload-foot">
@@ -484,20 +470,12 @@ function Uploader({ go, disabled, health, players, current, onChoose, onCreate, 
               </span>
             )}
             <div className="demo-link">
-              <span className="faint" style={{ fontSize: 12.5 }}>No video handy? Try a sample:</span>
-              <div className="row wrap" style={{ justifyContent: "center", gap: 6 }}>
-                <button type="button" className="btn ghost sm" disabled={disabled || demoBusy !== null} onClick={() => onDemo("club")}>
-                  {demoBusy === "club" ? <div className="spinner sm" /> : <IPlay size={12} />} Real club delivery
-                </button>
-                <button type="button" className="btn ghost sm" disabled={disabled || demoBusy !== null} onClick={() => onDemo("synthetic")}>
-                  {demoBusy === "synthetic" ? <div className="spinner sm" /> : <IPlay size={12} />} Synthetic test delivery
-                </button>
-              </div>
-              {!compact && (
-                <span className="faint">
-                  The club clip is a real side-on match delivery (Acabashi, CC BY-SA 4.0). The synthetic one is a rendered 3D bowler, so every number has an exact answer to check against.
-                </span>
-              )}
+              <span className="faint">No video? Try an example:</span>{" "}
+              <button type="button" className="link-btn" disabled={disabled || demoBusy !== null} onClick={() => onDemo("club")}>
+                {demoBusy === "club" ? "Opening…" : "club match"}</button>
+              <span className="faint"> · </span>
+              <button type="button" className="link-btn" disabled={disabled || demoBusy !== null} onClick={() => onDemo("synthetic")}>
+                {demoBusy === "synthetic" ? "Opening…" : "3D test bowler"}</button>
             </div>
           </>
         )}

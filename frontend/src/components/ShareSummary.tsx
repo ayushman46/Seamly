@@ -59,8 +59,8 @@ export default function ShareSummary({ meta, result, ins, fileBase }: { meta: An
 
   return (
     <>
-      <button ref={openRef} className="btn" onClick={() => make()} disabled={busy} title="A one-image summary to send to a coach or parent">
-        {busy ? <div className="spinner sm" /> : <IUpload size={15} />} Share summary
+      <button ref={openRef} className="btn" onClick={() => make()} disabled={busy} title="A one-image summary to send to a coach or parent" aria-label="Share summary">
+        {busy ? <div className="spinner sm" /> : <IUpload size={15} />} <span className="btn-label">Share summary</span><span className="btn-label-sm" aria-hidden="true">Share</span>
       </button>
       {err && !card && <span className="faint" role="alert" style={{ fontSize: 12 }}><IAlert size={13} /> {err}</span>}
       {card && (
