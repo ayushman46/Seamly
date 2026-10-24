@@ -356,11 +356,11 @@ def practice_plan(result: dict, player: dict | None = None) -> dict:
                      "spell" + (f" and {lim['day']} overs ({lim['day'] * 6} deliveries) per day" if lim["day"] else "") +
                      f", up to {lim['days_week']} bowling days a week. {lim['rule']} "
                      f"Take at least {lim['between_spells_min']} minutes between spells at training. Every delivery "
-                     "counts, including warm-up and drill balls: each session above is counted and stays well inside the limit.")
+                     "counts, including warm-up and drill balls: each session in the plan is counted and stays well inside the limit. Warm-up and drill balls are bowled in short sets with breaks; only the spell is bowled straight through.")
         if lim.get("preseason_weeks"):
             notes.append(f"Coming back after a break? Build up over about {lim['preseason_weeks']} weeks before bowling flat out.")
         if age in JUNIOR:
-            notes.append("At training, bowl for no more than about 30 minutes at a time, then rest for as long. Plan a lighter "
+            notes.append("In a long net session, bowl for no more than about 30 minutes at a stretch, then rest for as long. Plan a lighter "
                          "week every 4–6 weeks, and after a growth spurt bowl shorter spells or less often for a while.")
     else:
         notes.append("Spin bowling loads are lower than pace; still keep at least one full rest day a week.")

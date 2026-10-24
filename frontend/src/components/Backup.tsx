@@ -14,7 +14,7 @@ function restoredText(r: { analyses: number; players: number; skipped: number; v
   let text = parts.length ? `Restored ${parts.join(" and ")}.` : r.videos ? "" : "Nothing new to restore.";
   if (r.videos) text += `${text ? " " : ""}Added the original video to ${r.videos} ${r.videos === 1 ? "analysis" : "analyses"} that didn't have it.`;
   const kept = r.skipped - r.videos;
-  if (kept > 0) text += ` ${kept} already in this browser ${kept === 1 ? "was" : "were"} left as ${kept === 1 ? "it was" : "they were"}.`;
+  if (kept > 0) text += ` ${kept} ${kept === 1 ? "analysis" : "analyses"} already in this browser ${kept === 1 ? "was" : "were"} left as ${kept === 1 ? "it was" : "they were"}.`;
   return text;
 }
 

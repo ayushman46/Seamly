@@ -416,12 +416,12 @@ export function practicePlan(result: InsightsResult, player: InsightsPlayer | nu
       + (lim.day ? ` and ${lim.day} overs (${lim.day * 6} deliveries) per day` : "")
       + `, up to ${lim.days_week} bowling days a week. ${lim.rule} `
       + `Take at least ${lim.between_spells_min} minutes between spells at training. Every delivery `
-      + "counts, including warm-up and drill balls: each session above is counted and stays well inside the limit.");
+      + "counts, including warm-up and drill balls: each session in the plan is counted and stays well inside the limit. Warm-up and drill balls are bowled in short sets with breaks; only the spell is bowled straight through.");
     if (lim.preseason_weeks) {
       notes.push(`Coming back after a break? Build up over about ${lim.preseason_weeks} weeks before bowling flat out.`);
     }
     if (JUNIOR.includes(age)) {
-      notes.push("At training, bowl for no more than about 30 minutes at a time, then rest for as long. Plan a lighter "
+      notes.push("In a long net session, bowl for no more than about 30 minutes at a stretch, then rest for as long. Plan a lighter "
         + "week every 4–6 weeks, and after a growth spurt bowl shorter spells or less often for a while.");
     }
   } else {

@@ -32,7 +32,7 @@ export default function CoachingPanel({ result, onJump, age, style }: { result: 
               <div>
                 <div className="row wrap" style={{ gap: 6, marginBottom: 6 }}>
                   <span className={`chip ${p.rating}`} title={p.borderline ? "Just outside the target range, within what one camera can measure: worth a look, not a priority" : undefined}>
-                    {p.borderline ? "Borderline" : RATING_LABEL[p.rating]}
+                    {RATING_LABEL[p.rating]}{p.borderline ? " · borderline" : ""}
                   </span>
                   <span className={`chip ${cat.cls}`}>{cat.icon} {cat.label}</span>
                   <span className="chip unrated" title="Strength of the published evidence">{p.evidence}</span>

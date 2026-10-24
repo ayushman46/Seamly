@@ -99,15 +99,17 @@ function Chart({ k, result, frame, onSeek }: { k: string; result: AnalysisResult
         ))}
         {(() => {
           // event labels a few frames apart would print on top of each other: lift every other close one
-          let lastX = -1e9, row = 0;
+          // each label goes on the first of three rows with room for it (events 1-3 frames apart are common)
+          const last = [-1e9, -1e9, -1e9];
           return EVENTS.filter((e) => result.events[e.key]).map((e) => ({ e, xi: x(result.events[e.key]!.frame - f0) }))
             .sort((a, b) => a.xi - b.xi).map(({ e, xi }) => {
-              row = xi - lastX < 34 ? (row + 1) % 2 : 0;
-              lastX = xi;
+              let row = last.findIndex((lx) => xi - lx >= 26);
+              if (row < 0) row = last.indexOf(Math.min(...last));
+              last[row] = xi;
               return (
                 <g key={e.key}>
                   <line x1={xi} x2={xi} y1={P.t} y2={H - P.b} stroke={EVENT_HEX[e.key]} strokeWidth="1.5" opacity="0.8" />
-                  <text x={xi} y={H - 6 - row * 12} fill={EVENT_HEX[e.key]} fontSize="10" fontWeight="700" textAnchor="middle">{e.short}</text>
+                  <text x={xi} y={H - 6 - row * 11} fill={EVENT_HEX[e.key]} fontSize="10" fontWeight="700" textAnchor="middle">{e.short}</text>
                 </g>
               );
             });

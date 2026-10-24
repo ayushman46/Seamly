@@ -100,7 +100,7 @@ export default function ReportPage({ id, go }: { id: string; go: (to: string) =>
         <ol className="rp-prio">
           {c.priorities.map((p) => (
             <li key={p.key}>
-              <b>{p.headline}</b> <em>— {p.borderline ? "Borderline" : RATING_LABEL[p.rating]} · {p.evidence}</em>
+              <b>{p.headline}</b> <em>— {RATING_LABEL[p.rating]}{p.borderline ? " (borderline)" : ""} · {p.evidence}</em>
               <div>{p.why}</div>
               <div className="rp-cue">Cue: “{p.drill.cue}”</div>
               <ul>{drillsForAge(p.drill.drills, ins?.player?.age_group).map((d) => <li key={d}>{d}</li>)}</ul>

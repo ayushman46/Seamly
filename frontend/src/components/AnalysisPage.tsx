@@ -68,6 +68,18 @@ export default function AnalysisPage({ id, go, initialTab }: { id: string; go: (
   }, [id]);
 
   const active = meta?.status === "queued" || meta?.status === "running";
+  // when an analysis finishes on screen, the results replace the progress page: put focus on their heading
+  const prevStatus = useRef(meta?.status);
+  useEffect(() => {
+    const was = prevStatus.current;
+    prevStatus.current = meta?.status;
+    if ((was === "running" || was === "queued") && meta?.status === "done") {
+      window.setTimeout(() => {
+        const h = document.querySelector<HTMLElement>("main h1");
+        if (h) { h.tabIndex = -1; h.focus({ preventScroll: true }); }
+      }, 150);
+    }
+  }, [meta?.status]);
   useEffect(() => {
     // initial load, then poll while the analysis is queued/running (also after a re-run is started)
     let stop = false;
@@ -437,7 +449,7 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
       const el = e.target as HTMLElement | null;
       // single-key shortcuts only while nothing else has focus or focus is in the video player, so they never
       // clash with screen-reader keys or typing elsewhere on the page
-      if (el && el !== document.body && !el.closest?.(".card.player")) return;
+      if (el && el !== document.body && el.tagName !== "H1" && !el.closest?.(".card.player")) return;
       if (el?.closest?.("input, select, textarea, [contenteditable], [role=tablist], [role=menu]")) return;   // they use the arrows
       if (el?.closest?.("button, a") && (e.key === " " || e.key === "Enter")) return;   // native activation
       if (e.key === " " || e.key === "k") { e.preventDefault(); setPlaying((p) => !p); }

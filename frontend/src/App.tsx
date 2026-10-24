@@ -4,6 +4,7 @@ import { lazyPage } from "./lib/lazy";
 const AnalysisPage = lazyPage(() => import("./components/AnalysisPage"));
 import ErrorBoundary from "./components/ErrorBoundary";
 import Header from "./components/Header";
+import { usePageTitle } from "./lib/title";
 const ComparePage = lazyPage(() => import("./components/ComparePage"));
 const ReportPage = lazyPage(() => import("./components/ReportPage"));
 const PlayerPage = lazyPage(() => import("./components/PlayerPage"));
@@ -25,6 +26,7 @@ function parseRoute(): Route {
 }
 
 function Missing({ go }: { go: (to: string) => void }) {
+  usePageTitle("Link not found");
   return (
     <>
     <Header go={go} />

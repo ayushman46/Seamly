@@ -255,7 +255,11 @@ export default function Viewer3D({ id, result, frame }: { id: string; result: An
   // hand keyboard focus back to the "explore" button once the viewer is released
   const doneRef = useRef<HTMLButtonElement>(null);
   const activateRef = useRef<HTMLButtonElement>(null);
-  const release = () => { setActive(false); requestAnimationFrame(() => activateRef.current?.focus({ preventScroll: true })); };
+  const handBack = useRef(false);
+  const release = () => { handBack.current = true; setActive(false); };
+  useEffect(() => {
+    if (!active && handBack.current) { handBack.current = false; activateRef.current?.focus({ preventScroll: true }); }
+  }, [active]);
 
   return (
     <div className="card viewer">

@@ -176,7 +176,7 @@ export default function PlayerPage({ pid, go }: { pid: string; go: (to: string) 
                     <div style={{ fontSize: 18, fontWeight: 700 }}>{data.focus.title}</div>
                     <div className="muted">{data.focus.headline}</div>
                     {data.focus.first_value !== null && data.focus.latest_value !== null && data.focus.sessions > 1 && (
-                      <div className="faint" style={{ marginTop: 4 }}>When it became your focus: {fmt(data.focus.first_value)}. Latest: {fmt(data.focus.latest_value)}.</div>
+                      <div className="faint" style={{ marginTop: 4 }}>When it became your focus: {fmt(data.focus.first_value)}{unitLabel(data.trends[data.focus.key]?.unit ?? "")}. Latest: {fmt(data.focus.latest_value)}{unitLabel(data.trends[data.focus.key]?.unit ?? "")}.</div>
                     )}
                   </div>
                   {latest && <button className="btn primary" onClick={() => go(`/a/${latest.id}/plan`)}><ICalendar size={15} /> Open the practice plan</button>}

@@ -9,9 +9,11 @@ import { ago, fmt } from "../lib/format";
 import { VIEW_LABEL, SLOWMO_OPTIONS } from "../lib/constants";
 import Header, { scrollToId } from "./Header";
 import { CtaBand, Faq, Features, FilmingGuide, Hero, HowItWorks, Privacy, SiteFooter } from "./Landing";
-import { IAlert, ICamera, IChevronRight, IColumns, IFrame, ILock, IPhone, IPlay, IPlus, ITrash, ITripod, IUsers, IVideo } from "./Icons";
+import { IAlert, ICheck, ICamera, IChevronRight, IColumns, IFrame, ILock, IPhone, IPlay, IPlus, ITrash, ITripod, IUsers, IVideo } from "./Icons";
 
 const MAX_MB = 500;
+// a typical height for each age group, as the example in the height field
+const TYPICAL_CM: Record<string, number> = { u11: 138, u13: 149, u15: 161, u17: 170, u19: 175, adult: 180 };
 const RETURNING_KEY = "seamly-returning";   // remembers whether this browser has data, so the first paint picks the right layout
 type Health = { ok: boolean; device: string; missing_models: string[] };
 type Sample = "club" | "synthetic";
@@ -120,6 +122,7 @@ export default function Home({ go }: { go: (to: string) => void }) {
                 )}
               </div>
             </div>
+            {restored && <div className="notice ok" role="status" style={{ marginBottom: 16 }}><ICheck size={16} /> <div>{restored}</div></div>}
             <div className="ws-grid">
               {uploader}
               <aside className="ws-side" id="ws-players" aria-labelledby="players-title">
@@ -265,7 +268,7 @@ function HistoryCard({ m, go, onDeleted, picked, onPick, player }: { m: Analysis
     }
   };
   return (
-    <div className={`card hcard ${picked ? "picked" : ""}`} onClick={() => go(`/a/${m.id}`)} role="link" tabIndex={0} aria-label={`Open ${m.name}`}
+    <div className={`card hcard ${picked ? "picked" : ""}`} onClick={() => go(`/a/${m.id}`)} role="link" tabIndex={0} aria-label={`Open ${m.name}, ${ago(m.created)}${m.score !== null ? `, score ${m.score}` : ""}`}
       onKeyDown={(e) => { if (e.key === "Enter" && e.target === e.currentTarget) go(`/a/${m.id}`); }}>
       <div className="hthumb" style={{ backgroundImage: thumb }}>
         {m.status === "done" && m.score !== null && (
@@ -429,6 +432,8 @@ function Uploader({ go, disabled, health, players, current, onChoose, onCreate, 
         {MODE === "browser" && <div className="dz-local"><ILock size={13} /> Stays on your device</div>}
       </div>
       <div className="upload-opts">
+        {/* while a new player is being created, their form asks for arm and height itself */}
+        {!creating && <>
         <div className="field">
           <span className="label" id="arm-label">Bowling arm</span>
           <div className="seg" role="group" aria-labelledby="arm-label">
@@ -439,8 +444,9 @@ function Uploader({ go, disabled, health, players, current, onChoose, onCreate, 
         </div>
         <div className="field">
           <label htmlFor="up-height">Height (cm, optional)</label>
-          <input id="up-height" className="input" inputMode="numeric" placeholder="e.g. 183" value={height} onChange={(e) => setHeight(e.target.value.replace(/[^0-9.]/g, ""))} />
+          <input id="up-height" className="input" inputMode="numeric" placeholder={`e.g. ${TYPICAL_CM[player?.age_group ?? "adult"] ?? 180}`} value={height} onChange={(e) => setHeight(e.target.value.replace(/[^0-9.]/g, ""))} />
         </div>
+        </>}
         <div className="field">
           <label htmlFor="up-speed">Clip speed</label>
           <select id="up-speed" className="input" value={slowmo} onChange={(e) => setSlowmo(e.target.value)}>

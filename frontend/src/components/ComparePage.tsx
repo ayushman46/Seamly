@@ -142,7 +142,7 @@ export default function ComparePage({ a, b, go }: { a: string; b: string; go: (t
           <div className="table-scroll">
             <table className="cmp">
               <thead>
-                <tr><th>Metric</th><th>A (earlier)</th><th>B (later)</th><th>Change (B − A)</th><th /></tr>
+                <tr><th>Metric</th><th>A (earlier)</th><th>B (later)</th><th>Change (B − A)</th><th><span className="sr-only">Verdict</span></th></tr>
               </thead>
               <tbody>
                 {rows.map(({ key, a: ma, b: mb }) => <Row key={key} a={ma} b={mb} fps={Math.min(data[0]!.result.fps_real, data[1]!.result.fps_real)} />)}
