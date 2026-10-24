@@ -223,7 +223,7 @@ export function Features() {
     { icon: <ICalendar size={20} />, title: "Two-week practice plan", text: "Drills for your top fix, strength days and a re-test, with bowling loads kept within Cricket Australia's junior workload guidelines for the player's age." },
     { icon: <IUsers size={20} />, title: "Player profiles & progress", text: "Keep a profile for yourself, your child or each bowler you coach. See scores and key angles session by session, personal bests and what changed since last time." },
     { icon: <IColumns size={20} />, title: "Side-by-side compare", text: "Put two deliveries next to each other at the same moment of the action, with a metric-by-metric table of what changed between them." },
-    { icon: <IFile size={20} />, title: "Report & exports", text: "Print a one-page coaching report or save it as a PDF for a coach or parent. Export the joint angles (CSV), the full analysis (JSON) or a 3D frame (OBJ), or back everything up in one file." },
+    { icon: <IFile size={20} />, title: "Share, report & export", text: "Send a one-image summary to a coach or parent, or print a one-page coaching report as a PDF. Export the joint angles (CSV), the full analysis (JSON) or a 3D frame (OBJ), or back everything up in one file." },
   ];
   return (
     <section className="section alt" id="features" aria-labelledby="features-title">
