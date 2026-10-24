@@ -136,9 +136,13 @@ export async function renderShareCard(meta: AnalysisMeta, r: AnalysisResult, ins
     ctx.fillStyle = C.muted; ctx.font = `italic 500 24px ${FONT}`;
     y = wrap(ctx, `“${f.cue}”`, PAD + 52, y + 2, W - 2 * PAD - 52, 32, 2) + 18;
   }
-  if (!fixes.length && r.coaching.strengths.length) {
+  // what's working, when there is room above the footer
+  const working = (ins?.summary.working?.length ? ins.summary.working : r.coaching.strengths).slice(0, 2);
+  if (working.length && y < H - 200) {
+    ctx.fillStyle = C.accent; ctx.font = `700 22px ${FONT}`; ctx.fillText("WORKING WELL", PAD, y + 8);
     ctx.fillStyle = C.muted; ctx.font = `500 26px ${FONT}`;
-    y = wrap(ctx, `Working well: ${r.coaching.strengths.slice(0, 2).join("; ")}.`, PAD, y, W - 2 * PAD, 34, 2);
+    y += 46;
+    for (const w of working) y = wrap(ctx, `✓ ${w}`, PAD, y, W - 2 * PAD, 34, 1);
   }
 
   // footer
