@@ -434,7 +434,8 @@ def compute(c: Ctx) -> dict:
     metrics.append(_metric("trunk_forward_br", "Trunk forward flexion at release", float(tf_use[br]), event="br",
                            source=tsrc, confidence=tconf * _conf2d(c, br, [5, 6, 11, 12]), needs=SIDE, view=view,
                            explain="How far the trunk is pitched towards the batter at release. Fast bowlers "
-                                   "flex strongly through the delivery stride."))
+                                   "flex strongly through the delivery stride. This is the lean at the moment of release; "
+                                   "'Trunk flexion FFC → release' is how much it bends during the stride."))
     if ffc is not None and br > ffc:
         metrics.append(_metric("trunk_flexion_ffc_br", "Trunk flexion FFC → release", float(tf_use[br] - tf_use[ffc]),
                                event="ffc-br", source=tsrc,

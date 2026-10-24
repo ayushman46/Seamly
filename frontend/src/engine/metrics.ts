@@ -568,7 +568,8 @@ export function compute(c: Ctx): { metrics: MetricDict[]; series: Series } {
   metrics.push(metric("trunk_forward_br", "Trunk forward flexion at release", tfUse[br], {
     event: "br", source: tsrc, confidence: tconf * conf2d(c, br, TRUNK), needs: SIDE, view,
     explain: "How far the trunk is pitched towards the batter at release. Fast bowlers "
-      + "flex strongly through the delivery stride." }));
+      + "flex strongly through the delivery stride. This is the lean at the moment of release; "
+      + "'Trunk flexion FFC → release' is how much it bends during the stride." }));
   if (ffc !== null && br > ffc) {
     metrics.push(metric("trunk_flexion_ffc_br", "Trunk flexion FFC → release", tfUse[br] - tfUse[ffc], {
       event: "ffc-br", source: tsrc,
