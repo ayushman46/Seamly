@@ -484,6 +484,14 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
     }
   }, [id, setResult, setMeta, flash]);
 
+  // the user has said which arm this bowler bowls with: use it here, and remember it in their profile so the
+  // next clip of them doesn't have to guess
+  const confirmArm = async (arm: "left" | "right") => {
+    const who = ins?.player;
+    await recompute({ bowling_arm: arm }, `${arm === "right" ? "Right" : "Left"}-arm${arm === result.bowling_arm.arm ? " confirmed" : " — results updated"}${who ? `, and saved to ${who.name}'s profile` : ""}`);
+    if (who) await api.updatePlayer(who.id, { arm }).catch(() => undefined);
+  };
+
   const setEvent = useCallback((k: EventKey, fr: number) => recompute({ events: { [k]: fr } }, `${EVENTS.find((e) => e.key === k)!.label} set to frame ${fr} — metrics updated`), [recompute]);
 
   const resetEdits = async () => {
@@ -587,11 +595,8 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
               <b>Is this a {armLabel.toLowerCase()} bowler?</b> The video doesn't make the bowling arm clear, and everything else
               (release, angles, coaching) depends on it.
               <div className="row wrap" style={{ gap: 8, marginTop: 10 }}>
-                <button type="button" className="btn sm" disabled={busy}
-                  onClick={() => recompute({ bowling_arm: result.bowling_arm.arm }, `Confirmed: ${armLabel.toLowerCase()} bowler`)}>Yes, {armLabel.toLowerCase()}</button>
-                <button type="button" className="btn sm primary" disabled={busy}
-                  onClick={() => recompute({ bowling_arm: result.bowling_arm.arm === "right" ? "left" : "right" },
-                    `Switched to ${result.bowling_arm.arm === "right" ? "left" : "right"}-arm — results updated`)}>
+                <button type="button" className="btn sm" disabled={busy} onClick={() => confirmArm(result.bowling_arm.arm)}>Yes, {armLabel.toLowerCase()}</button>
+                <button type="button" className="btn sm primary" disabled={busy} onClick={() => confirmArm(result.bowling_arm.arm === "right" ? "left" : "right")}>
                   No, {result.bowling_arm.arm === "right" ? "left" : "right"}-arm
                 </button>
               </div>
