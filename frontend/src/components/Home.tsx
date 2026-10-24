@@ -164,6 +164,12 @@ export default function Home({ go }: { go: (to: string) => void }) {
                 </div>
               )}
             </section>
+            {/* on a phone the header button is far above the ticked cards: keep one in reach */}
+            {picked.length === 2 && (
+              <div className="compare-fab">
+                <button className="btn primary" onClick={() => go(`/compare/${picked[0]}/${picked[1]}`)}><IColumns size={15} /> Compare the 2 selected</button>
+              </div>
+            )}
             {MODE === "browser" && <BackupPanel restored={restored} onRestored={() => { refresh(); refreshPlayers(); }} />}
           </div>
         ) : (

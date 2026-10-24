@@ -1126,3 +1126,10 @@ button:focus:not(:focus-visible) { outline: none; }
   table.cmp td.cmp-verdict:empty { display: none; }
   table.cmp td .chip { margin-left: 0 !important; margin-top: 4px; }
 }
+
+/* floating compare button for phones (the section header one is out of view by then) */
+.compare-fab { display: none; }
+@media (max-width: 700px) {
+  .compare-fab { display: flex; justify-content: center; position: fixed; left: 0; right: 0; bottom: max(16px, env(safe-area-inset-bottom)); z-index: 40; pointer-events: none; }
+  .compare-fab .btn { pointer-events: auto; box-shadow: var(--sh-3); }
+}

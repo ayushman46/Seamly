@@ -11,6 +11,7 @@ export default function Inspector({ result, frame, onSetEvent, busy }: { result:
   const conf = result.keypoints2d.conf[t];
   const meanConf = conf.slice(5).reduce((a, b) => a + b, 0) / 12;
   const [showEst, setShowEst] = useState(false);
+  const guessed = (["bfc", "ffc"] as EventKey[]).filter((k) => result.events[k]?.method === "timing_prior");
   const keys = ORDER.filter((k) => result.series[k]);
   const measured = keys.filter((k) => measuredForView(k, SERIES_INFO[k].plane, result.view.view));
   const estimates = keys.filter((k) => !measured.includes(k));
@@ -28,10 +29,11 @@ export default function Inspector({ result, frame, onSetEvent, busy }: { result:
           </button>
         ))}
       </div>
-      {(["bfc", "ffc"] as EventKey[]).some((k) => result.events[k]?.method === "timing_prior") && (
+      {guessed.length > 0 && (
         <div className="notice warn">
-          {(["bfc", "ffc"] as EventKey[]).filter((k) => result.events[k]?.method === "timing_prior").map((k) => EVENTS.find((e) => e.key === k)!.label).join(" and ")} could not be
-          seen clearly and {"were"} placed from typical delivery timing. Step to the frame where the foot lands and press the matching button above for exact measurements.
+          {guessed.map((k) => EVENTS.find((e) => e.key === k)!.label).join(" and ")} could not be seen clearly
+          and {guessed.length === 1 ? "was" : "were"} placed from typical delivery timing. Step to the frame where the foot lands and
+          press the matching button above for exact measurements.
         </div>
       )}
       <div className="inspector-grid">

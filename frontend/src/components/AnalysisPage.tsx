@@ -596,7 +596,7 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
               (release, angles, coaching) depends on it.
               <div className="row wrap" style={{ gap: 8, marginTop: 10 }}>
                 <button type="button" className="btn sm" disabled={busy} onClick={() => confirmArm(result.bowling_arm.arm)}>Yes, {armLabel.toLowerCase()}</button>
-                <button type="button" className="btn sm primary" disabled={busy} onClick={() => confirmArm(result.bowling_arm.arm === "right" ? "left" : "right")}>
+                <button type="button" className="btn sm" disabled={busy} onClick={() => confirmArm(result.bowling_arm.arm === "right" ? "left" : "right")}>
                   No, {result.bowling_arm.arm === "right" ? "left" : "right"}-arm
                 </button>
               </div>
