@@ -1,7 +1,22 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Insights } from "../types";
 
 const KIND_LABEL = { bowling: "Bowling", strength: "Strength", rest: "Rest", film: "Film & compare" } as const;
+
+const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const ymd = (d: Date) => `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
+
+/** A one-event calendar file (all-day) for the re-test, which phones open straight in their calendar app. */
+function retestIcs(day: Date, who: string | null, id: string): Blob {
+  const next = new Date(day); next.setDate(day.getDate() + 1);
+  const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");
+  const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Seamly//Practice plan//EN", "BEGIN:VEVENT",
+    `UID:seamly-retest-${id}-${ymd(day)}@seamly`, `DTSTAMP:${stamp}`, `DTSTART;VALUE=DATE:${ymd(day)}`, `DTEND;VALUE=DATE:${ymd(next)}`,
+    `SUMMARY:Seamly re-test${who ? `: ${who}` : ""}`,
+    "DESCRIPTION:Film one delivery from the same spot as last time\\, analyse it in Seamly and compare the two.",
+    "END:VEVENT", "END:VCALENDAR"];
+  return new Blob([lines.join("\r\n") + "\r\n"], { type: "text/calendar" });
+}
 
 function loadDone(key: string): string[] {
   try { return JSON.parse(localStorage.getItem(key) || "[]"); } catch { return []; }
@@ -20,6 +35,22 @@ export default function PlanPanel({ id, ins, onUpload }: { id: string; ins: Insi
       return next;
     });
   };
+  // the plan starts on the coming Monday (today, if it is Monday)
+  const start = useMemo(() => {
+    const d = new Date(); d.setHours(0, 0, 0, 0);
+    const dow = (d.getDay() + 6) % 7;
+    if (dow) d.setDate(d.getDate() + 7 - dow);
+    return d;
+  }, []);
+  const dateOf = (week: number, day: string) => { const d = new Date(start); d.setDate(start.getDate() + 7 * week + Math.max(0, WEEKDAYS.indexOf(day))); return d; };
+  const short = (d: Date) => d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  const addToCalendar = (day: Date) => {
+    const url = URL.createObjectURL(retestIcs(day, ins.player?.name ?? null, id));
+    const a = document.createElement("a");
+    a.href = url; a.download = "seamly-retest.ics";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30_000);
+  };
   const all = plan.weeks.flatMap((w) => w.days.filter((d) => d.kind !== "rest").flatMap((d) => d.items.map((i) => i.id)));
   const nDone = all.filter((x) => done.includes(x)).length;
 
@@ -34,6 +65,7 @@ export default function PlanPanel({ id, ins, onUpload }: { id: string; ins: Insi
           <div className="muted" style={{ fontSize: 13, marginTop: 6 }}>
             {ins.player ? `Built for ${ins.player.name}` : "Built for an adult pace bowler"}
             {plan.limits ? ` · ${plan.limits.label} bowling limits` : ""}. Three bowling sessions a week, two strength days, then re-film.
+            {" "}Starts {start.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "short" })}.
           </div>
         </div>
         <div className="plan-progress" title="Ticked items are remembered on this device">
@@ -48,14 +80,14 @@ export default function PlanPanel({ id, ins, onUpload }: { id: string; ins: Insi
         </div>
       )}
 
-      {plan.weeks.map((w) => (
+      {plan.weeks.map((w, wi) => (
         <div key={w.title}>
           <div role="heading" aria-level={3} className="card-title">{w.title}</div>
           <div className="plan-week">
             {w.days.map((d) => (
               <div key={d.day} className={`plan-day ${d.kind}`}>
                 <div className="row" style={{ gap: 6 }}>
-                  <b>{d.day}</b>
+                  <b>{d.day} <span className="faint" style={{ fontWeight: 500 }}>{short(dateOf(wi, d.day))}</span></b>
                   <span className={`chip kind-${d.kind}`}>{KIND_LABEL[d.kind]}</span>
                 </div>
                 <div className="plan-title">{d.title}</div>
@@ -78,7 +110,12 @@ export default function PlanPanel({ id, ins, onUpload }: { id: string; ins: Insi
                     </li>
                   ))}
                 </ul>
-                {d.kind === "film" && <button className="btn sm primary" onClick={onUpload}>Analyse the re-test clip</button>}
+                {d.kind === "film" && (
+                  <div className="row wrap" style={{ gap: 6 }}>
+                    <button className="btn sm primary" onClick={onUpload}>Analyse the re-test clip</button>
+                    <button className="btn sm" onClick={() => addToCalendar(dateOf(wi, d.day))}>Add to calendar</button>
+                  </div>
+                )}
               </div>
             ))}
           </div>
