@@ -27,6 +27,7 @@ Film one delivery on your phone. Seamly finds the bowler and marks the key momen
 - **Two-week practice plan** that respects the [Cricket Australia junior pace bowling guidelines](https://play.cricket.com.au/community/resources/player-safety/junior-bowling-guidelines/guidelines) for the player's age group: overs per spell, bowling days per week and rest days.
 - **Player profiles and progress over time**: score and measurement trends, personal bests, "since last time" and the current focus.
 - **Compare two deliveries** side by side, print a **coaching report**, and export **CSV / JSON / OBJ**.
+- **Share summary**: one image (release frame with skeleton, score, verdict and the top fixes with cues) to send to a coach or parent through the phone's share sheet.
 - **Works offline after the first analysis.** A service worker keeps the app and the models, so you can film and analyse at the nets with no signal.
 - **Backup and restore.** One file carries every analysis and player to another browser, phone or computer. Nothing goes through a server.
 
