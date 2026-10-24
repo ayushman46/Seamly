@@ -145,7 +145,7 @@ legacy/     the original Streamlit + SPIN prototype
 
 | Component | Licence | Note |
 |---|---|---|
-| Seamly code | see repository | |
+| Seamly code | not chosen yet | No LICENSE file yet. The browser build ships the AGPL-3.0 YOLO11 weights, so AGPL-3.0 is the simplest compatible choice. |
 | Ultralytics YOLO11 (models in `frontend/public/models`) | **AGPL-3.0** | The source of this site is public in this repository |
 | MotionBERT (model code + weights) | Apache-2.0 | `backend/bowlnet/lifting/LICENSE-MotionBERT` |
 | ONNX Runtime Web | MIT | loaded from jsDelivr |
