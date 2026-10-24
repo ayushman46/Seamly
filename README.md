@@ -59,7 +59,7 @@ video ─► exact frame times from the container (MP4/MOV via mp4box), frame-ac
       ─► NAVER Anny body model posed by IK, skinned in three.js
 ```
 
-The analysis engine (`frontend/src/engine/`) is a TypeScript port of the Python pipeline in `backend/bowlnet/`. The test suite (`frontend/tests/`, 346 tests) checks every stage after pose detection against fixtures recorded from the Python pipeline. The results match Python exactly or to floating-point precision: events, metrics, coaching, insights, progress, the body-model binaries, and the skeleton fit to about 1 mm.
+The analysis engine (`frontend/src/engine/`) is a TypeScript port of the Python pipeline in `backend/bowlnet/`. The test suite (`frontend/tests/`, 350 tests) checks every stage after pose detection against fixtures recorded from the Python pipeline. The results match Python exactly or to floating-point precision: events, metrics, coaching, insights, progress, the body-model binaries, and the skeleton fit to about 1 mm.
 
 The first analysis downloads about 70 MB of models, which the browser caches afterwards. On a recent laptop a short clip takes about 15–30 s; phones take longer.
 
