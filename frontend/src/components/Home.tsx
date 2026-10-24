@@ -12,6 +12,7 @@ import { Faq, FilmingGuide, Hero, SiteFooter, WhatYouGet } from "./Landing";
 import { IAlert, ICheck, IChevronRight, IColumns, ILock, IPlus, ITrash, IUsers, IVideo } from "./Icons";
 
 const MAX_MB = 500;
+const MAX_CLIPS = 12;   // a spell or two from one nets session
 // a typical height for each age group, as the example in the height field
 const TYPICAL_CM: Record<string, number> = { u11: 138, u13: 149, u15: 161, u17: 170, u19: 175, adult: 180 };
 const RETURNING_KEY = "seamly-returning";   // remembers whether this browser has data, so the first paint picks the right layout
@@ -106,7 +107,8 @@ export default function Home({ go }: { go: (to: string) => void }) {
 
   const uploader = (
     <Uploader go={go} disabled={disabled} health={health} players={players} current={current} onChoose={choosePlayer} onCreate={createFromUploader}
-      onDemo={demo} demoBusy={demoBusy} demoError={demoErr} attention={attention} compact={returning} />
+      onDemo={demo} demoBusy={demoBusy} demoError={demoErr} attention={attention} compact={returning}
+      onQueued={() => { refresh(); window.setTimeout(() => scrollToId("ws-analyses"), 300); }} />
   );
 
   return (
@@ -298,12 +300,14 @@ function HistoryCard({ m, go, onDeleted, picked, onPick, player }: { m: Analysis
   );
 }
 
-function Uploader({ go, disabled, health, players, current, onChoose, onCreate, onDemo, demoBusy, demoError, attention, compact }: {
+function Uploader({ go, disabled, health, players, current, onChoose, onCreate, onDemo, demoBusy, demoError, attention, compact, onQueued }: {
   go: (to: string) => void; disabled: boolean; health: Health | null; players: Player[]; current: string | null;
   onChoose: (id: string | null) => void; onCreate: (p: Partial<Player>) => Promise<void>;
   onDemo: (which: Sample) => void; demoBusy: Sample | null; demoError: string | null; attention: number; compact: boolean;
+  onQueued: () => void;   // several clips were queued: show them in the analyses list
 }) {
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);   // one clip, or a whole spell filmed as one clip a ball
+  const file = files[0] ?? null;
   const [over, setOver] = useState(false);
   const [arm, setArm] = useState("auto");
   const [height, setHeight] = useState<string>("");
@@ -336,22 +340,21 @@ function Uploader({ go, disabled, health, players, current, onChoose, onCreate, 
     return () => { clearTimeout(t); clearTimeout(u); };
   }, [attention]);
 
-  const pick = (f: File | undefined | null) => {
+  const pick = (list: FileList | File[] | undefined | null) => {
     setError(null);
-    if (!f) return;
-    if (!/\.(mp4|mov|m4v|avi|mkv|webm)$/i.test(f.name)) {
-      setError("Please choose a video file (MP4, MOV, AVI, MKV or WEBM).");
-      return;
-    }
-    if (f.size > MAX_MB * 1024 * 1024) {
-      setError(`That file is ${(f.size / 1e6).toFixed(0)} MB — please trim it under ${MAX_MB} MB.`);
-      return;
-    }
-    setFile(f);
+    const all = [...(list ?? [])];
+    if (!all.length) return;
+    const bad = all.find((f) => !/\.(mp4|mov|m4v|avi|mkv|webm)$/i.test(f.name));
+    const big = all.find((f) => f.size > MAX_MB * 1024 * 1024);
+    const ok = all.filter((f) => f !== bad && f !== big && /\.(mp4|mov|m4v|avi|mkv|webm)$/i.test(f.name) && f.size <= MAX_MB * 1024 * 1024).slice(0, MAX_CLIPS);
+    if (bad) setError(`${all.length > 1 ? `${bad.name} isn't a video` : "Please choose a video file"} (MP4, MOV, AVI, MKV or WEBM).`);
+    else if (big) setError(`${big.name} is ${(big.size / 1e6).toFixed(0)} MB — please trim it under ${MAX_MB} MB.`);
+    else if (all.length > MAX_CLIPS) setError(`Up to ${MAX_CLIPS} clips at a time: the first ${MAX_CLIPS} are selected.`);
+    if (ok.length) setFiles(ok);
   };
 
   const submit = async () => {
-    if (!file) return;
+    if (!files.length) return;
     const h = height ? Number(height) : undefined;
     if (h !== undefined && (!isFinite(h) || h < 120 || h > 230)) {
       setError("Height should be between 120 and 230 cm.");
@@ -360,9 +363,17 @@ function Uploader({ go, disabled, health, players, current, onChoose, onCreate, 
     setBusy(true);
     setError(null);
     try {
-      const { id } = await api.upload(file, { bowling_arm: arm, height_cm: h, slowmo_factor: Number(slowmo), player_id: player?.id ?? null }, setProg);
+      const opts = { bowling_arm: arm, height_cm: h, slowmo_factor: Number(slowmo), player_id: player?.id ?? null };
+      let id = "";
+      for (const [i, f] of files.entries()) {
+        ({ id } = await api.upload(f, opts, (p) => setProg((i + p) / files.length)));
+      }
       markReturning();
-      go(`/a/${id}`);
+      if (files.length === 1) { go(`/a/${id}`); return; }
+      // several clips: they're analysed one after another; follow them in the analyses list
+      setFiles([]);
+      setBusy(false);
+      onQueued();
     } catch (e) {
       setError((e as Error).message);
       setBusy(false);
@@ -391,17 +402,19 @@ function Uploader({ go, disabled, health, players, current, onChoose, onCreate, 
       <div
         ref={zone}
         className={`dropzone ${over ? "over" : ""} ${file ? "has-file" : ""} ${flash ? "attention" : ""}`}
-        role="button" tabIndex={0} aria-label={file ? `Selected video ${file.name}. Press to choose a different file.` : "Choose a bowling video"}
+        role="button" tabIndex={0} aria-label={files.length > 1 ? `${files.length} videos selected. Press to choose different files.` : file ? `Selected video ${file.name}. Press to choose a different file.` : "Choose bowling videos"}
         onClick={browse}
         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); browse(); } }}
         onDragOver={(e) => { e.preventDefault(); setOver(true); }}
         onDragLeave={() => setOver(false)}
-        onDrop={(e) => { e.preventDefault(); setOver(false); pick(e.dataTransfer.files?.[0]); }}
+        onDrop={(e) => { e.preventDefault(); setOver(false); pick(e.dataTransfer.files); }}
       >
-        <input ref={input} type="file" accept="video/*,.mp4,.mov,.m4v,.avi,.mkv,.webm" hidden onChange={(e) => pick(e.target.files?.[0])} />
+        <input ref={input} type="file" multiple accept="video/*,.mp4,.mov,.m4v,.avi,.mkv,.webm" hidden onChange={(e) => { pick(e.target.files); e.target.value = ""; }} />
         <span className="dz-icon"><IVideo size={24} /></span>
-        <h3>{file ? file.name : "Choose or drop a bowling video"}</h3>
-        <div className="dz-sub">{file ? `${(file.size / 1e6).toFixed(1)} MB · choose again to change` : "MP4, MOV, AVI, MKV or WEBM · one delivery works best"}</div>
+        <h3>{files.length > 1 ? `${files.length} clips selected` : file ? file.name : "Choose or drop a bowling video"}</h3>
+        <div className="dz-sub">{files.length > 1
+          ? `${(files.reduce((n, f) => n + f.size, 0) / 1e6).toFixed(1)} MB · analysed one after another · choose again to change`
+          : file ? `${(file.size / 1e6).toFixed(1)} MB · choose again to change` : "MP4, MOV, AVI, MKV or WEBM · one delivery a clip; several clips at once for a spell"}</div>
         {MODE === "browser" && <div className="dz-local"><ILock size={13} /> Stays on your device</div>}
       </div>
       <div className="field" style={{ marginTop: 14 }}>
@@ -459,7 +472,7 @@ function Uploader({ go, disabled, health, players, current, onChoose, onCreate, 
         ) : (
           <>
             <button type="button" className="btn primary lg block" disabled={!file || disabled} onClick={submit}>
-              Analyse delivery
+              {files.length > 1 ? `Analyse ${files.length} deliveries` : "Analyse delivery"}
             </button>
             {MODE === "browser" && !cached && (
               <span className="faint" style={{ fontSize: 12, textAlign: "center" }}>
