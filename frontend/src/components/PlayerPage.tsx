@@ -7,6 +7,7 @@ import { AGE_LABEL, STYLE_LABEL, setCurrentPlayer } from "../lib/player";
 import Header from "./Header";
 import PlayerForm from "./PlayerForm";
 import Trend from "./Trend";
+import BowlingLog from "./BowlingLog";
 import { IAlert, IBack, ICalendar, IChevronRight, ITrash, IUpload, IVideo } from "./Icons";
 import { SiteFooter } from "./Landing";
 import { usePageTitle } from "../lib/title";
@@ -116,7 +117,9 @@ export default function PlayerPage({ pid, go }: { pid: string; go: (to: string) 
             <span style={{ maxWidth: 520 }}>Analyse a clip of {p.name} bowling to start tracking progress. Film the same way each time (same angle, same distance) so sessions compare fairly.</span>
             <button className="btn primary" style={{ marginTop: 8 }} onClick={upload}><IUpload size={16} /> Analyse the first delivery</button>
           </div>
-        ) : (
+        ) : null}
+        {s.count === 0 && <div style={{ marginTop: 18 }}><BowlingLog player={data.player} onChange={(pl) => setData((d) => (d ? { ...d, player: { ...d.player, ...pl } } : d))} /></div>}
+        {s.count === 0 ? null : (
           <>
             <div className="stat-tiles">
               <div className="card stat"><small>Sessions analysed</small><b>{s.count}</b><span className="faint">{dateOf(s.first) === dateOf(s.last) ? dateOf(s.first) : `${dateOf(s.first)} – ${dateOf(s.last)}`}</span></div>
@@ -215,6 +218,8 @@ export default function PlayerPage({ pid, go }: { pid: string; go: (to: string) 
                 <div className="faint" style={{ fontSize: 12, marginTop: 8 }}>Only values measured reliably for each clip's camera angle are plotted. The shaded band is the good range.</div>
               </section>
             )}
+
+            <BowlingLog player={data.player} onChange={(pl) => setData((d) => (d ? { ...d, player: { ...d.player, ...pl } } : d))} />
 
             <section>
               <div role="heading" aria-level={2} className="card-title section-label">Sessions</div>

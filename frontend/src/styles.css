@@ -1138,3 +1138,12 @@ button:focus:not(:focus-visible) { outline: none; }
 .share-overlay { position: fixed; inset: 0; z-index: 60; background: rgba(3, 5, 10, 0.72); display: grid; place-items: center; padding: 16px; }
 .share-sheet { width: min(460px, 100%); max-height: calc(100vh - 32px); overflow: auto; padding: 16px; }
 .share-sheet img { width: 100%; height: auto; display: block; border-radius: 12px; border: 1px solid var(--c-line); }
+
+/* bowling log */
+.log-form { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.7fr) minmax(0, 1.2fr) auto; gap: 10px; align-items: end; }
+.log-list { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.log-list li { display: flex; align-items: center; gap: 10px; padding: 6px 4px; border-bottom: 1px solid var(--c-line); font-size: var(--fs-sm); }
+@media (max-width: 560px) {
+  .log-form { grid-template-columns: 1fr 1fr; }
+  .log-form .btn { grid-column: 1 / -1; justify-content: center; }
+}

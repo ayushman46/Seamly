@@ -26,6 +26,7 @@ Film one delivery on your phone. Seamly finds the bowler and marks the key momen
 - **Back-health check** for pace bowlers: side-bend at release, mixed action and a folding back leg. These are the technique factors linked to lower-back stress injuries in young fast bowlers.
 - **Two-week practice plan** that respects the [Cricket Australia junior pace bowling guidelines](https://play.cricket.com.au/community/resources/player-safety/junior-bowling-guidelines/guidelines) for the player's age group: overs per spell, bowling days per week and rest days.
 - **Player profiles and progress over time**: score and measurement trends, personal bests, "since last time" and the current focus.
+- **Bowling log**: record matches, club nets and practice per player; each week is checked against the age group's limits (bowling days, overs a day, rest days).
 - **Compare two deliveries** side by side, print a **coaching report**, and export **CSV / JSON / OBJ**.
 - **Share summary**: one image (release frame with skeleton, score, verdict and the top fixes with cues) to send to a coach or parent through the phone's share sheet.
 - **Works offline after the first analysis.** A service worker keeps the app and the models, so you can film and analyse at the nets with no signal.

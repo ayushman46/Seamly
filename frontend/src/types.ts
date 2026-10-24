@@ -146,7 +146,11 @@ export interface Player {
   analyses: number;
   latest_score: number | null;
   last_analysis: number | null;
+  log?: BowlingLogEntry[];   // bowling the player did (matches, nets, training), newest first
 }
+
+/** One day's bowling, as entered by the player or parent. */
+export interface BowlingLogEntry { id: string; date: string; overs: number; kind: "match" | "nets" | "training" }
 
 export interface SessionSummary {
   id: string;

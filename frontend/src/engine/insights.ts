@@ -230,6 +230,9 @@ function limitsFor(age: string, style: string): PlanLimits | null {
     source: "general guidance; the official limits are for juniors", between_spells_min: 20, preseason_weeks: null };
 }
 
+/** The bowling limits for a player's age group and style (null: no fixed limits, e.g. adult spinners). */
+export const bowlingLimits = (ageGroup: string, style: string): PlanLimits | null => limitsFor(ageGroup, style);
+
 interface PlanDrill { text: string; sets: number; reps: number; balls: boolean; adult_only: boolean }
 const d = (text: string, sets: number, reps: number, balls: boolean, adultOnly = false): PlanDrill =>
   ({ text, sets, reps, balls, adult_only: adultOnly });

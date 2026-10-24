@@ -3,7 +3,7 @@
  * everything now runs in this browser: videos are analysed by the in-browser engine (src/engine) and
  * analyses/players are kept in IndexedDB. Nothing is uploaded anywhere.
  */
-import type { AnalysisMeta, AnalysisResult, EventKey, Insights, Player, PlayerProgress } from "./types";
+import type { AnalysisMeta, AnalysisResult, BowlingLogEntry, EventKey, Insights, Player, PlayerProgress } from "./types";
 import * as db from "./engine/store";
 import { AnalysisError, backend, optionsFrom, type Options } from "./engine/common";
 import type { Overrides, StageA } from "./engine/pipeline";
@@ -383,6 +383,15 @@ function cleanPlayer(f: Partial<Player>): Partial<StoredPlayer> {
   return out;
 }
 
+/** A valid bowling-log entry, or null (dates as YYYY-MM-DD, overs 0.1–60). */
+function cleanLog(e: { id?: unknown; date?: unknown; overs?: unknown; kind?: unknown } | null | undefined): BowlingLogEntry | null {
+  const date = typeof e?.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(e.date) && !Number.isNaN(Date.parse(e.date)) ? e.date : null;
+  const overs = Number(e?.overs);
+  const kind = e?.kind === "match" || e?.kind === "nets" || e?.kind === "training" ? e.kind : null;
+  if (!date || !kind || !(overs > 0 && overs <= 60)) return null;
+  return { id: typeof e?.id === "string" && /^[0-9a-z]{4,40}$/i.test(e.id) ? e.id : "", date, overs: Math.round(overs * 10) / 10, kind };
+}
+
 function playerOut(p: StoredPlayer): Player {
   const mine = [...metas.values()].filter((m) => m.player_id === p.id && m.status === "done").sort((a, b) => (a.created ?? 0) - (b.created ?? 0));
   const last = mine[mine.length - 1];
@@ -511,7 +520,8 @@ async function restore(file: Blob): Promise<{ analyses: number; players: number;
     if (typeof p?.id !== "string" || !ID.test(p.id) || have.has(p.id)) continue;
     const clean = cleanPlayer(p as unknown as Partial<Player>);
     if (!clean.name) continue;
-    await db.put("player", p.id, { age_group: "adult", style: "fast", arm: "auto", height_cm: null, ...clean, id: p.id, created: Number(p.created) || now() });
+    const log = (Array.isArray(p.log) ? p.log : []).map(cleanLog).filter((x): x is BowlingLogEntry => !!x).map((x) => ({ ...x, id: x.id || db.newId() }));
+    await db.put("player", p.id, { age_group: "adult", style: "fast", arm: "auto", height_cm: null, ...clean, id: p.id, created: Number(p.created) || now(), log });
     have.add(p.id);
     players++;
   }
@@ -696,6 +706,25 @@ export const api = {
     const p = { ...(await requirePlayer(pid)), ...cleanPlayer(body) };
     await db.put("player", pid, p);
     return playerOut(p);
+  },
+  /** Record a day's bowling for a player (matches, club nets, training): kept with their profile. */
+  addLog: async (pid: string, e: { date: string; overs: number; kind: string }): Promise<Player> => {
+    await loadAll();
+    const p = await requirePlayer(pid);
+    const entry = cleanLog(e);
+    if (!entry) throw new Error("Enter the date and how many overs were bowled (up to 60).");
+    entry.id = db.newId();
+    const log = [entry, ...(p.log ?? [])].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 400);
+    const next = { ...p, log };
+    await db.put("player", pid, next);
+    return playerOut(next);
+  },
+  removeLog: async (pid: string, entryId: string): Promise<Player> => {
+    await loadAll();
+    const p = await requirePlayer(pid);
+    const next = { ...p, log: (p.log ?? []).filter((x) => x.id !== entryId) };
+    await db.put("player", pid, next);
+    return playerOut(next);
   },
   removePlayer: async (pid: string) => {
     await loadAll();

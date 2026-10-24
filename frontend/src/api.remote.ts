@@ -76,6 +76,8 @@ export const api = {
   objUrl: (id: string, frame: number) => `/api/analyses/${id}/export/obj?frame=${frame}`,
   videoUrl: (id: string) => `/api/analyses/${id}/video`,
   hasVideo: (_id: string) => true,
+  addLog: async (_pid: string, _e: { date: string; overs: number; kind: string }): Promise<Player> => { throw new Error("The bowling log is kept in the in-browser version."); },
+  removeLog: async (_pid: string, _id: string): Promise<Player> => { throw new Error("The bowling log is kept in the in-browser version."); },
   // the server keeps its own data: backups are for the in-browser build
   backup: async (_includeVideos: boolean): Promise<{ blob: Blob; analyses: number; players: number }> => { throw new Error("Backups are made on the Seamly server itself."); },
   restore: async (_file: Blob): Promise<{ analyses: number; players: number; skipped: number; videos: number }> => { throw new Error("Backups are restored on the Seamly server itself."); },
