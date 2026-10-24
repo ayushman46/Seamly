@@ -585,7 +585,16 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
             <IAlert size={16} />
             <div>
               <b>Is this a {armLabel.toLowerCase()} bowler?</b> The video doesn't make the bowling arm clear, and everything else
-              (release, angles, coaching) depends on it. If it's wrong, <button type="button" className="link-btn" onClick={openSettings}>set the bowling arm</button>.
+              (release, angles, coaching) depends on it.
+              <div className="row wrap" style={{ gap: 8, marginTop: 10 }}>
+                <button type="button" className="btn sm" disabled={busy}
+                  onClick={() => recompute({ bowling_arm: result.bowling_arm.arm }, `Confirmed: ${armLabel.toLowerCase()} bowler`)}>Yes, {armLabel.toLowerCase()}</button>
+                <button type="button" className="btn sm primary" disabled={busy}
+                  onClick={() => recompute({ bowling_arm: result.bowling_arm.arm === "right" ? "left" : "right" },
+                    `Switched to ${result.bowling_arm.arm === "right" ? "left" : "right"}-arm — results updated`)}>
+                  No, {result.bowling_arm.arm === "right" ? "left" : "right"}-arm
+                </button>
+              </div>
             </div>
           </div>
         )}
