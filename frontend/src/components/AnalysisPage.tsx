@@ -379,7 +379,9 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
   const assignPlayer = async (pid: string | null) => {
     try {
       setMeta(await api.patch(id, { player_id: pid }));
-      flash(pid ? "Added to the player's progress" : "Removed from the player");
+      // with no height entered, distances assume a typical height for the player's age group: recompute with it
+      if (result.skeleton.height_source !== "user") await recompute({}, pid ? "Added to the player's progress" : "Removed from the player");
+      else flash(pid ? "Added to the player's progress" : "Removed from the player");
     } catch (e) {
       flash((e as Error).message, true);
     }
