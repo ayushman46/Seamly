@@ -66,7 +66,7 @@ export function BackHealthCard({ ins }: { ins: Insights }) {
   // a partial screen isn't an all-clear: side-bend and mixed action (the main junior risks) need a clip from behind
   const partial = b.overall === "ok" && b.measured < b.total;
   const headline = partial
-    ? `No red flags in the ${b.measured} of ${b.total} checks this clip allows`
+    ? `${b.measured} of ${b.total} checks possible from this clip: no red flags in ${b.measured === 1 ? "it" : "those"}`
     : b.overall === "unknown" ? "Couldn't check in this clip" : STATUS_TEXT[b.overall];
   return (
     <div className="card card-pad">

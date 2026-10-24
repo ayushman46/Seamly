@@ -6,7 +6,12 @@ estimates as verdicts.
 """
 from __future__ import annotations
 
+import re
+
 from .metrics import NORMS
+
+# headline values that keep their sign (a negative trunk lean is a lean backwards, not a small forward one)
+SIGNED = {"trunk_flexion_ffc_br", "trunk_forward_br"}
 
 DRILLS = {
     "front_leg": {
@@ -188,7 +193,9 @@ def coach(metrics: list[dict], view: str, fps: float) -> dict:
             sev *= 0.5
         issues.append({
             "key": key, "category": cat, "severity": round(sev, 2), "rating": m["rating"], "borderline": borderline,
-            "headline": head.format(v=abs(m["value"]), side=side), "evidence": evidence,
+            # trunk lean keeps its sign (a negative value leans back); a true minus sign for display
+            "headline": re.sub(r"(^|[\s(])-(?=\d)", "\\1\u2212", head.format(v=m["value"] if key in SIGNED else abs(m["value"]), side=side)),
+            "evidence": evidence,
             "why": m.get("explain", ""), "metric": key, "confidence": m["confidence"],
             "drill": DRILLS["stride_short" if drill == "stride" and side == "Short" else drill], "drill_key": drill,
             "event": m.get("event"),
@@ -211,8 +218,9 @@ def coach(metrics: list[dict], view: str, fps: float) -> dict:
     # ---------- capture quality advice ----------
     capture = []
     if fps < 90:
-        capture.append(f"Filmed at {fps:.0f} fps — the arm moves ~{min(80, 2000 / fps):.0f}° between frames at "
-                       "release. Use 120–240 fps slow motion for precise release and elbow measurements.")
+        capture.append(f"Filmed at {fps:.0f} fps, so release timing is approximate: the arm moves about "
+                       f"{min(80, 2000 / fps):.0f}° from one frame to the next. Film in slow motion (120–240 fps) next time "
+                       "for precise release and elbow measurements.")
     if view in ("behind", "front_on"):
         capture.append("Filmed from behind/in front: side-bend, arm slot and alignment are measured well, but knee, "
                        "trunk-flexion and stride can't be measured from this angle. Add a side-on clip for those.")

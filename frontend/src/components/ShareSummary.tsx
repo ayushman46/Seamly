@@ -9,16 +9,17 @@ export default function ShareSummary({ meta, result, ins, fileBase }: { meta: An
   const [busy, setBusy] = useState(false);
   const [card, setCard] = useState<{ blob: Blob; url: string } | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [hideName, setHideName] = useState(false);
   const closeRef = useRef<HTMLButtonElement>(null);
   const openRef = useRef<HTMLButtonElement>(null);
-  const name = `${fileBase}-summary.png`;
+  const name = hideName ? "seamly-summary.png" : `${fileBase}-summary.png`;
 
-  const make = async () => {
+  const make = async (hide = hideName) => {
     setBusy(true);
     setErr(null);
     try {
-      const blob = await renderShareCard(meta, result, ins, (f) => api.frameUrl(meta.id, f));
-      setCard({ blob, url: URL.createObjectURL(blob) });
+      const blob = await renderShareCard(meta, result, ins, (f) => api.frameUrl(meta.id, f), { hideName: hide });
+      setCard((old) => { if (old) URL.revokeObjectURL(old.url); return { blob, url: URL.createObjectURL(blob) }; });
     } catch (e) {
       setErr((e as Error).message);
     } finally {
@@ -26,18 +27,18 @@ export default function ShareSummary({ meta, result, ins, fileBase }: { meta: An
     }
   };
   const close = () => {
-    if (card) URL.revokeObjectURL(card.url);
-    setCard(null);
+    setCard((c) => { if (c) URL.revokeObjectURL(c.url); return null; });
     openRef.current?.focus();
   };
+  const open = !!card;
   useEffect(() => {
-    if (!card) return;
+    if (!open) return;
     closeRef.current?.focus();
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [card]);
+  }, [open]);
 
   const file = card ? new File([card.blob], name, { type: "image/png" }) : null;
   const canShare = !!file && typeof navigator !== "undefined" && !!navigator.canShare?.({ files: [file] });
@@ -58,7 +59,7 @@ export default function ShareSummary({ meta, result, ins, fileBase }: { meta: An
 
   return (
     <>
-      <button ref={openRef} className="btn" onClick={make} disabled={busy} title="A one-image summary to send to a coach or parent">
+      <button ref={openRef} className="btn" onClick={() => make()} disabled={busy} title="A one-image summary to send to a coach or parent">
         {busy ? <div className="spinner sm" /> : <IUpload size={15} />} Share summary
       </button>
       {err && !card && <span className="faint" role="alert" style={{ fontSize: 12 }}><IAlert size={13} /> {err}</span>}
@@ -70,6 +71,10 @@ export default function ShareSummary({ meta, result, ins, fileBase }: { meta: An
               <button ref={closeRef} className="btn ghost sm icon" onClick={close} aria-label="Close"><IX size={16} /></button>
             </div>
             <img src={card.url} alt={`Summary: ${ins?.summary.headline ?? meta.name}`} />
+            <label className="pick" style={{ marginTop: 10, paddingLeft: 0 }}>
+              <input type="checkbox" checked={hideName}
+                onChange={(e) => { if (busy) return; setHideName(e.target.checked); void make(e.target.checked); }} /> Hide the name (to share a child's clip more privately)
+            </label>
             {err && <div className="notice error" role="alert" style={{ marginTop: 10 }}><IAlert size={16} /> <div>{err}</div></div>}
             <div className="row wrap" style={{ gap: 8, marginTop: 12, justifyContent: "flex-end" }}>
               {canShare && <button className="btn primary" onClick={share}><IUpload size={15} /> Share</button>}

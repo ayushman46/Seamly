@@ -455,14 +455,15 @@ function Uploader({ go, disabled, health, players, current, onChoose, onCreate, 
         </div>
         </>}
         <div className="field">
-          <label htmlFor="up-speed">Clip speed</label>
+          <label htmlFor="up-speed">Clip speed (slow motion?)</label>
           <select id="up-speed" className="input" value={slowmo} onChange={(e) => setSlowmo(e.target.value)}>
             {SLOWMO_OPTIONS.map((o) => <option key={o.value} value={String(o.value)}>{o.label}</option>)}
           </select>
         </div>
       </div>
       <div className="hint faint" style={{ fontSize: 12, marginTop: 10 }}>
-        Height scales distances to metres. Choose a “slowed” clip speed only if the file itself plays back in slow motion.
+        Height turns distances into metres. Clip speed: if the video plays back in slow motion when you watch it, choose how
+        much slower (phone slo-mo is usually 4× or 8×). If it plays at normal speed, leave it on Normal speed.
       </div>
       {shownError && <div className="notice error" role="alert" style={{ marginTop: 14 }}><IAlert size={16} /> <div>{shownError}</div></div>}
       <div style={{ flex: 1 }} />

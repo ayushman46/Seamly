@@ -72,7 +72,7 @@ function MetricCard({ m, sel, onClick }: { m: Metric; sel: boolean; onClick: () 
       <div className="row" style={{ gap: 8 }}>
         <span className="badge-conf" title="Measurement confidence">
           <span className="conf-bar"><i style={{ width: `${Math.round(m.confidence * 100)}%` }} /></span>
-          {Math.round(m.confidence * 100)}%
+          {Math.round(m.confidence * 100)}% sure
         </span>
         <span className="chip" style={{ height: 20, fontSize: 11 }}>{m.source === "2d" ? "Measured on video" : m.source === "events" ? "From events" : m.source === "2d+3d" ? "Video + 3D" : "3D reconstruction"}</span>
       </div>

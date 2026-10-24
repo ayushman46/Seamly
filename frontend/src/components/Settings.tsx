@@ -94,6 +94,7 @@ export default function Settings({ result, busy, onRecompute, onRerun, playerId,
           <dt>3D model</dt><dd>{result.pose3d === "sam3d" ? "SAM 3D Body (image-based)" : "MotionBERT (2D-to-3D lifter)"}</dd>
           <dt>3D re-projection error</dt><dd>{fmt(result.skeleton.reproj_err_px_median, 1)} px</dd>
           <dt>Body model</dt><dd>NAVER Anny ({result.mesh.vertices.toLocaleString()}-point mesh)</dd>
+          <dt>3D pose</dt><dd>{result.pose3d === "sam3d" ? "SAM 3D Body (image-based)" : "MotionBERT (lifted from the 2D joints)"}</dd>
           <dt>Processing time</dt><dd>{fmt(result.timing_s)} s</dd>
         </dl>
       </div>

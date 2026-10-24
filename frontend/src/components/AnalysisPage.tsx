@@ -558,9 +558,6 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
                 <span className="chip" title={result.bowling_arm.source === "user" ? "Set by you" : "Detected from the video"}>{armLabel}</span>
               )}
               <span className="chip">{fmt(result.fps_real)} fps</span>
-              <span className="chip" title={result.pose3d === "sam3d" ? "3D body from SAM 3D Body (image-based)" : "3D body from MotionBERT (2D-to-3D lifter); install SAM 3D Body for a more accurate 3D view"}>
-                <ICube size={13} /> {result.pose3d === "sam3d" ? "SAM 3D Body" : "MotionBERT"}
-              </span>
             </div>
           </div>
           <div className="an-actions">

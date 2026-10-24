@@ -161,7 +161,7 @@ def back_health(result: dict, player: dict | None = None) -> dict | None:
     if overall in ("flag", "watch"):
         advice.append("Show this to a coach and work on the drills in your practice plan.")
     if age in JUNIOR:
-        advice.append("Lower-back stress injuries are most common in teenage fast bowlers, especially in the two to "
+        advice.append("Lower-back stress injuries are most common in teenage pace bowlers (fast and medium), especially in the two to "
                       "three years after a growth spurt. Stick to the bowling limits in your plan.")
     advice.append("If you get lower back pain while bowling (or any pain that changes how you bowl or lasts to the next day), stop and see a sports doctor or physiotherapist "
                   "before bowling again.")
@@ -348,7 +348,8 @@ def practice_plan(result: dict, player: dict | None = None) -> dict:
             for it in d["items"]:
                 it["id"] = _item_id(w, d["day"], it["text"], taken)
                 it.setdefault("detail", None)
-        week2 = "Week 2: build up to match intensity" if style == "spin" else "Week 2: build towards full pace"
+        week2 = ("Week 2: build up to match intensity" if style == "spin" else
+                 "Week 2: bowl off your full run-up" if age in JUNIOR else "Week 2: build towards full pace")
         weeks.append({"title": "Week 1: learn the movement" if w == 1 else week2, "days": days})
     notes = []
     if lim:
@@ -357,6 +358,8 @@ def practice_plan(result: dict, player: dict | None = None) -> dict:
                      f", up to {lim['days_week']} bowling days a week. {lim['rule']} "
                      f"Take at least {lim['between_spells_min']} minutes between spells at training. Every delivery "
                      "counts, including warm-up and drill balls: each session in the plan is counted and stays well inside the limit. Warm-up and drill balls are bowled in short sets with breaks; only the spell is bowled straight through.")
+        notes.append("These sessions are all of the week's bowling: club nets and matches count as bowling days too, so "
+                     "swap a session out for them rather than adding them on top.")
         if lim.get("preseason_weeks"):
             notes.append(f"Coming back after a break? Build up over about {lim['preseason_weeks']} weeks before bowling flat out.")
         if age in JUNIOR:

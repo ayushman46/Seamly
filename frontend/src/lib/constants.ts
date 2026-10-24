@@ -64,14 +64,14 @@ export function reliableForView(plane: string, view: View): boolean {
 
 /** Clip-speed (slow-motion) factors offered everywhere; matches SLOWMO_CHOICES in the backend. */
 export const SLOWMO_OPTIONS: { value: number; label: string }[] = [
-  { value: 1, label: "Real time" },
-  { value: 2, label: "Slowed 2×" },
-  { value: 3, label: "Slowed 3×" },
-  { value: 4, label: "Slowed 4× (120→30 fps)" },
-  { value: 5, label: "Slowed 5× (120→24 fps)" },
-  { value: 6, label: "Slowed 6×" },
-  { value: 8, label: "Slowed 8× (240→30 fps)" },
-  { value: 10, label: "Slowed 10× (240→24 fps)" },
+  { value: 1, label: "Normal speed" },
+  { value: 2, label: "Plays 2× slower" },
+  { value: 3, label: "Plays 3× slower" },
+  { value: 4, label: "Plays 4× slower (120 fps slo-mo)" },
+  { value: 5, label: "Plays 5× slower (120 fps slo-mo)" },
+  { value: 6, label: "Plays 6× slower" },
+  { value: 8, label: "Plays 8× slower (240 fps slo-mo)" },
+  { value: 10, label: "Plays 10× slower (240 fps slo-mo)" },
 ];
 
 /** What each front-knee technique class (Portus et al.) means, for people who haven't met the terms. */

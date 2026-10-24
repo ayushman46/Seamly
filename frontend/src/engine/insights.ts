@@ -202,7 +202,7 @@ export function backHealth(result: InsightsResult, player: InsightsPlayer | null
   const advice: string[] = [];
   if (overall === "flag" || overall === "watch") advice.push("Show this to a coach and work on the drills in your practice plan.");
   if (JUNIOR.includes(age)) {
-    advice.push("Lower-back stress injuries are most common in teenage fast bowlers, especially in the two to "
+    advice.push("Lower-back stress injuries are most common in teenage pace bowlers (fast and medium), especially in the two to "
       + "three years after a growth spurt. Stick to the bowling limits in your plan.");
   }
   advice.push("If you get lower back pain while bowling (or any pain that changes how you bowl or lasts to the next day), stop and see a sports doctor or physiotherapist "
@@ -407,7 +407,8 @@ export function practicePlan(result: InsightsResult, player: InsightsPlayer | nu
         if (!("detail" in it)) it.detail = null;
       }
     }
-    weeks.push({ title: w === 1 ? "Week 1: learn the movement" : style === "spin" ? "Week 2: build up to match intensity" : "Week 2: build towards full pace",
+    weeks.push({ title: w === 1 ? "Week 1: learn the movement" : style === "spin" ? "Week 2: build up to match intensity"
+      : JUNIOR.includes(age) ? "Week 2: bowl off your full run-up" : "Week 2: build towards full pace",
       days: days as Insights["plan"]["weeks"][number]["days"] });
   }
   const notes: string[] = [];
@@ -417,6 +418,8 @@ export function practicePlan(result: InsightsResult, player: InsightsPlayer | nu
       + `, up to ${lim.days_week} bowling days a week. ${lim.rule} `
       + `Take at least ${lim.between_spells_min} minutes between spells at training. Every delivery `
       + "counts, including warm-up and drill balls: each session in the plan is counted and stays well inside the limit. Warm-up and drill balls are bowled in short sets with breaks; only the spell is bowled straight through.");
+    notes.push("These sessions are all of the week's bowling: club nets and matches count as bowling days too, so "
+      + "swap a session out for them rather than adding them on top.");
     if (lim.preseason_weeks) {
       notes.push(`Coming back after a break? Build up over about ${lim.preseason_weeks} weeks before bowling flat out.`);
     }

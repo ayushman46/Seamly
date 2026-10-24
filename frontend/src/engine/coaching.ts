@@ -160,6 +160,9 @@ function formatStr(tpl: string, vals: Record<string, number | string>): string {
 }
 const has = (o: object, k: string): boolean => Object.prototype.hasOwnProperty.call(o, k);
 
+// headline values that keep their sign (a negative trunk lean is a lean backwards, not a small forward one)
+const SIGNED = new Set(["trunk_flexion_ffc_br", "trunk_forward_br"]);
+
 // a "watch" reading within one measurement step of its target is borderline: still listed, but ranked below clear misses
 const BORDER_STEP: Record<string, number> = { deg: 3.0, "% height": 3.0, cm: 5.0 };
 
@@ -202,7 +205,8 @@ export function coach(metrics: Metric[], view: string, fps: number): CoachingOut
     if (borderline) sev *= 0.5;
     issues.push({
       key, category: cat, severity: pyRound(sev, 2), rating: m.rating, borderline,
-      headline: formatStr(head, { v: Math.abs(m.value), side }), evidence,
+      // trunk lean keeps its sign (a negative value leans back); a true minus sign for display
+      headline: formatStr(head, { v: SIGNED.has(key) ? m.value : Math.abs(m.value), side }).replace(/(^|[\s(])-(?=\d)/g, "$1\u2212"), evidence,
       why: "explain" in m ? m.explain : "", metric: key, confidence: m.confidence,
       drill: DRILLS[drill === "stride" && side === "Short" ? "stride_short" : drill], drill_key: drill, event: m.event ?? null,
     });
@@ -225,8 +229,9 @@ export function coach(metrics: Metric[], view: string, fps: number): CoachingOut
   // ---------- capture quality advice ----------
   const capture: string[] = [];
   if (fps < 90) {
-    capture.push(`Filmed at ${pyFormat(fps, 0)} fps — the arm moves ~${pyFormat(pyMin(80, 2000 / fps), 0)}° between frames at `
-      + "release. Use 120–240 fps slow motion for precise release and elbow measurements.");
+    capture.push(`Filmed at ${pyFormat(fps, 0)} fps, so release timing is approximate: the arm moves about `
+      + `${pyFormat(pyMin(80, 2000 / fps), 0)}° from one frame to the next. Film in slow motion (120–240 fps) next time `
+      + "for precise release and elbow measurements.");
   }
   if (view === "behind" || view === "front_on") {
     capture.push("Filmed from behind/in front: side-bend, arm slot and alignment are measured well, but knee, "

@@ -46,7 +46,8 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.closePath();
 }
 
-export async function renderShareCard(meta: AnalysisMeta, r: AnalysisResult, ins: Insights | null, frameUrl: (f: number) => string): Promise<Blob> {
+export async function renderShareCard(meta: AnalysisMeta, r: AnalysisResult, ins: Insights | null, frameUrl: (f: number) => string,
+  opts: { hideName?: boolean } = {}): Promise<Blob> {
   try { await document.fonts?.ready; } catch { /* system fonts then */ }
   const cv = document.createElement("canvas");
   cv.width = W; cv.height = H;
@@ -63,7 +64,9 @@ export async function renderShareCard(meta: AnalysisMeta, r: AnalysisResult, ins
   ctx.fillText("Bowling action summary", W - PAD, 96); ctx.textAlign = "left";
 
   // who and what
-  const who = ins?.player ? `${ins.player.name} · ${AGE_LABEL[ins.player.age_group] ?? ""}` : meta.name;
+  // the clip's file name often carries the child's name too, so hiding the name hides both
+  const age = ins?.player ? AGE_LABEL[ins.player.age_group] ?? "" : "";
+  const who = opts.hideName ? (age ? `A ${age} bowler` : "Bowling delivery") : ins?.player ? `${ins.player.name} · ${age}` : meta.name;
   ctx.fillStyle = C.text; ctx.font = `700 44px ${FONT}`;
   wrap(ctx, who, PAD, 176, W - 2 * PAD, 52, 1);
   ctx.fillStyle = C.muted; ctx.font = `500 24px ${FONT}`;
