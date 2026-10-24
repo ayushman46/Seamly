@@ -402,7 +402,9 @@ def compute(c: Ctx) -> dict:
                    "precision_note": "insufficient precision below ~120 fps" if low_fps else None}))
         if metrics[-1]["reliability"] == "estimate":
             # a legality-adjacent number that can't be measured reliably is withheld, not shown greyed out
-            if view != "side_on":
+            if gate == "oblique":
+                why = "The camera is at an angle to the pitch: elbow extension needs a square side-on clip at 120–240 fps"
+            elif view != "side_on":
                 why = "Elbow extension needs a side-on clip at 120–240 fps"
             elif fps_eff < 100:
                 why = f"Elbow extension needs 120–240 fps slow motion (this clip has ~{fps_eff:.0f} distinct fps)"

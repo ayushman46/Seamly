@@ -83,6 +83,7 @@ export default function ComparePage({ a, b, go, overlay: startOverlay }: { a: st
   // two different players' deliveries: differences, not progress
   const otherBowler = !!x.meta.player_id && !!y.meta.player_id && x.meta.player_id !== y.meta.player_id;
   const sameView = x.result.view.view === y.result.view.view;
+  const over = mode === "over" && sameView;   // a link asking for the overlay of clips from two angles shows them side by side
   const side = (d: Loaded, label: string) => {
     const e = d.result.events[ev];
     return (
@@ -119,7 +120,7 @@ export default function ComparePage({ a, b, go, overlay: startOverlay }: { a: st
         <div className="an-head">
           <div className="an-head-main">
             <button type="button" className="back-link" onClick={() => go("/")}><IBack size={15} /> Your analyses</button>
-            <h1 className="an-title">{mode === "over" ? "Overlay" : "Side by side"}</h1>
+            <h1 className="an-title">{over ? "Overlay" : "Side by side"}</h1>
             <p className="muted" style={{ margin: 0 }}>Both deliveries at the same moment of the action. A is the earlier one, B the later one: "Improved" means B is better.</p>
           </div>
         </div>
@@ -132,19 +133,19 @@ export default function ComparePage({ a, b, go, overlay: startOverlay }: { a: st
             ))}
           </div>
           <div className="grow" />
-          {mode === "side" && (
+          {!over && (
             <div className="seg" role="group" aria-label="Overlays">
               <button className={overlay.skeleton ? "on" : ""} aria-pressed={overlay.skeleton} onClick={() => setOverlay((o) => ({ ...o, skeleton: !o.skeleton }))}>Skeleton</button>
               <button className={overlay.angles ? "on" : ""} aria-pressed={overlay.angles} onClick={() => setOverlay((o) => ({ ...o, angles: !o.angles }))}>Angles</button>
             </div>
           )}
           <div className="seg" role="group" aria-label="Layout">
-            <button className={mode === "side" ? "on" : ""} aria-pressed={mode === "side"} onClick={() => setMode("side")}>Side by side</button>
-            <button className={mode === "over" ? "on" : ""} aria-pressed={mode === "over"} onClick={() => setMode("over")} disabled={!sameView}
+            <button className={!over ? "on" : ""} aria-pressed={!over} onClick={() => setMode("side")}>Side by side</button>
+            <button className={over ? "on" : ""} aria-pressed={over} onClick={() => setMode("over")} disabled={!sameView}
               title={sameView ? "Both bodies on top of each other" : "Overlay needs two clips filmed from the same angle"}>Overlay</button>
           </div>
         </div>
-        {mode === "over" && sameView ? (
+        {over ? (
           <ErrorBoundary label="The overlay"><OverlayCompare a={x.result} b={y.result} ev={ev} onEvent={setEv} /></ErrorBoundary>
         ) : (
           <div className="an-grid" style={{ gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)" }}>

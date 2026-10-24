@@ -42,7 +42,10 @@ export function Verdict({ result, ins, onJump, onPlan, onCoaching }: {
   const ev = (fix?.event ?? p0?.event)?.split("-").pop() as EventKey | undefined;
   const b = ins?.back_health ?? null;
   const working = s?.working ?? c.strengths;
-  const slow = result.fps_real < 90;
+  // repeated frames add nothing: with many of them the clip's precision is its distinct frame rate (as in Coaching)
+  const rep = result.quality.repeated_frames ?? 0;
+  const fps = rep >= 0.4 ? result.fps_real * (1 - rep) : result.fps_real;
+  const slow = fps < 90;
   return (
     <section className="card verdict" aria-labelledby="verdict-title">
       <ScoreRing score={c.score} grade={c.grade} />
@@ -75,7 +78,7 @@ export function Verdict({ result, ins, onJump, onPlan, onCoaching }: {
           <dt>Camera</dt>
           <dd title={slow ? c.capture_tips[0] : undefined}>
             {result.view.oblique && <>At an angle to the pitch, so most angles aren't rated: film side-on or from behind the stumps. </>}
-            {fmt(result.fps_real)} fps{slow ? ": timings are approximate. Slow motion (120–240 fps) is far more precise." : ", precise enough for timings."}
+            {fmt(fps, 0)} fps{slow ? ": timings are approximate. Slow motion (120–240 fps) is far more precise." : ", precise enough for timings."}
           </dd>
         </div>
         {s?.notes.map((n) => <div key={n}><dt>Note</dt><dd>{n}</dd></div>)}

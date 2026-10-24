@@ -547,7 +547,8 @@ export function compute(c: Ctx): { metrics: MetricDict[]; series: Series } {
     if (last.reliability === "estimate") {
       // a legality-adjacent number that can't be measured reliably is withheld, not shown greyed out
       let why: string;
-      if (view !== "side_on") why = "Elbow extension needs a side-on clip at 120–240 fps";
+      if (gate === "oblique") why = "The camera is at an angle to the pitch: elbow extension needs a square side-on clip at 120–240 fps";
+      else if (view !== "side_on") why = "Elbow extension needs a side-on clip at 120–240 fps";
       else if (fpsEff < 100) why = `Elbow extension needs 120–240 fps slow motion (this clip has ~${pyFormat(fpsEff, 0)} distinct fps)`;
       else why = "The bowling arm wasn't tracked reliably around release (the shoulder is hidden as the arm "
         + "passes over the head, or motion blur)";

@@ -70,7 +70,18 @@ function Skeleton({ pts, color, arm, dashed }: { pts: Pt[]; color: string; arm: 
  * in shape show directly.
  */
 export default function OverlayCompare({ a, b, ev, onEvent }: { a: AnalysisResult; b: AnalysisResult; ev: EventKey; onEvent: (k: EventKey) => void }) {
-  const keys = useMemo(() => EVENTS.map((e) => e.key).filter((k) => a.events[k] && b.events[k]), [a, b]);
+  // key moments both clips have, in the order they happen in both (UAH can come before FFC in a clip)
+  const keys = useMemo(() => {
+    const out: EventKey[] = [];
+    for (const k of EVENTS.map((e) => e.key)) {
+      const fa = a.events[k]?.frame, fb = b.events[k]?.frame;
+      if (fa === undefined || fb === undefined) continue;
+      const prev = out[out.length - 1];
+      if (prev && (fa <= a.events[prev]!.frame || fb <= b.events[prev]!.frame)) continue;
+      out.push(k);
+    }
+    return out;
+  }, [a, b]);
   const [s, setS] = useState(() => Math.max(0, keys.indexOf(ev)));
   const [playing, setPlaying] = useState(false);
   const fromChip = useRef(false);

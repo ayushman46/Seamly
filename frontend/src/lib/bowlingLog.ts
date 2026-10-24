@@ -92,9 +92,12 @@ export function workload(log: BowlingLogEntry[], today: Date): Workload | null {
   if (!first || first > addDays(t, -20)) return null;
   const sum = (xs: BowlingLogEntry[]) => xs.reduce((n, e) => n + e.balls, 0);
   const acute = sum(inRange.filter((e) => e.date >= from7));
-  const chronic = sum(inRange) / 4;
+  // the weekly average over the weeks actually logged (three or four), not always four
+  const [fy, fm, fd] = first.split("-").map(Number);
+  const days = Math.min(28, Math.round((today.getTime() - new Date(fy, fm - 1, fd).getTime()) / 86400000) + 1);
+  const chronic = sum(inRange) / (days / 7);
   if (chronic <= 0) return null;
-  const ratio = acute / chronic;
+  const ratio = Math.round((acute / chronic) * 100) / 100;   // the zone follows the value shown
   return { acute, chronic, ratio, zone: ratio < 0.8 ? "low" : ratio <= 1.3 ? "ok" : ratio <= 1.5 ? "high" : "spike" };
 }
 

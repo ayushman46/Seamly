@@ -3,7 +3,7 @@
  * the same angle, against what one camera can resolve. A repeatable action is the base for accuracy, and a sudden
  * change in one measurement is worth a look.
  */
-import { EVENT_RATE, KEY_METRICS, MIN_CHANGE, MIN_CHANGE_KEY } from "../engine/progress";
+import { KEY_METRICS, changeTolerance } from "../engine/progress";
 import type { SessionSummary, View } from "../types";
 
 type Session = Pick<SessionSummary, "view" | "arm" | "fps_real" | "metrics">;
@@ -34,8 +34,9 @@ export function consistency(sessions: Session[], last = 6): { view: View | null;
     const mean = v.reduce((a, b) => a + b, 0) / v.length;
     const sd = Math.sqrt(v.reduce((a, b) => a + (b - mean) ** 2, 0) / (v.length - 1));
     const { label, unit } = pts[pts.length - 1].metrics[key];
-    const base = MIN_CHANGE_KEY[key] ?? MIN_CHANGE[unit] ?? 3;
-    const noise = Math.max(base, ...pts.map((s) => (EVENT_RATE[key] && s.fps_real ? EVENT_RATE[key] / s.fps_real : 0)));
+    // what one camera resolves for this value at the slowest of these clips (the rule compare and progress use)
+    const fpsMin = Math.min(...pts.map((s) => s.fps_real || Infinity));
+    const noise = changeTolerance(key, unit, Number.isFinite(fpsMin) ? fpsMin : null) || 3;
     rows.push({ key, label, unit, n: v.length, mean, sd, noise, level: sd <= noise ? "steady" : sd <= 2 * noise ? "some" : "varies" });
   }
   // the least repeatable first

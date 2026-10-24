@@ -722,7 +722,8 @@ export const api = {
     // of their own: redo their measurements with it
     if (p.height_cm !== before.height_cm || p.age_group !== before.age_group) {
       const mine = [...metas.values()].filter((m) => m.player_id === pid && m.status === "done" && !m.options?.height_m && !m.overrides?.height_m);
-      await Promise.all(mine.map((m) => serial(m.id, () => applyEdit(m.id, m.overrides ?? {})).catch(() => undefined)));
+      // read the overrides when the queued recompute runs: an edit queued before it may have changed them
+      await Promise.all(mine.map((m) => serial(m.id, () => applyEdit(m.id, metas.get(m.id)?.overrides ?? {})).catch(() => undefined)));
     }
     return playerOut(p);
   },

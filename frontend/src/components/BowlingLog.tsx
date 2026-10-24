@@ -76,14 +76,14 @@ export default function BowlingLog({ player, onChange }: { player: Player; onCha
         {load && (
           <span className={`chip ${load.zone === "ok" ? "good" : load.zone === "high" ? "watch" : load.zone === "spike" ? "risk" : ""}`}
             title="Balls in the last 7 days against the average week of the last 4 weeks (acute:chronic ratio). 0.8–1.3 is the usual range.">
-            Load {load.ratio.toFixed(1)}× the 4-week average
+            Load {load.ratio.toFixed(2)}× the 4-week average
           </span>
         )}
       </div>
       {load && (load.zone === "high" || load.zone === "spike") && (
         <div className="notice warn" role="status" style={{ marginTop: 10 }}>
           <IAlert size={16} />
-          <div>This week is {load.ratio.toFixed(1)}× {player.name}'s usual week. Sudden jumps in bowling load went with more injuries in fast bowlers (Hulin et al. 2014): build up over a few weeks instead.</div>
+          <div>This week is {load.ratio.toFixed(2)}× {player.name}'s usual week. Sudden jumps in bowling load went with more injuries in fast bowlers (Hulin et al. 2014): build up over a few weeks instead.</div>
         </div>
       )}
       {week.warnings.length > 0 ? (

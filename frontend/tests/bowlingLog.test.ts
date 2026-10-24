@@ -68,6 +68,13 @@ describe("acute:chronic workload", () => {
   it("needs three weeks of logging", () => {
     expect(workload([e(day(-10), "6"), e(day(-2), "6")], WED)).toBeNull();
   });
+  it("averages over the weeks actually logged", () => {
+    // logging began three weeks ago, 60 balls every week: steady, not a rise
+    const w = workload([-20, -13, -6].map((d) => e(day(d), "10")), WED)!;
+    expect(w.chronic).toBe(60);
+    expect(w.ratio).toBe(1);
+    expect(w.zone).toBe("ok");
+  });
   it("is about 1 for a steady load and flags a spike", () => {
     const steady = [-27, -24, -20, -17, -13, -10, -6, -3].map((d) => e(day(d), "5"));
     const w = workload(steady, WED)!;
