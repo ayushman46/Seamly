@@ -9,7 +9,7 @@ import Header from "./Header";
 import PlayerForm from "./PlayerForm";
 import Trend from "./Trend";
 import BowlingLog from "./BowlingLog";
-import { IAlert, IBack, ICalendar, IChevronRight, ITrash, IUpload, IVideo } from "./Icons";
+import { IAlert, IBack, ICalendar, IChevronRight, IColumns, ITrash, IUpload, IVideo } from "./Icons";
 import { SiteFooter } from "./Landing";
 import { usePageTitle } from "../lib/title";
 
@@ -63,6 +63,9 @@ export default function PlayerPage({ pid, go }: { pid: string; go: (to: string) 
   const upload = () => { setCurrentPlayer(p.id); go("/"); };
   const latest = data.sessions[data.sessions.length - 1];
   const cons = consistency(data.sessions);
+  // the highest-scoring other delivery filmed from the latest one's angle: the overlay shows what changed
+  const best = latest ? data.sessions.filter((x) => x.view === latest.view && x.id !== latest.id && x.score !== null)
+    .reduce<typeof latest | null>((a, x) => (!a || (x.score ?? 0) > (a.score ?? 0) ? x : a), null) : null;
   const scorePts = data.sessions.filter((x) => x.score !== null).map((x) => ({ value: x.score as number, label: `${dateOf(x.created)} · ${x.name}`, id: x.id }));
 
   const save = async (fields: Partial<Player>) => {
@@ -165,6 +168,11 @@ export default function PlayerPage({ pid, go }: { pid: string; go: (to: string) 
                     ))}
                     <div className="faint" style={{ fontSize: 12 }}>"No clear change" means the difference is within what one camera can resolve at this frame rate (a value read one frame earlier or later can differ that much). "Info" values have no target range, so they aren't called better or worse.</div>
                   </div>
+                )}
+                {best && latest && (
+                  <button type="button" className="btn sm" style={{ marginTop: 12 }} onClick={() => go(`/compare/${best.id}/${latest.id}/overlay`)}>
+                    <IColumns size={14} /> Overlay the latest on your {latest.score !== null && latest.score >= (best.score ?? 0) ? "previous best" : "best"} ({best.score}/100)
+                  </button>
                 )}
               </div>
             </div>

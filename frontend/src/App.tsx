@@ -9,12 +9,12 @@ const ComparePage = lazyPage(() => import("./components/ComparePage"));
 const ReportPage = lazyPage(() => import("./components/ReportPage"));
 const PlayerPage = lazyPage(() => import("./components/PlayerPage"));
 
-type Route = { page: "home" } | { page: "analysis"; id: string; tab?: string } | { page: "compare"; a: string; b: string }
+type Route = { page: "home" } | { page: "analysis"; id: string; tab?: string } | { page: "compare"; a: string; b: string; overlay?: boolean }
   | { page: "report"; id: string } | { page: "player"; id: string } | { page: "missing" };
 
 function parseRoute(): Route {
-  const c = window.location.hash.match(/^#\/compare\/([A-Za-z0-9_-]+)\/([A-Za-z0-9_-]+)/);
-  if (c) return { page: "compare", a: c[1], b: c[2] };
+  const c = window.location.hash.match(/^#\/compare\/([A-Za-z0-9_-]+)\/([A-Za-z0-9_-]+)(\/overlay)?/);
+  if (c) return { page: "compare", a: c[1], b: c[2], overlay: !!c[3] };
   const rep = window.location.hash.match(/^#\/r\/([A-Za-z0-9_-]+)/);
   if (rep) return { page: "report", id: rep[1] };
   const pl = window.location.hash.match(/^#\/p\/([A-Za-z0-9_-]+)/);
@@ -74,7 +74,7 @@ export default function App() {
       <Suspense fallback={<div className="page" aria-busy="true"><div className="skeleton-box" style={{ height: 56, maxWidth: 420, marginBottom: 18 }} /><div className="skeleton-box" style={{ height: 420 }} /></div>}>
       {route.page === "analysis" ? <AnalysisPage key={route.id} id={route.id} go={go} initialTab={route.tab} />
         : route.page === "player" ? <PlayerPage key={route.id} pid={route.id} go={go} />
-        : route.page === "compare" ? <ComparePage key={`${route.a}-${route.b}`} a={route.a} b={route.b} go={go} />
+        : route.page === "compare" ? <ComparePage key={`${route.a}-${route.b}`} a={route.a} b={route.b} go={go} overlay={route.overlay} />
         : route.page === "report" ? <ReportPage key={route.id} id={route.id} go={go} />
         : route.page === "missing" ? <Missing go={go} />
         : <Home go={go} />}

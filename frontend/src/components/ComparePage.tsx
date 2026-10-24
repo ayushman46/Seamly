@@ -16,12 +16,12 @@ const ORDER: Record<Rating, number> = { good: 0, watch: 1, risk: 2, info: 3, unr
 
 type Loaded = { meta: AnalysisMeta; result: AnalysisResult };
 
-export default function ComparePage({ a, b, go }: { a: string; b: string; go: (to: string) => void }) {
+export default function ComparePage({ a, b, go, overlay: startOverlay }: { a: string; b: string; go: (to: string) => void; overlay?: boolean }) {
   const [data, setData] = useState<[Loaded | null, Loaded | null]>([null, null]);
   const [error, setError] = useState<string | null>(null);
   const [ev, setEv] = useState<EventKey>("br");
   const [overlay, setOverlay] = useState({ skeleton: true, angles: true, trail: false });
-  const [mode, setMode] = useState<"side" | "over">("side");
+  const [mode, setMode] = useState<"side" | "over">(startOverlay ? "over" : "side");
   usePageTitle(data[0] && data[1] ? `Compare: ${data[0].meta.name} vs ${data[1].meta.name}` : "Compare");
 
   useEffect(() => {
