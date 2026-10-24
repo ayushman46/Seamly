@@ -3,7 +3,7 @@ import { lazyPage } from "../lib/lazy";
 import { MODE, api } from "../api";
 import type { AnalysisMeta, AnalysisResult, EventKey, Insights } from "../types";
 import { EVENTS, SLOWMO_OPTIONS, VIEW_LABEL } from "../lib/constants";
-import { dateTime, fmt, realSec } from "../lib/format";
+import { dateTime, fmt, realSec, DATE_LOCALE } from "../lib/format";
 import { modelsCached } from "../lib/modelCache";
 import Header from "./Header";
 import FramePlayer from "./FramePlayer";
@@ -163,7 +163,7 @@ function Processing({ meta, go }: { meta: AnalysisMeta; go: (to: string) => void
     ? Math.max(5, Math.round((meta.elapsed * (1 - meta.progress)) / meta.progress / 5) * 5) : null;
   return (
     <>
-      <Header go={go} title={meta.name} />
+      <Header go={go} />
       <main className="page narrow" id="main" tabIndex={-1}>
         <div className="card proc">
           <div className="proc-head">
@@ -243,7 +243,7 @@ function Failed({ meta, go, onRetry }: { meta: AnalysisMeta; go: (to: string) =>
   };
   return (
     <>
-      <Header go={go} title={meta.name} />
+      <Header go={go} />
       <main className="page narrow" id="main" tabIndex={-1}>
         <div className="card proc">
           <div className="proc-head">
@@ -544,12 +544,12 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
     return near.map((e) => e.short).join(" · ");
   }, [ev, frame]);
 
-  const created = new Date(meta.created * 1000).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
-  const TABS: [Tab, string][] = [["coach", "Coaching"], ["plan", "Practice plan"], ["metrics", "Metrics"], ["charts", "Charts"], ["frame", `Frame ${frame}`], ["settings", "Detection & settings"]];
+  const created = new Date(meta.created * 1000).toLocaleDateString(DATE_LOCALE, { day: "numeric", month: "short", year: "numeric" });
+  const TABS: [Tab, string][] = [["coach", "Coaching"], ["plan", "Practice plan"], ["metrics", "Metrics"], ["charts", "Charts"], ["frame", "All values"], ["settings", "Detection & settings"]];
 
   return (
     <>
-      <Header go={go} title={meta.name}>
+      <Header go={go}>
         {busy && <span className="engine-status"><div className="spinner sm" /> <span className="hide-sm">Updating…</span></span>}
       </Header>
       <main className="page" id="main" tabIndex={-1}>

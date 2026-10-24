@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../api";
 import type { Player, PlayerProgress } from "../types";
 import { VIEW_LABEL } from "../lib/constants";
-import { fmt, unitLabel } from "../lib/format";
+import { fmt, unitLabel, DATE_LOCALE } from "../lib/format";
 import { consistency } from "../lib/consistency";
 import { AGE_LABEL, STYLE_LABEL, setCurrentPlayer } from "../lib/player";
 import Header from "./Header";
@@ -15,7 +15,7 @@ import { usePageTitle } from "../lib/title";
 
 const STEADY = { steady: "Steady", some: "Some variation", varies: "Varies a lot" } as const;
 
-const dateOf = (ts: number | null) => (ts ? new Date(ts * 1000).toLocaleDateString(undefined, { day: "numeric", month: "short" }) : "–");
+const dateOf = (ts: number | null) => (ts ? new Date(ts * 1000).toLocaleDateString(DATE_LOCALE, { day: "numeric", month: "short" }) : "–");
 const BETTER_TEXT: Record<string, string> = { higher: "higher is better", lower: "lower is better" };
 
 /** One player's progress: score and key-metric trends, what changed since last time, bests and focus. */
@@ -86,7 +86,7 @@ export default function PlayerPage({ pid, go }: { pid: string; go: (to: string) 
 
   return (
     <>
-      <Header go={go} title={p.name} />
+      <Header go={go} />
       <main className="page" id="main" tabIndex={-1}>
         <button type="button" className="back-link" onClick={() => go("/")} style={{ marginBottom: 10 }}><IBack size={15} /> Your analyses</button>
         <div className="card profile-card">
@@ -163,7 +163,7 @@ export default function PlayerPage({ pid, go }: { pid: string; go: (to: string) 
                           {d.improved === true ? "▲ better" : d.improved === false ? "▼ worse" : d.rated === false ? "○ info" : "● no clear change"}
                         </span>
                         <span className="grow">{d.label}</span>
-                        <span className="mono faint">{fmt(d.before, d.unit === "ms" || d.unit === "cm" ? 0 : 1)} → <b className="muted">{fmt(d.after, d.unit === "ms" || d.unit === "cm" ? 0 : 1)}</b>{unitLabel(d.unit)}</span>
+                        <span className="mono faint">{fmt(d.before, 0)} → <b className="muted">{fmt(d.after, 0)}</b>{unitLabel(d.unit)}</span>
                       </div>
                     ))}
                     <div className="faint" style={{ fontSize: 12 }}>"No clear change" means the difference is within what one camera can resolve at this frame rate (a value read one frame earlier or later can differ that much). "Info" values have no target range, so they aren't called better or worse.</div>
@@ -202,11 +202,11 @@ export default function PlayerPage({ pid, go }: { pid: string; go: (to: string) 
                 <p className="faint" style={{ fontSize: 12.5, margin: "6px 0 12px" }}>How much each measurement moves from ball to ball. A repeatable action is the base for accuracy.</p>
                 <div className="cons-list">
                   {cons.rows.map((r) => {
-                    const d = r.unit === "ms" || r.unit === "cm" ? 0 : 1;
+                    const d = r.unit === "ms" || r.unit === "cm" ? 0 : 1;   // the spread keeps a decimal; the mean is whole
                     return (
                       <div key={r.key} className="cons-row">
                         <span className="grow">{r.label}</span>
-                        <span className="mono faint">{fmt(r.mean, d)} ± {fmt(r.sd, d)}{unitLabel(r.unit)}</span>
+                        <span className="mono faint">{fmt(r.mean, 0)} ± {fmt(r.sd, d)}{unitLabel(r.unit)}</span>
                         <span className={`chip ${r.level === "steady" ? "good" : r.level === "some" ? "watch" : "risk"}`}
                           title={`One camera resolves about ±${fmt(r.noise, 0)}${unitLabel(r.unit)} here`}>{STEADY[r.level]}</span>
                       </div>
@@ -223,7 +223,7 @@ export default function PlayerPage({ pid, go }: { pid: string; go: (to: string) 
                   {Object.entries(data.trends).map(([k, t]) => {
                     const last = t.points[t.points.length - 1];
                     const best = data.best[k];
-                    const d = t.unit === "ms" || t.unit === "cm" ? 0 : 1;
+                    const d = 0;
                     return (
                       <div key={k} className="card card-pad trend-card">
                         <div className="row">

@@ -52,7 +52,7 @@ export default function ComparePage({ a, b, go, overlay: startOverlay }: { a: st
   if (error) {
     return (
       <>
-        <Header go={go} title="Compare" />
+        <Header go={go} />
         <main className="page narrow" id="main" tabIndex={-1}>
           <div className="card proc">
             <div className="notice error"><IAlert size={16} /> <div><b>Couldn't compare these deliveries.</b> {error}</div></div>
@@ -67,7 +67,7 @@ export default function ComparePage({ a, b, go, overlay: startOverlay }: { a: st
   if (!x || !y) {
     return (
       <>
-        <Header go={go} title="Compare" />
+        <Header go={go} />
         <main className="page" id="main" tabIndex={-1} aria-busy="true">
           <div className="skel-page">
             <div className="skeleton-box" style={{ height: 48, maxWidth: 640 }} />
@@ -115,7 +115,7 @@ export default function ComparePage({ a, b, go, overlay: startOverlay }: { a: st
 
   return (
     <>
-      <Header go={go} title={`Compare · ${x.meta.name} vs ${y.meta.name}`} />
+      <Header go={go} />
       <main className="page" id="main" tabIndex={-1}>
         <div className="an-head">
           <div className="an-head-main">
@@ -168,7 +168,7 @@ export default function ComparePage({ a, b, go, overlay: startOverlay }: { a: st
           <div className="table-scroll">
             <table className="cmp">
               <thead>
-                <tr><th>Metric</th><th>A (earlier)</th><th>B (later)</th><th>Change (B − A)</th><th><span className="sr-only">Verdict</span></th></tr>
+                <tr><th>Metric</th><th>A (earlier)</th><th>B (later)</th><th>Change (B − A)</th><th>Verdict</th></tr>
               </thead>
               <tbody>
                 {shownRows.map(({ key, a: ma, b: mb }) => <Row key={key} a={ma} b={mb} fps={Math.min(data[0]!.result.fps_real, data[1]!.result.fps_real)} judge={!otherBowler} />)}
@@ -176,8 +176,7 @@ export default function ComparePage({ a, b, go, overlay: startOverlay }: { a: st
             </table>
           </div>
           <p className="faint" style={{ fontSize: 12, marginTop: 10 }}>
-            Greyed values rest on an estimated moment and aren't compared. "Within error": the rating changed, but by less than one
-            camera measures at this frame rate (a frame for timings; for angles a few degrees, more at 25–30 fps).
+            Grey: an estimated moment, not compared. Within error: a change smaller than this camera resolves at this frame rate.
             {unseen.length > 0 && <> Neither clip's camera angle measures: {unseen.join(", ")}.</>}
           </p>
         </div>
@@ -204,7 +203,7 @@ function Row({ a, b, fps, judge = true }: { a?: Metric; b?: Metric; fps: number;
   }
   const cell = (x: Metric | undefined, side: "A" | "B") => (
     <td className={!x || x.reliability === "estimate" ? "faint" : ""} data-label={side}>
-      {x && x.value !== null ? `${fmt(x.value, x.unit === "ms" || x.unit === "cm" ? 0 : 1)}${unitLabel(x.unit)}` : "–"}
+      {x && x.value !== null ? `${fmt(x.value, 0)}${unitLabel(x.unit)}` : "–"}
       {x && x.rating !== "unrated" && x.rating !== "info" && <span className={`chip ${x.rating}`} style={{ marginLeft: 8, height: 20, fontSize: 11 }}>{RATING_LABEL[x.rating]}</span>}
     </td>
   );

@@ -114,19 +114,16 @@ export default function Home({ go }: { go: (to: string) => void }) {
   return (
     <>
       <Header go={go} nav={!returning}>
-        <button type="button" className="btn primary sm" onClick={toUploader} aria-label="Analyse a delivery"><IVideo size={15} /> <span className="btn-label">Analyse a delivery</span><span className="btn-label-sm" aria-hidden="true">Analyse</span></button>
+        {/* the workspace opens on its uploader: the header button is for the landing page */}
+        {!returning && <button type="button" className="btn primary sm" onClick={toUploader} aria-label="Analyse a delivery"><IVideo size={15} /> <span className="btn-label">Analyse a delivery</span><span className="btn-label-sm" aria-hidden="true">Analyse</span></button>}
       </Header>
       <main id="main" tabIndex={-1}>
         {returning ? (
           <div className="container ws">
-            <div className="ws-head">
-              <div>
-                <h1 className="ws-title">{items && items.length === 0 ? "Analyse your first delivery" : "Ready for the next delivery?"}</h1>
-                <p className="muted" style={{ margin: 0 }}>
-                  {MODE === "browser" ? "Everything here is saved in this browser, on this device." : "Analyses and players saved on your Seamly server."}
-                </p>
-              </div>
-            </div>
+            {/* the uploader leads the workspace; a first-timer (players, no analyses yet) gets a heading that says what to do */}
+            {items && items.length === 0
+              ? <div className="ws-head"><h1 className="ws-title">Analyse your first delivery</h1></div>
+              : <h1 className="sr-only">Your analyses and players</h1>}
             {restored && <div className="notice ok" role="status" style={{ marginBottom: 16 }}><ICheck size={16} /> <div>{restored}</div></div>}
             <div className="ws-grid">
               {uploader}
@@ -384,18 +381,17 @@ function Uploader({ go, disabled, health, players, current, onChoose, onCreate, 
 
   return (
     <div className={`card uploader ${compact ? "compact" : ""}`} id="analyse">
-      <div className="uploader-head">
-        {compact && <h2>Analyse a delivery</h2>}
-        <div className="grow" />
-        {health === null ? (
-          <span className="engine-status"><div className="spinner sm" /> Starting the analysis engine…</span>
-        ) : health.ok ? (
-          <span className="engine-status" title={`Analysis engine: ${health.device}`}><span className="dot pulse" style={{ background: "var(--c-accent)" }} />
-            Ready</span>
-        ) : (
-          <span className="engine-status" style={{ color: "#fecaca" }}><span className="dot" style={{ background: "var(--c-risk)" }} /> Engine unavailable</span>
-        )}
-      </div>
+      {(compact || !health?.ok) && (
+        <div className="uploader-head">
+          {compact && <h2>Analyse a delivery</h2>}
+          <div className="grow" />
+          {health === null ? (
+            <span className="engine-status"><div className="spinner sm" /> Starting the analysis engine…</span>
+          ) : health.ok ? null : (
+            <span className="engine-status" style={{ color: "#fecaca" }}><span className="dot" style={{ background: "var(--c-risk)" }} /> Engine unavailable</span>
+          )}
+        </div>
+      )}
       {health && !health.ok && (
         <div className="notice error" style={{ marginBottom: 14 }}><IAlert size={16} /> <div>The analysis engine isn't available right now ({health.missing_models.join(", ")}). Try reloading the page, or use a recent version of Chrome, Edge, Safari or Firefox.</div></div>
       )}
@@ -414,7 +410,7 @@ function Uploader({ go, disabled, health, players, current, onChoose, onCreate, 
         <h3>{files.length > 1 ? `${files.length} clips selected` : file ? file.name : "Choose or drop a bowling video"}</h3>
         <div className="dz-sub">{files.length > 1
           ? `${(files.reduce((n, f) => n + f.size, 0) / 1e6).toFixed(1)} MB · analysed one after another · choose again to change`
-          : file ? `${(file.size / 1e6).toFixed(1)} MB · choose again to change` : "MP4, MOV, AVI, MKV or WEBM · one delivery a clip; several clips at once for a spell"}</div>
+          : file ? `${(file.size / 1e6).toFixed(1)} MB · choose again to change` : "One delivery per clip, or several clips for a spell · MP4, MOV, WEBM"}</div>
         {MODE === "browser" && <div className="dz-local"><ILock size={13} /> Stays on your device</div>}
       </div>
       <div className="field" style={{ marginTop: 14 }}>
@@ -476,7 +472,7 @@ function Uploader({ go, disabled, health, players, current, onChoose, onCreate, 
             </button>
             {MODE === "browser" && !cached && (
               <span className="faint" style={{ fontSize: 12, textAlign: "center" }}>
-                The first analysis downloads the analysis models (about 70 MB, once) — Wi-Fi is best.
+                The first run downloads about 70 MB of models, once.
               </span>
             )}
             <div className="demo-link">

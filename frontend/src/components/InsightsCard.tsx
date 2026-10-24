@@ -23,7 +23,7 @@ const BACK_SHORT = { ok: "No red flags", watch: "Worth watching", flag: "Talk to
 
 /** The back-health line in a few words: a partial screen is never presented as an all-clear. */
 export function backHealthLine(b: NonNullable<Insights["back_health"]>): string {
-  if (b.overall === "ok" && b.measured < b.total) return `No red flags in the ${b.measured} of ${b.total} checks this view allows`;
+  if (b.overall === "ok" && b.measured < b.total) return `${b.measured} of ${b.total} checks possible from this view: no red flags`;
   return BACK_SHORT[b.overall];
 }
 
@@ -38,7 +38,9 @@ export function Verdict({ result, ins, onJump, onPlan, onCoaching }: {
   const s = ins?.summary;
   const fix = s?.fixes[0];
   const p0 = c.priorities[0];
-  const headline = s?.headline ?? (p0 ? `Next: ${p0.headline}` : "No clear issues among what this view can measure.");
+  // the grade is on the ring beside it, so the line leads with the next step itself
+  const step = s?.headline.match(/Your next step: (.+?)\.?$/)?.[1];
+  const headline = step ? `Next: ${step}.` : s?.headline ?? (p0 ? `Next: ${p0.headline}` : "No clear issues among what this view can measure.");
   const ev = (fix?.event ?? p0?.event)?.split("-").pop() as EventKey | undefined;
   const b = ins?.back_health ?? null;
   const working = s?.working ?? c.strengths;
@@ -70,7 +72,7 @@ export function Verdict({ result, ins, onJump, onPlan, onCoaching }: {
         </div>
       </div>
       <dl className="verdict-facts">
-        {working.length > 0 && <div><dt>Working</dt><dd>{working.slice(0, 2).join(" · ")}</dd></div>}
+        {working.length > 0 && <div><dt>{working.length > 1 ? "Strengths" : "Strength"}</dt><dd>{working.slice(0, 2).join(" · ")}</dd></div>}
         {b && (
           <div><dt>Back health</dt><dd><span className={`dot ${b.overall}`} aria-hidden="true" /> {backHealthLine(b)}</dd></div>
         )}
@@ -78,7 +80,7 @@ export function Verdict({ result, ins, onJump, onPlan, onCoaching }: {
           <dt>Camera</dt>
           <dd title={slow ? c.capture_tips[0] : undefined}>
             {result.view.oblique && <>At an angle to the pitch, so most angles aren't rated: film side-on or from behind the stumps. </>}
-            {fmt(fps, 0)} fps{slow ? ": timings are approximate. Slow motion (120–240 fps) is far more precise." : ", precise enough for timings."}
+            {fmt(fps, 0)} fps: timings ±{Math.round(1000 / fps)} ms.{slow ? " Slow motion (120–240 fps) is far more precise." : ""}
           </dd>
         </div>
         {s?.notes.map((n) => <div key={n}><dt>Note</dt><dd>{n}</dd></div>)}
@@ -96,7 +98,21 @@ export function BackHealth({ ins }: { ins: Insights }) {
       <div role="heading" aria-level={3} className="card-title">Back health</div>
       <div className="muted" style={{ fontSize: 13, marginBottom: 10 }}>{backHealthLine(b)}.</div>
       <div className="stack" style={{ gap: 8 }}>
-        {b.checks.map((c) => (
+        {/* checks this view can't make share one line */}
+        {(() => {
+          const out = b.checks.filter((c) => c.status === "unknown");
+          if (!out.length) return null;
+          const names = out.map((c, i) => (i ? c.label.charAt(0).toLowerCase() + c.label.slice(1) : c.label));
+          return (
+            <div className="row" style={{ gap: 8, alignItems: "flex-start" }}>
+              <span className="dot unknown" style={{ marginTop: 6 }} aria-hidden="true" />
+              <div className="faint" style={{ fontSize: 12.5 }}>
+                {names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : names[0]}: {out[0].text.charAt(0).toLowerCase() + out[0].text.slice(1)}
+              </div>
+            </div>
+          );
+        })()}
+        {b.checks.filter((c) => c.status !== "unknown").map((c) => (
           <div key={c.key} className="row" style={{ gap: 8, alignItems: "flex-start" }}>
             <span className={`dot ${c.status}`} style={{ marginTop: 6 }} aria-hidden="true" />
             <span className="sr-only">{BACK_SHORT[c.status as keyof typeof BACK_SHORT]}: </span>

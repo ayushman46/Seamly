@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { DATE_LOCALE } from "../lib/format";
 import { api } from "../api";
 import type { BowlingLogEntry, Player } from "../types";
 import { bowlingLimits } from "../engine/insights";
@@ -39,7 +40,7 @@ export default function BowlingLog({ player, onChange }: { player: Player; onCha
   };
   const pretty = (iso: string) => {
     const [y, m, d] = iso.split("-").map(Number);
-    return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+    return new Date(y, m - 1, d).toLocaleDateString(DATE_LOCALE, { weekday: "short", day: "numeric", month: "short" });
   };
 
   return (

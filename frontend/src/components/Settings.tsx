@@ -46,7 +46,7 @@ export default function Settings({ result, busy, onRecompute, onRerun, playerId,
           </div>
         </div>
         <div className="field">
-          <label htmlFor="set-speed">Clip speed (use if the video plays in slow motion; re-analyses the video)</label>
+          <label htmlFor="set-speed">Slow-motion factor (re-analyses the video)</label>
           <select id="set-speed" className="input" style={{ width: 230, maxWidth: "100%" }} disabled={busy}
             value={String(Math.round(result.options.slowmo_factor || 1))}
             onChange={(e) => onRerun({ slowmo_factor: Number(e.target.value) })}>
@@ -54,7 +54,7 @@ export default function Settings({ result, busy, onRecompute, onRerun, playerId,
           </select>
         </div>
         <div className="field">
-          <label htmlFor="set-height">Bowler height (cm) — scales distances{entered ? " (entered)" : `: ${stature} cm assumed, enter the real height for accurate metres`}</label>
+          <label htmlFor="set-height">Height (cm) · {entered ? "entered" : `${stature} assumed`}</label>
           <div className="row">
             <input id="set-height" className="input" style={{ width: 120 }} inputMode="numeric" placeholder={entered ? undefined : `e.g. ${stature}`} value={height} onChange={(e) => setHeight(e.target.value.replace(/[^0-9]/g, ""))} />
             <button className="btn sm" disabled={busy || !height} onClick={() => {

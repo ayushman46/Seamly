@@ -37,7 +37,8 @@ export default function CoachingPanel({ result, ins, onJump, age, style }: {
                   <span className={`chip ${p.rating}`} title={p.borderline ? "Just outside the target range, within what one camera can measure: worth a look, not a priority" : undefined}>
                     {RATING_LABEL[p.rating]}{p.borderline ? " · borderline" : ""}
                   </span>
-                  <span className={`chip ${cat.cls}`} title={`Strength of the published evidence: ${p.evidence}`}>{cat.icon} {cat.label}</span>
+                  {/* most priorities are about pace (or, for juniors, the action): only the other kinds are tagged */}
+                  {cat.label !== "Pace" && cat.label !== "Action" && <span className={`chip ${cat.cls}`} title={`Strength of the published evidence: ${p.evidence}`}>{cat.icon} {cat.label}</span>}
                   <div className="grow" />
                   {ev && <button className="btn sm ghost" onClick={() => onJump(ev)} aria-label={`Show in video: ${p.headline}`}><IEye size={12} /> Show in video</button>}
                 </div>
@@ -69,7 +70,6 @@ export default function CoachingPanel({ result, ins, onJump, age, style }: {
         <div className="stack" style={{ gap: 6 }}>
           {c.score_breakdown.map((b) => (
             <div key={b.key} className="row" style={{ fontSize: 13 }}>
-              <span className="dot" style={{ background: `var(--${b.rating})` }} />
               <span className="grow muted">{b.label}</span>
               <span className={`chip ${b.rating}`}>{RATING_LABEL[b.rating]}</span>
             </div>

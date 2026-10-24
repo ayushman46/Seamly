@@ -59,13 +59,13 @@ function MetricCard({ m, sel, onClick }: { m: Metric; sel: boolean; onClick: () 
   return (
     <div className={`metric ${sel ? "sel" : ""} ${m.reliability === "estimate" ? "estimate" : ""}`} onClick={onClick}
       role="button" tabIndex={0} aria-pressed={sel}
-      aria-label={`${m.label}: ${m.value === null ? "not measured" : `${fmt(m.value, m.unit === "ms" || m.unit === "cm" ? 0 : 1)}${unitLabel(m.unit)}`}, ${RATING_LABEL[m.rating]}. Show on the video`}
+      aria-label={`${m.label}: ${m.value === null ? "not measured" : `${fmt(m.value, 0)}${unitLabel(m.unit)}`}, ${RATING_LABEL[m.rating]}. Show on the video`}
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); onClick(); } }}>
       <div className="row">
         <span className="mlabel grow">{m.label}</span>
         <span className={`chip ${m.rating}`}>{RATING_LABEL[m.rating]}</span>
       </div>
-      <div className="mv">{fmt(m.value, m.unit === "ms" || m.unit === "cm" ? 0 : 1)}<small>{unitLabel(m.unit)}</small></div>
+      <div className="mv">{fmt(m.value, 0)}<small>{unitLabel(m.unit)}</small></div>
       {extra && <div className="muted" style={{ fontSize: 12.5, fontWeight: 600 }}>{extra}</div>}
       {m.key === "elbow_extension" && m.flexion_at_br !== undefined && m.flexion_at_br !== null && (
         <div className="faint" style={{ fontSize: 12 }}>Flexion at UAH {fmt(m.flexion_at_uah)}° · max {fmt(m.max_flexion)}° · at release {fmt(m.flexion_at_br)}°</div>
@@ -75,7 +75,8 @@ function MetricCard({ m, sel, onClick }: { m: Metric; sel: boolean; onClick: () 
           <span className="conf-bar"><i style={{ width: `${Math.round(m.confidence * 100)}%` }} /></span>
           {Math.round(m.confidence * 100)}% sure
         </span>
-        <span className="chip" style={{ height: 20, fontSize: 11 }}>{m.source === "2d" ? "Measured on video" : m.source === "events" ? "From events" : m.source === "2d+3d" ? "Video + 3D" : "3D reconstruction"}</span>
+        {/* the usual source (measured on the video) goes unsaid; only the others are named */}
+        {m.source !== "2d" && <span className="chip" style={{ height: 20, fontSize: 11 }}>{m.source === "events" ? "From events" : m.source === "2d+3d" ? "Video + 3D" : "3D reconstruction"}</span>}
       </div>
       {m.note && <div className="mnote">{m.note}</div>}
       {m.explain && <div className="muted" style={{ fontSize: 12.5 }}>{m.explain}</div>}

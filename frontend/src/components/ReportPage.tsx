@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import type { AnalysisMeta, AnalysisResult, EventKey, Insights } from "../types";
 import { COCO_EDGES, EVENTS, EVENT_HEX, RATING_LABEL, TECHNIQUE_HELP, VIEW_LABEL } from "../lib/constants";
-import { dateTime, fmt, unitLabel } from "../lib/format";
+import { DATE_LOCALE, clamp, fmt, unitLabel } from "../lib/format";
 import { LogoMark } from "./Brand";
 import { AGE_LABEL, drillsForAge } from "../lib/player";
 import { DISCLAIMER } from "./Landing";
@@ -48,7 +48,7 @@ export default function ReportPage({ id, go }: { id: string; go: (to: string) =>
           <h1>{meta.name}</h1>
           {ins?.player && <div className="rp-player">{ins.player.name} · {AGE_LABEL[ins.player.age_group] ?? ins.player.age_group}</div>}
           <div className="rp-sub">
-            {dateTime(meta.created)} · {VIEW_LABEL[r.view.view]}{r.view.oblique ? " (at an angle)" : ""} · {r.bowling_arm.arm === "right" ? "Right-arm" : "Left-arm"}
+            {new Date(meta.created * 1000).toLocaleDateString(DATE_LOCALE, { day: "numeric", month: "short", year: "numeric" })} · {VIEW_LABEL[r.view.view]}{r.view.oblique ? " (at an angle)" : ""} · {r.bowling_arm.arm === "right" ? "Right-arm" : "Left-arm"}
             {r.bowling_arm.source !== "user" && r.bowling_arm.confidence < 0.7 ? " (detected, not certain)" : ""} ·{" "}
             {fmt(r.fps_real)} fps · stature {r.skeleton.stature_m.toFixed(2)} m ({r.skeleton.height_source === "user" ? "entered" : "assumed"})
           </div>
@@ -95,7 +95,7 @@ export default function ReportPage({ id, go }: { id: string; go: (to: string) =>
             {measured.map((m) => (
               <tr key={m.key}>
                 <td>{m.label}{m.technique ? ` (${m.technique}${TECHNIQUE_HELP[m.technique] ? `: ${TECHNIQUE_HELP[m.technique]}` : ""})` : m.action_type ? ` (${m.action_type})` : ""}</td>
-                <td>{fmt(m.value, m.unit === "ms" || m.unit === "cm" ? 0 : 1)}{unitLabel(m.unit)}</td>
+                <td>{fmt(m.value, 0)}{unitLabel(m.unit)}</td>
                 <td className={`rp-${m.rating}`}>{RATING_LABEL[m.rating]}</td>
                 <td className="rp-ref">{m.norm}{m.ref ? ` — ${m.ref}` : ""}</td>
               </tr>
@@ -128,7 +128,7 @@ export default function ReportPage({ id, go }: { id: string; go: (to: string) =>
       {ins?.plan?.notes && ins.plan.notes.length > 0 && (
         <section>
           <h2>Safe bowling{ins.player ? ` for ${AGE_LABEL[ins.player.age_group] ?? ""} bowlers` : ""}</h2>
-          <ul>{[ins.plan.notes[0].split(". ")[0].replace(/\.$/, "") + ".", ...ins.plan.notes.slice(-1)].map((n) => <li key={n}>{n}</li>)}</ul>
+          <ul>{[ins.plan.notes[0].split(". ")[0].replace(/\.$/, "") + ".", ...(ins.back_health?.advice.length ? [] : ins.plan.notes.slice(-1))].map((n) => <li key={n}>{n}</li>)}</ul>
         </section>
       )}
 
@@ -157,8 +157,11 @@ function Still({ id, result, ev }: { id: string; result: AnalysisResult; ev: Eve
       const c = ref.current;
       if (!c) return;
       const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
-      const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2;
-      const h = Math.max(60, (Math.max(...ys) - Math.min(...ys)) * 1.3), w = h * 0.8;
+      // centred on the bowler, kept inside the frame (no black band above a raised arm)
+      const IW = im.naturalWidth, IH = im.naturalHeight;
+      const h = Math.min(IH, Math.max(60, (Math.max(...ys) - Math.min(...ys)) * 1.3)), w = Math.min(IW, h * 0.8);
+      const cx = clamp((Math.min(...xs) + Math.max(...xs)) / 2, w / 2, IW - w / 2);
+      const cy = clamp((Math.min(...ys) + Math.max(...ys)) / 2, h / 2, IH - h / 2);
       c.width = 320; c.height = 400;
       const ctx = c.getContext("2d")!;
       const s = 400 / h, ox = -(cx - w / 2) * s, oy = -(cy - h / 2) * s;

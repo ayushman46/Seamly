@@ -76,9 +76,13 @@ function Chart({ k, result, frame, onSeek }: { k: string; result: AnalysisResult
   // round tick values (1, 2 or 5 × a power of ten) inside the plotted range
   const ticks = (() => {
     const raw = (hi - lo) / 3, mag = 10 ** Math.floor(Math.log10(raw));
-    const step = [1, 2, 5, 10].map((m) => m * mag).find((s) => s >= raw) ?? 10 * mag;
-    const out: number[] = [];
-    for (let t = Math.ceil(lo / step) * step; t <= hi + 1e-9; t += step) out.push(Math.round(t * 1e6) / 1e6);
+    const steps = [10, 5, 2, 1, 0.5].map((m) => m * mag);   // the coarsest round step that still gives three ticks
+    let out: number[] = [];
+    for (const step of steps) {
+      out = [];
+      for (let t = Math.ceil(lo / step) * step; t <= hi + 1e-9; t += step) out.push(Math.round(t * 1e6) / 1e6);
+      if (out.length >= 3) break;
+    }
     return out;
   })();
   const click = (e: React.MouseEvent) => {
@@ -94,7 +98,7 @@ function Chart({ k, result, frame, onSeek }: { k: string; result: AnalysisResult
           <b>{info.label}</b>
           <div className="faint" style={{ fontSize: 11.5 }}>{info.help}{!reliable && " · 3D estimate for this camera view"}</div>
         </div>
-        <span className="mono" style={{ fontSize: 15, fontWeight: 700 }}>{fmt(data[i], 1)}{unitLabel(info.unit)}</span>
+        <span className="mono" style={{ fontSize: 15, fontWeight: 700, whiteSpace: "nowrap" }}>{fmt(data[i], 0)}{unitLabel(info.unit)}</span>
       </div>
       <svg ref={svg} className="chart" viewBox={`0 0 ${W} ${H}`} onClick={click} role="img"
         aria-label={`${info.label} through the delivery, from ${fmt(Math.min(...data.filter(Number.isFinite)), 0)} to ${fmt(Math.max(...data.filter(Number.isFinite)), 0)}${unitLabel(info.unit)}; ${fmt(data[i], 1)}${unitLabel(info.unit)} at this frame`}>

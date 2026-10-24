@@ -3,6 +3,7 @@
  * bowling days this week, balls on any one day, and rest between bowling days. Counted in balls, written in
  * cricket notation (4.3 = 4 overs and 3 balls).
  */
+import { DATE_LOCALE } from "./format";
 import type { BowlingLogEntry } from "../types";
 
 export interface LogLimits { day: number | null; days_week: number; rule: string; label: string }
@@ -31,7 +32,7 @@ const addDays = (iso: string, n: number) => {
 };
 const pretty = (iso: string) => {
   const [y, m, d] = iso.split("-").map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+  return new Date(y, m - 1, d).toLocaleDateString(DATE_LOCALE, { weekday: "short", day: "numeric", month: "short" });
 };
 
 /** This week's bowling (Monday to Sunday around `today`) checked against the limits. */

@@ -1,3 +1,4 @@
+import { clamp } from "../lib/format";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import type { AnalysisResult, EventKey } from "../types";
@@ -183,14 +184,15 @@ function Thumb({ id, result, f }: { id: string; result: AnalysisResult; f: numbe
   const pts = result.keypoints2d.xy[t] || [];
   const W = result.video.width * result.display_scale, H = result.video.height * result.display_scale;
   const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
-  const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2;
-  const h = Math.max(40, (Math.max(...ys) - Math.min(...ys)) * 1.35);
-  const w = h * 0.8;
+  const h = Math.min(H, Math.max(40, (Math.max(...ys) - Math.min(...ys)) * 1.35));
+  const w = Math.min(W, h * 0.8);
+  // centred on the bowler but kept inside the frame (a raised arm near the top showed black above the image)
+  const cx = clamp((Math.min(...xs) + Math.max(...xs)) / 2, w / 2, W - w / 2);
+  const cy = clamp((Math.min(...ys) + Math.max(...ys)) / 2, h / 2, H - h / 2);
   const scale = 100 / w; // percent of the tile width
   const style: React.CSSProperties = {
     position: "absolute", width: `${W * scale}%`, height: "auto", maxWidth: "none",
     left: `${-(cx - w / 2) * scale}%`, top: `${(-(cy - h / 2) / h) * 100}%`,
   };
-  void H;
   return <img src={api.frameUrl(id, f)} alt="" style={style} draggable={false} />;
 }

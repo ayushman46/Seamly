@@ -29,7 +29,7 @@ export function Hero({ onAnalyse, onDemo, demoBusy, demoError, disabled }: {
             </button>
           </div>
           {demoError && <div className="notice error hero-error" role="alert">Couldn't open the example: {demoError}</div>}
-          <p className="hero-facts">{LOCAL ? "Free · No sign-up · Private · Works offline" : "Free · No sign-up · Self-hosted"}</p>
+
         </div>
         <HeroShot />
       </div>
@@ -98,9 +98,8 @@ export function WhatYouGet() {
       <div className="container">
         <SectionHead id="features-title" title="What you get" />
         <ol className="wyg">
-          {items.map((f, i) => (
+          {items.map((f) => (
             <li key={f.title}>
-              <span className="wyg-n" aria-hidden="true">{String(i + 1).padStart(2, "0")}</span>
               <h3>{f.title}</h3>
               <p>{f.text}</p>
             </li>
@@ -240,10 +239,6 @@ const FAQS: { q: string; a: ReactNode }[] = [
     q: "Who is it for?",
     a: <p>Amateur and junior seam and pace bowlers, and the coaches and parents who help them. Spinners can use it, but the reference ranges come from pace-bowling research, so treat them with care.</p>,
   },
-  {
-    q: "Does it cost anything?",
-    a: <p>No. Seamly is free and open source, with no ads and no account. <a href={REPO_URL} target="_blank" rel="noreferrer">The code is on GitHub</a>.</p>,
-  },
 ];
 
 export function Faq() {
@@ -282,7 +277,7 @@ export function SiteFooter({ compact = false }: { compact?: boolean }) {
       <div className="container">
         <div className="footer-row">
           <Wordmark size={26} />
-          <span className="faint">{LOCAL ? "Free · Private · Runs in your browser" : "Free · Self-hosted"}</span>
+
           <div className="grow" />
           <a href={REPO_URL} target="_blank" rel="noreferrer">GitHub</a>
           <a href={`${REPO_URL}/issues`} target="_blank" rel="noreferrer">Report a problem</a>

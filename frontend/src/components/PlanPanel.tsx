@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { DATE_LOCALE } from "../lib/format";
 import type { Insights } from "../types";
 
 const KIND_LABEL = { bowling: "Bowling", strength: "Strength", rest: "Rest", film: "Film & compare" } as const;
@@ -43,7 +44,7 @@ export default function PlanPanel({ id, ins, onUpload }: { id: string; ins: Insi
     return d;
   }, []);
   const dateOf = (week: number, day: string) => { const d = new Date(start); d.setDate(start.getDate() + 7 * week + Math.max(0, WEEKDAYS.indexOf(day))); return d; };
-  const short = (d: Date) => d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  const short = (d: Date) => d.toLocaleDateString(DATE_LOCALE, { day: "numeric", month: "short" });
   const addToCalendar = (day: Date) => {
     const url = URL.createObjectURL(retestIcs(day, ins.player?.name ?? null, id));
     const a = document.createElement("a");
@@ -65,7 +66,7 @@ export default function PlanPanel({ id, ins, onUpload }: { id: string; ins: Insi
           <div className="muted" style={{ fontSize: 13, marginTop: 6 }}>
             {ins.player ? `Built for ${ins.player.name}` : "Built for an adult pace bowler"}
             {plan.limits ? ` · ${plan.limits.label} bowling limits` : ""}. Three bowling sessions a week, two strength days, then re-film.
-            {" "}Starts {start.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "short" })}.
+            {" "}Starts {start.toLocaleDateString(DATE_LOCALE, { weekday: "long", day: "numeric", month: "short" })}.
           </div>
         </div>
         <div className="plan-progress" title="Ticked items are remembered on this device">

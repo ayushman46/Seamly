@@ -180,7 +180,7 @@ kbd { font-family: var(--mono); font-size: 11px; padding: 1px 5px; border-radius
 .wordmark-text { display: flex; flex-direction: column; line-height: 1; }
 .wordmark-name { font-family: var(--font-display); font-weight: 700; font-size: 21px; letter-spacing: -0.03em; color: var(--c-text); }
 .wordmark-tag { font-size: 11.5px; color: var(--c-text-3); font-weight: 500; margin-top: 4px; letter-spacing: 0; }
-.logo-mark { display: block; flex: none; filter: drop-shadow(0 4px 10px rgba(224, 51, 63, 0.28)); }
+.logo-mark { display: block; flex: none; }
 .header-title {
   display: flex; align-items: center; gap: 10px; color: var(--c-text-2); font-weight: 600; font-size: var(--fs-md);
   min-width: 0; flex-shrink: 1 !important; overflow: hidden;
@@ -229,7 +229,7 @@ kbd { font-family: var(--mono); font-size: 11px; padding: 1px 5px; border-radius
 .btn.sm.icon { width: 32px; }
 .btn.lg.icon { width: 50px; }
 .btn.block { width: 100%; }
-.btn.active { background: var(--c-accent-soft); border-color: var(--c-accent-line); color: var(--c-accent-text); }
+.btn.active { background: var(--c-surface-3); border-color: var(--c-line-3); color: var(--c-text); }   /* on, like a selected segment (green is kept for "good" and the cue) */
 .btn.link { background: none; border: 0; padding: 0; height: auto; color: var(--c-accent-text); font-weight: 600; }
 .btn.link:hover { text-decoration: underline; background: none; }
 
@@ -318,6 +318,7 @@ input[type="checkbox"] { accent-color: var(--c-accent); width: 16px; height: 16p
   overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
 }
 .tabs::-webkit-scrollbar { display: none; }
+.tabs button { flex: none; white-space: nowrap; }   /* a label never breaks inside its tab */
 .tabs button {
   position: relative; background: none; border: 0; padding: 13px 14px; color: var(--c-text-2); font-weight: 600;
   font-size: var(--fs-sm); cursor: pointer; white-space: nowrap; flex: none; border-radius: 8px 8px 0 0;
@@ -450,7 +451,7 @@ input[type="checkbox"] { accent-color: var(--c-accent); width: 16px; height: 16p
 .tip b { display: block; font-size: var(--fs-md); margin-bottom: 4px; }
 .tip span { color: var(--c-text-2); font-size: 14px; line-height: 1.55; display: block; }
 
-.faq { max-width: 840px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; }
+.faq { max-width: 840px; display: flex; flex-direction: column; gap: 10px; }
 .faq details { border: 1px solid var(--c-line); border-radius: var(--r-lg); background: var(--c-surface-1); transition: border-color 0.15s, background 0.15s; }
 .faq details[open] { border-color: var(--c-line-3); background: var(--c-surface-2); }
 .faq summary {
@@ -484,7 +485,7 @@ input[type="checkbox"] { accent-color: var(--c-accent); width: 16px; height: 16p
 .ws-section-head h2 { margin: 0; font-family: var(--font-display); font-size: var(--fs-xl); letter-spacing: -0.02em; font-weight: 700; }
 .count { display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 7px; border-radius: var(--r-pill); background: var(--c-surface-2); border: 1px solid var(--c-line-2); color: var(--c-text-2); font-size: 11.5px; font-weight: 700; }
 
-.start-solo { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+.start-solo { max-width: 640px; display: flex; flex-direction: column; gap: 14px; }   /* left, under the section headings */
 .start-title { font-size: var(--fs-3xl); margin: 0 0 6px; }
 
 .uploader { padding: 24px; display: flex; flex-direction: column; scroll-margin-top: calc(var(--header-h) + 16px); }
@@ -1037,7 +1038,6 @@ button:focus:not(:focus-visible) { outline: none; }
 }
 
 /* =========================== minimal landing =========================== */
-.hero-facts { margin: 22px 0 0; color: var(--c-text-3); font-size: var(--fs-sm); }
 .hero-shot { margin: 0; border-radius: var(--r-lg); overflow: hidden; border: 1px solid var(--c-line); background: var(--c-surface-1); }
 .hero-shot svg { display: block; width: 100%; height: auto; }
 .hero-shot figcaption { display: flex; align-items: baseline; gap: 14px; padding: 12px 16px; border-top: 1px solid var(--c-line); font-size: var(--fs-sm); color: var(--c-text-2); }
