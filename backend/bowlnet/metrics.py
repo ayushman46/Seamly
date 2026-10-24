@@ -24,7 +24,8 @@ HAND_OFFSET_M = 0.07           # wrist joint -> ball centre at release
 # norms and rating bands (see docs/RESEARCH.md)
 # ------------------------------------------------------------------------------------------------------
 NORMS = {
-    "elbow_extension": dict(unit="deg", good=(None, 10), watch=(10, 15), risk=(15, None),
+    # shown for reference only, never rated: on a rendered straight-armed delivery at 120 fps one camera read 12°
+    "elbow_extension": dict(unit="deg",
                             norm="Legal bowlers: 0-10° (mean ~6°); ICC limit 15°",
                             ref="ICC Illegal Bowling Regulations; Ferdinands & Kersting 2005; King & Yeadon 2013"),
     "front_knee_ffc": dict(unit="deg", norm="Elite men 164 ± 6° at FFC", ref="Felton 2019"),
@@ -276,6 +277,19 @@ REAR = ("behind", "front_on")
 SQUARE = ("side_on", "behind", "front_on")   # any view square to the pitch (only an angled camera is excluded)
 
 
+def _leg_stature_px(c: Ctx, t: int) -> float | None:
+    """Stature in pixels from the front leg's longest projection around frame t (thigh + shank = 0.491 H)."""
+    s, kp, kc = c.side, c.kp, c.kc
+    lo, hi = max(0, t - 2), min(len(kp), t + 3)
+    total = 0.0
+    for a, b in ((s.c_fhip, s.c_fkn), (s.c_fkn, s.c_fan)):
+        ok = np.minimum(kc[lo:hi, a], kc[lo:hi, b]) > 0.3
+        if not ok.any():
+            return None
+        total += float(np.linalg.norm(kp[lo:hi, a] - kp[lo:hi, b], axis=1)[ok].max())
+    return total / 0.491
+
+
 def _release_height_2d(c: Ctx):
     """Ball height at release from the image, scaled by the athlete's own body *at release*.
 
@@ -363,12 +377,19 @@ def compute(c: Ctx) -> dict:
         ext = float(win[i_max] - win[i_max:].min())
         conf = 0.25 if low_fps else 0.45
         conf *= _conf2d(c, br, [s.c_sh, s.c_el, s.c_wr])
+        # the shoulder keypoint drifts while the arm passes over the head: an upper arm far from its anatomical
+        # length (0.186 H, Drillis & Contini) at UAH or release means the elbow angle there can't be trusted
+        leg_h = _leg_stature_px(c, br)
+        if leg_h:
+            ua = [float(np.linalg.norm(c.kp[t, s.c_sh] - c.kp[t, s.c_el])) / (0.186 * leg_h) for t in (uah, br)]
+            if not all(0.6 <= x <= 1.25 for x in ua):
+                conf = min(conf, 0.2)
         metrics.append(_metric(
             "elbow_extension", "Elbow extension (UAH → release)", ext, event="uah-br", source="3d", confidence=conf,
             needs=("side_on",), view=gate, min_fps=100, fps=fps_eff,
             explain="Straightening of the bowling elbow between the arm passing horizontal and release, computed "
-                    "the ICC way (maximum flexion minus the following minimum). A single camera cannot replace an "
-                    "accredited ICC test — use this only as a screening estimate.",
+                    "the ICC way (maximum flexion minus the following minimum). Shown for reference only, not rated: "
+                    "a single camera can be several degrees out here, and it never replaces an accredited ICC test.",
             extra={"flexion_at_uah": round(float(flex[uah]), 1), "flexion_at_br": round(float(flex[br]), 1),
                    "max_flexion": round(float(win.max()), 1),
                    "precision_note": "insufficient precision below ~120 fps" if low_fps else None}))
@@ -379,7 +400,8 @@ def compute(c: Ctx) -> dict:
             elif fps_eff < 100:
                 why = f"Elbow extension needs 120–240 fps slow motion (this clip has ~{fps_eff:.0f} distinct fps)"
             else:
-                why = "The bowling arm was tracked with low confidence around release (motion blur?)"
+                why = ("The bowling arm wasn't tracked reliably around release (the shoulder is hidden as the arm "
+                       "passes over the head, or motion blur)")
             metrics[-1].update(value=None, estimate_3d=None, flexion_at_uah=None, flexion_at_br=None, max_flexion=None,
                                note=why + "; it isn't estimated from this video. Never a substitute for an "
                                           "accredited ICC test.")

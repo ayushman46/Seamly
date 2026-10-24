@@ -146,7 +146,8 @@ export interface Norm {
 }
 
 export const NORMS: Record<string, Norm> = {
-  elbow_extension: { unit: "deg", good: [null, 10], watch: [10, 15], risk: [15, null],
+  // shown for reference only, never rated: on a rendered straight-armed delivery at 120 fps one camera read 12°
+  elbow_extension: { unit: "deg",
     norm: "Legal bowlers: 0-10° (mean ~6°); ICC limit 15°",
     ref: "ICC Illegal Bowling Regulations; Ferdinands & Kersting 2005; King & Yeadon 2013" },
   front_knee_ffc: { unit: "deg", norm: "Elite men 164 ± 6° at FFC", ref: "Felton 2019" },
@@ -419,6 +420,21 @@ const SQUARE: readonly View[] = ["side_on", "behind", "front_on"];   // any view
  * side and rear views; their pixel lengths divided by anthropometric segment ratios (upper arm + forearm =
  * 0.332 H, thigh + shank = 0.491 H; Drillis & Contini 1966) give the stature in pixels right at that frame,
  * independent of camera zoom or the bowler's distance from the camera. */
+/** metrics._leg_stature_px: stature in pixels from the front leg's longest projection around frame t
+ * (thigh + shank = 0.491 H). */
+export function legStaturePx(c: Ctx, t: number): number | null {
+  const s = c.side, { kp, kc } = c;
+  const lo = Math.max(0, t - 2), hi = Math.min(kp.length, t + 3);
+  let total = 0.0;
+  for (const [a, b] of [[s.c_fhip, s.c_fkn], [s.c_fkn, s.c_fan]]) {
+    const lens: number[] = [];
+    for (let u = lo; u < hi; u++) if (Math.min(kc[u][a], kc[u][b]) > 0.3) lens.push(vnorm(vsub(kp[u][a], kp[u][b])));
+    if (!lens.length) return null;
+    total += amax(lens);
+  }
+  return total / 0.491;
+}
+
 export function releaseHeight2d(c: Ctx): [number, string, number] | [null, null, null] {
   const s = c.side, br = c.ev.br, { kp, kc } = c;
   const lo = Math.max(0, br - 2), hi = Math.min(kp.length, br + 3);
@@ -500,11 +516,18 @@ export function compute(c: Ctx): { metrics: MetricDict[]; series: Series } {
     const ext = win[iMax] - amin(win.slice(iMax));
     let conf = lowFps ? 0.25 : 0.45;
     conf *= conf2d(c, br, [s.c_sh, s.c_el, s.c_wr]);
+    // the shoulder keypoint drifts while the arm passes over the head: an upper arm far from its anatomical length
+    // (0.186 H, Drillis & Contini) at UAH or release means the elbow angle there can't be trusted
+    const legH = legStaturePx(c, br);
+    if (legH) {
+      const ua = [uah, br].map((t) => vnorm(vsub(c.kp[t][s.c_sh], c.kp[t][s.c_el])) / (0.186 * legH));
+      if (!ua.every((x) => x >= 0.6 && x <= 1.25)) conf = pyMin(conf, 0.2);
+    }
     metrics.push(metric("elbow_extension", "Elbow extension (UAH → release)", ext, {
       event: "uah-br", source: "3d", confidence: conf, needs: ["side_on"], view: gate, minFps: 100, fps: fpsEff,
       explain: "Straightening of the bowling elbow between the arm passing horizontal and release, computed "
-        + "the ICC way (maximum flexion minus the following minimum). A single camera cannot replace an "
-        + "accredited ICC test — use this only as a screening estimate.",
+        + "the ICC way (maximum flexion minus the following minimum). Shown for reference only, not rated: "
+        + "a single camera can be several degrees out here, and it never replaces an accredited ICC test.",
       extra: { flexion_at_uah: pyRound(flex[uah], 1), flexion_at_br: pyRound(flex[br], 1),
         max_flexion: pyRound(amax(win), 1),
         precision_note: lowFps ? "insufficient precision below ~120 fps" : null } }));
@@ -514,7 +537,8 @@ export function compute(c: Ctx): { metrics: MetricDict[]; series: Series } {
       let why: string;
       if (view !== "side_on") why = "Elbow extension needs a side-on clip at 120–240 fps";
       else if (fpsEff < 100) why = `Elbow extension needs 120–240 fps slow motion (this clip has ~${pyFormat(fpsEff, 0)} distinct fps)`;
-      else why = "The bowling arm was tracked with low confidence around release (motion blur?)";
+      else why = "The bowling arm wasn't tracked reliably around release (the shoulder is hidden as the arm "
+        + "passes over the head, or motion blur)";
       Object.assign(last, { value: null, estimate_3d: null, flexion_at_uah: null, flexion_at_br: null, max_flexion: null,
         note: why + "; it isn't estimated from this video. Never a substitute for an accredited ICC test." });
     }

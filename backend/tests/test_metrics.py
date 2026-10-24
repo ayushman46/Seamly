@@ -20,9 +20,9 @@ def test_icc_elbow_extension_definition():
 
 
 def test_rating_bands():
-    assert _rate("elbow_extension", 6) == "good"
-    assert _rate("elbow_extension", 12) == "watch"
-    assert _rate("elbow_extension", 22) == "risk"
+    # elbow extension is shown for reference only: one camera misread a straight arm by ~10° in testing
+    assert {_rate("elbow_extension", v) for v in (6, 12, 22)} == {"info"}
+    assert _rate("front_knee_br", 170) == "good" and _rate("front_knee_br", 157) == "watch"
     assert _rate("trunk_lateral_br", 52) == "risk"
     assert _rate("shoulder_alignment_bfc", 230) == "info"   # descriptive only
 
