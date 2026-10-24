@@ -367,6 +367,9 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
   };
   const armLabel = result.bowling_arm.arm === "right" ? "Right-arm" : "Left-arm";
   const armUnsure = result.bowling_arm.source !== "user" && result.bowling_arm.confidence < 0.7;
+  // ask outright when the cues disagree; from behind or front-on (where arm cues are weakest) a 3-to-1 split counts too
+  const askArm = result.bowling_arm.source !== "user"
+    && (result.bowling_arm.confidence < 0.5 || (result.view.view !== "side_on" && result.bowling_arm.confidence <= 0.5));
   const fileBase = `seamly-${(meta.name || "delivery").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "delivery"}`;
   const ext = ({ "video/quicktime": "mov", "video/webm": "webm", "video/x-matroska": "mkv", "video/x-msvideo": "avi", "video/avi": "avi", "video/x-m4v": "m4v" } as Record<string, string>)[meta.input_type ?? ""] ?? "mp4";
   const videoName = `${fileBase}-original.${ext}`;
@@ -377,9 +380,8 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
   const assignPlayer = async (pid: string | null) => {
     try {
       setMeta(await api.patch(id, { player_id: pid }));
-      // with no height entered, distances assume a typical height for the player's age group: recompute with it
-      if (result.skeleton.height_source !== "user") await recompute({}, pid ? "Added to the player's progress" : "Removed from the player");
-      else flash(pid ? "Added to the player's progress" : "Removed from the player");
+      // distances use the player's height (from their profile, else typical for their age): recompute with it
+      await recompute({}, pid ? "Added to the player's progress" : "Removed from the player");
     } catch (e) {
       flash((e as Error).message, true);
     }
@@ -450,7 +452,8 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
       const el = e.target as HTMLElement | null;
       // single-key shortcuts only while nothing else has focus or focus is in the video player, so they never
       // clash with screen-reader keys or typing elsewhere on the page
-      if (el && el !== document.body && el.tagName !== "H1" && !el.closest?.(".card.player")) return;
+      // (clicking an empty part of the page focuses <main>, which counts as nothing)
+      if (el && el !== document.body && el.tagName !== "H1" && el.tagName !== "MAIN" && !el.closest?.(".card.player")) return;
       if (el?.closest?.("input, select, textarea, [contenteditable], [role=tablist], [role=menu]")) return;   // they use the arrows
       if (el?.closest?.("button, a") && (e.key === " " || e.key === "Enter")) return;   // native activation
       if (e.key === " " || e.key === "k") { e.preventDefault(); setPlaying((p) => !p); }
@@ -546,7 +549,10 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
                 </button>
               )}
               <span className="chip">{created}</span>
-              <span className="chip">{VIEW_LABEL[result.view.view]}</span>
+              <span className={`chip ${result.view.oblique ? "watch" : ""}`}
+                title={result.view.oblique ? "The camera is at an angle to the pitch, so knee, trunk, stride, side-bend and alignment aren't rated" : undefined}>
+                {VIEW_LABEL[result.view.view]}{result.view.oblique ? " · angled" : ""}
+              </span>
               {armUnsure ? (
                 <button type="button" className="chip warn" onClick={openSettings}
                   title={`Detected from the video with ${Math.round(result.bowling_arm.confidence * 100)}% agreement between cues. Click to check or set it.`}>
@@ -587,7 +593,7 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
             <IAlert size={16} /> <div>{meta.notice}</div>
           </div>
         )}
-        {result.bowling_arm.source !== "user" && result.bowling_arm.confidence < 0.5 && (
+        {askArm && (
           <div className="notice warn" style={{ marginBottom: 14 }}>
             <IAlert size={16} />
             <div>
@@ -670,7 +676,15 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
           <div role="tabpanel" id="tab-panel" aria-labelledby={`tab-${tab}`}>
           <ErrorBoundary label="This tab">
           {tab === "coach" && <CoachingPanel result={result} ins={ins} onJump={(k) => jumpTo(k as EventKey)} age={ins?.player?.age_group} style={ins?.player?.style} />}
-          {tab === "metrics" && <MetricsPanel result={result} selected={selMetric} onSelect={(k, evKey) => { setSelMetric(k === selMetric ? null : k); const e = evKey ? result.events[evKey as EventKey] : null; if (e) { setPlaying(false); setFrame(e.frame); } }} />}
+          {tab === "metrics" && <MetricsPanel result={result} selected={selMetric} onSelect={(k, evKey) => {
+            const on = k !== selMetric;
+            setSelMetric(on ? k : null);
+            const e = evKey ? result.events[evKey as EventKey] : null;
+            if (e) { setPlaying(false); setFrame(e.frame); }
+            // show it: the video is usually far above the tabs (a whole screen or more on a phone)
+            const r = playerRef.current?.getBoundingClientRect();
+            if (on && r && (r.bottom < 120 || r.top > window.innerHeight - 160)) scrollToEl(playerRef.current);
+          }} />}
           {tab === "charts" && <Charts result={result} frame={frame} onSeek={(f) => { setPlaying(false); setFrame(f); }} />}
           {tab === "frame" && <Inspector result={result} frame={frame} onSetEvent={setEvent} busy={busy} />}
           {tab === "plan" && (ins ? <PlanPanel id={id} ins={ins} onUpload={uploadRetest} />
@@ -682,7 +696,6 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
           </ErrorBoundary>
           </div>
         </div>
-        <p className="faint" style={{ fontSize: 12, marginTop: 14, lineHeight: 1.6 }}>{result.coaching.disclaimer}</p>
       </main>
       <SiteFooter compact />
       <div className="sr-only" role="status" aria-live="polite">{toast?.text ?? (busy ? "Updating the results…" : "")}</div>

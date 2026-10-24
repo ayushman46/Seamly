@@ -67,9 +67,9 @@ The first analysis downloads about 70 MB of models, which the browser caches aft
 | | Truth | Python pipeline | Seamly in the browser |
 |---|---|---|---|
 | Back-foot contact / front-foot contact / release (frame) | 36 / 48 / 55 | 35 / 47 / 55 | 35 / 47 / 55 |
-| Front knee at front-foot contact | 165.0° | 168.5° | 164.1° |
-| Front knee at release | 169.8° | 171.2° | 165.8° |
-| Trunk flexion, front-foot contact → release | 32.0° | 30.4° | 31.8° |
+| Front knee at front-foot contact | 165.0° | 168.5° | 164.0° |
+| Front knee at release | 169.8° | 171.2° | 166.0° |
+| Trunk flexion, front-foot contact → release | 32.0° | 30.4° | 31.7° |
 | Release height | 105% | 114% | 109% |
 | Stride length | 52.8% | 49.8% | 49.3% |
 
@@ -122,6 +122,7 @@ Server tests: `cd backend && ../.venv/bin/python -m pytest -q` (the full suite t
 These are surfaced in the app rather than hidden:
 
 - **Depth from one camera is ambiguous.** Knee and trunk flexion can't be measured from behind; side-bend and alignment can't be measured side-on. The app reports each metric only from the view that measures it and says which clip to add.
+- **Angled cameras.** When the camera is well off the line of the pitch (high in the stands, or far to one side), the view cues contradict each other. Seamly then marks the view as angled, rates none of the body measurements (knee, trunk, stride, side-bend, alignment, release height, head position) and asks for a clip filmed square on.
 - **Foot contacts from behind** are often placed from typical timing. Their timings stay unrated until you confirm the markers: drag them, or use "Set this frame as" in the Frame tab.
 - **25–30 fps** limits release and timing precision to ±1 frame (33–40 ms). Elbow extension needs side-on video at 100 fps or more, and it is a screening estimate only.
 - **Analysis pauses while its tab is in the background.** Browsers throttle hidden tabs and can hand back stale video frames, so Seamly waits and carries on when you come back, rather than measuring the wrong frames. Keep the tab open on screen until it finishes.

@@ -26,7 +26,7 @@ EVENT_RATE = {"trunk_forward_br": 450.0, "trunk_flexion_ffc_br": 500.0, "trunk_l
               "front_knee_br": 150.0, "front_knee_ffc": 150.0, "front_knee_flexion": 150.0, "back_knee_bfc": 250.0,
               "hip_shoulder_sep_bfc": 150.0, "head_offset_br": 200.0, "release_height_pct": 100.0}
 # shown on the progress page, in this order (when measured)
-KEY_METRICS = ("release_height_pct", "front_knee_br", "trunk_lateral_br", "trunk_flexion_ffc_br", "head_offset_br",
+KEY_METRICS = ("release_height_pct", "front_knee_br", "trunk_forward_br", "trunk_lateral_br", "trunk_flexion_ffc_br", "head_offset_br",
                "ffc_to_br_ms", "stride_length_pct", "hip_shoulder_sep_bfc", "back_knee_bfc")
 
 

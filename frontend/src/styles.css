@@ -476,7 +476,6 @@ input[type="checkbox"] { accent-color: var(--c-accent); width: 16px; height: 16p
 .ws { padding-top: 36px; padding-bottom: 8px; }
 .ws-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 22px; }
 .ws-title { font-family: var(--font-display); font-size: var(--fs-3xl); line-height: 1.1; letter-spacing: -0.035em; margin: 8px 0 6px; }
-.ws-quick { display: flex; gap: 8px; flex-wrap: wrap; }
 #ws-players, #ws-analyses { scroll-margin-top: calc(var(--header-h) + 16px); }
 .ws-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.75fr); gap: 20px; align-items: start; }
 .ws-side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
@@ -645,10 +644,14 @@ input[type="checkbox"] { accent-color: var(--c-accent); width: 16px; height: 16p
 .tl-fill { position: absolute; left: 0; top: 20px; height: 6px; border-radius: 4px; background: linear-gradient(90deg, #1f6f56, var(--c-accent)); }
 .tl-phase { position: absolute; top: 18px; height: 10px; border-radius: 3px; opacity: 0.32; }
 .tl-head { position: absolute; top: 11px; width: 4px; height: 24px; margin-left: -2px; border-radius: 3px; background: #fff; box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.14), 0 2px 6px rgba(0, 0, 0, 0.5); }
-.tl-ev { position: absolute; top: 0; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; cursor: grab; }
-.tl-ev .flag { position: relative; z-index: 2; font-size: 10px; font-weight: 700; letter-spacing: 0.04em; padding: 1px 6px; border-radius: 5px; color: #0b0f17; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4); }
+/* only the flag label is grabbable: a higher flag's stem runs down across the labels below it */
+.tl-ev { position: absolute; top: 0; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; pointer-events: none; outline: none; }
+.tl-ev .flag { position: relative; z-index: 2; font-size: 10px; font-weight: 700; letter-spacing: 0.04em; padding: 1px 6px; border-radius: 5px; color: #0b0f17; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4); pointer-events: auto; cursor: grab; touch-action: none; }
+.tl-ev .flag::after { content: ""; position: absolute; inset: -3px -5px; }
 .tl-ev .stem { width: 2px; height: 30px; opacity: 0.9; }
-.tl-ev.dragging { cursor: grabbing; }
+.tl-ev.dragging { z-index: 3; }
+.tl-ev.dragging .flag { cursor: grabbing; }
+.tl-ev:focus-visible .flag { box-shadow: var(--ring); }
 .tl-ev.edited .flag { box-shadow: 0 0 0 2px #fff; }
 .tl-help { font-size: 11.5px; justify-content: space-between; margin-top: 2px; gap: 12px; }
 .filmstrip { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
@@ -745,7 +748,7 @@ svg.chart { width: 100%; height: 170px; display: block; cursor: crosshair; }
 .profile-card { padding: 22px; margin-bottom: 18px; }
 .profile-name { margin: 0; font-family: var(--font-display); font-size: var(--fs-3xl); letter-spacing: -0.035em; line-height: 1.1; overflow-wrap: anywhere; }
 .profile-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-.stat-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+.stat-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
 .stat { padding: 16px 18px; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .stat small { color: var(--c-text-3); font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; font-size: var(--fs-2xs); }
 .stat b { font-family: var(--font-display); font-size: 30px; letter-spacing: -0.03em; line-height: 1.15; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
@@ -823,7 +826,7 @@ html:has(.report), body:has(.report), body:has(.report) #root { background: #e7e
 }
 @media (max-width: 1100px) {
   .an-grid, .skel-grid { grid-template-columns: minmax(0, 1fr); }
-  .stat-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stat-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 980px) {
   :root { --gutter: 20px; }
@@ -961,7 +964,9 @@ button:focus:not(:focus-visible) { outline: none; }
   .no-print { display: none !important; }
   html:has(.report), body:has(.report), body:has(.report) #root { background: #fff; }
   .report { padding: 0; max-width: none; margin: 0; box-shadow: none; border-radius: 0; }
-  .report section { break-inside: avoid; }
+  /* keep small blocks whole, but let long sections flow across pages (whole-section breaks left pages half empty) */
+  .report h2 { break-after: avoid; }
+  .report li, .report figure, .report tr, .rp-kino { break-inside: avoid; }
 }
 
 /* inline link-style button (inside notices) */

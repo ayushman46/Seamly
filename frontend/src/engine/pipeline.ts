@@ -563,15 +563,19 @@ export async function stageB(A: StageA, overrides: Overrides = {}, onProgress?: 
   }
   const strideX = strideAcross(kpS, skel.px_per_m, skel.bone_lengths[1] + skel.bone_lengths[2], side, ev.ffc, ev.br);
   let view: ViewInfo = classifyView(wf.forward, kpS, kc, runup.length >= 4 ? runup : null, strideX);
-  if (overrides.view === "side_on" || overrides.view === "behind" || overrides.view === "front_on") view = { ...view, view: overrides.view, source: "user" };
+  if (overrides.view === "side_on" || overrides.view === "behind" || overrides.view === "front_on") {
+    const { oblique: _o, ...rest } = view;
+    view = { ...rest, view: overrides.view, source: "user" };
+  }
+  const oblique = !!view.oblique;
   prog.stage("metrics", 0.2);
   const Wd = toWorld(wf, P);
   const rep = meta.quality.repeated_frames || 0;
   const fpsUnique = realFps * (1 - rep);
   const ctx: Ctx = { P, W: Wd, kp: kpS, kc, side, wf, view: view.view, fps: realFps, stature: height, k: skel.px_per_m, ev,
-    bone_lengths: skel.bone_lengths, fps_unique: fpsUnique };
+    bone_lengths: skel.bone_lengths, fps_unique: fpsUnique, oblique };
   const mres = compute(ctx);
-  const coaching = coach(mres.metrics, view.view, rep >= 0.4 ? fpsUnique : realFps);
+  const coaching = coach(mres.metrics, oblique ? "oblique" : view.view, rep >= 0.4 ? fpsUnique : realFps);
   // a real delivery's arm turns at >~700°/s; much slower suggests a slowed-down (replay) clip
   let peakReal = sweep.peak_speed_dps || 0;
   if ((meta.version ?? 2) < 3) peakReal *= opts.slowmo_factor;

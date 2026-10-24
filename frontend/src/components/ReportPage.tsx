@@ -48,7 +48,7 @@ export default function ReportPage({ id, go }: { id: string; go: (to: string) =>
           <h1>{meta.name}</h1>
           {ins?.player && <div className="rp-player">{ins.player.name} · {AGE_LABEL[ins.player.age_group] ?? ins.player.age_group}</div>}
           <div className="rp-sub">
-            {dateTime(meta.created)} · {VIEW_LABEL[r.view.view]} · {r.bowling_arm.arm === "right" ? "Right-arm" : "Left-arm"}
+            {dateTime(meta.created)} · {VIEW_LABEL[r.view.view]}{r.view.oblique ? " (at an angle)" : ""} · {r.bowling_arm.arm === "right" ? "Right-arm" : "Left-arm"}
             {r.bowling_arm.source !== "user" && r.bowling_arm.confidence < 0.7 ? " (detected, not certain)" : ""} ·{" "}
             {fmt(r.fps_real)} fps · stature {r.skeleton.stature_m.toFixed(2)} m ({r.skeleton.height_source === "user" ? "entered" : "assumed"})
           </div>
@@ -58,41 +58,6 @@ export default function ReportPage({ id, go }: { id: string; go: (to: string) =>
           <span>{c.grade ?? "No score"}</span>
         </div>
       </header>
-
-      {ins?.back_health && (
-        <section>
-          <h2>Back-health check</h2>
-          <ul className="rp-list">
-            {ins.back_health.checks.map((ch) => (
-              <li key={ch.key}>
-                <b>{ch.label}</b>{ch.value !== null ? ` · ${fmt(ch.value, 0)}${unitLabel(ch.unit ?? "")}` : ""}
-                {" — "}{ch.status === "unknown" ? ch.text : <>{ch.status === "ok" ? "no concern" : ch.status === "watch" ? "worth watching" : "flagged"}. {ch.text}</>}
-              </li>
-            ))}
-          </ul>
-          {ins.back_health.advice.length > 0 && <ul>{ins.back_health.advice.map((a) => <li key={a}>{a}</li>)}</ul>}
-          <p className="rp-note">{ins.back_health.disclaimer}</p>
-        </section>
-      )}
-
-      {ins?.plan?.notes && ins.plan.notes.length > 0 && (
-        <section>
-          <h2>Safe bowling{ins.player ? ` for ${AGE_LABEL[ins.player.age_group] ?? ""} bowlers` : ""}</h2>
-          <ul>{ins.plan.notes.map((n) => <li key={n}>{n}</li>)}</ul>
-        </section>
-      )}
-
-      <section>
-        <h2>Key positions</h2>
-        <div className="rp-kino">
-          {EVENTS.map((e) => (
-            <figure key={e.key}>
-              {r.events[e.key] ? <Still id={id} result={r} ev={e.key} /> : <div className="rp-missing">not detected</div>}
-              <figcaption><span style={{ background: EVENT_HEX[e.key] }}>{e.short}</span> {e.label}{r.events[e.key] ? ` · f${r.events[e.key]!.frame}` : ""}</figcaption>
-            </figure>
-          ))}
-        </div>
-      </section>
 
       <section>
         <h2>Top priorities</h2>
@@ -111,6 +76,18 @@ export default function ReportPage({ id, go }: { id: string; go: (to: string) =>
           ))}
         </ol>
         {c.strengths.length > 0 && <p><b>Strengths:</b> {c.strengths.join(" · ")}</p>}
+      </section>
+
+      <section>
+        <h2>Key positions</h2>
+        <div className="rp-kino">
+          {EVENTS.map((e) => (
+            <figure key={e.key}>
+              {r.events[e.key] ? <Still id={id} result={r} ev={e.key} /> : <div className="rp-missing">not detected</div>}
+              <figcaption><span style={{ background: EVENT_HEX[e.key] }}>{e.short}</span> {e.label}{r.events[e.key] ? ` · f${r.events[e.key]!.frame}` : ""}</figcaption>
+            </figure>
+          ))}
+        </div>
       </section>
 
       <section>
@@ -134,6 +111,29 @@ export default function ReportPage({ id, go }: { id: string; go: (to: string) =>
           </p>
         )}
       </section>
+
+      {ins?.back_health && (
+        <section>
+          <h2>Back-health check</h2>
+          <ul className="rp-list">
+            {ins.back_health.checks.map((ch) => (
+              <li key={ch.key}>
+                <b>{ch.label}</b>{ch.value !== null ? ` · ${fmt(ch.value, 0)}${unitLabel(ch.unit ?? "")}` : ""}
+                {" — "}{ch.status === "unknown" ? ch.text : <>{ch.status === "ok" ? "no concern" : ch.status === "watch" ? "worth watching" : "flagged"}. {ch.text}</>}
+              </li>
+            ))}
+          </ul>
+          {ins.back_health.advice.length > 0 && <ul>{ins.back_health.advice.map((a) => <li key={a}>{a}</li>)}</ul>}
+          <p className="rp-note">{ins.back_health.disclaimer}</p>
+        </section>
+      )}
+
+      {ins?.plan?.notes && ins.plan.notes.length > 0 && (
+        <section>
+          <h2>Safe bowling{ins.player ? ` for ${AGE_LABEL[ins.player.age_group] ?? ""} bowlers` : ""}</h2>
+          <ul>{[ins.plan.notes[0].split(". ")[0].replace(/\.$/, "") + ".", ...ins.plan.notes.slice(-1)].map((n) => <li key={n}>{n}</li>)}</ul>
+        </section>
+      )}
 
       <section>
         <h2>Get a better reading next time</h2>

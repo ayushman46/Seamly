@@ -154,7 +154,8 @@ export default function FramePlayer({ id, result, frame, overlay, selMetric, hud
         ctx.beginPath(); ctx.arc(pts[j][0], pts[j][1], lw * 0.9, 0, Math.PI * 2); ctx.fill();
       }
     }
-    if (overlay.angles) {
+    // an angled camera measures no joint angle reliably: draw the skeleton, not numbers the analysis doesn't rate
+    if (overlay.angles && !result.view.oblique) {
       const placed: [number, number, number, number][] = [];
       const place = (x0: number, y: number, w: number, h: number): [number, number] => {
         // keep labels inside the frame (they clipped at the edge on phones), then nudge them vertically until they

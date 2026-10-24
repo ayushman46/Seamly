@@ -102,6 +102,7 @@ class Ctx:
     ev: Events
     bone_lengths: np.ndarray
     fps_unique: float | None = None   # distinct frames per real second (repeated frames add no information)
+    oblique: bool = False             # camera well off the pitch line: no plane-specific measurement is rated
 
 
 def _img_angle_from_vertical(v: np.ndarray) -> np.ndarray:
@@ -150,8 +151,9 @@ def _metric(key, label, value, *, event=None, source="3d", confidence=0.5, decim
         # angles that can be far off (e.g. a 170° front knee read as 96° from behind), and nothing tells a
         # good estimate from a bad one, so the value is withheld (kept as estimate_3d in the JSON export).
         reliability = "estimate"
-        note = ("Not measurable from this camera view — film " + " or ".join(VIEW_LABEL[x] for x in needs)
-                + " to measure it.")
+        where = "side-on or from behind the stumps" if len(needs) == 3 else " or ".join(VIEW_LABEL[x] for x in needs)
+        note = ("The camera is at an angle to the pitch, so this can't be measured reliably — film "
+                if view == "oblique" else "Not measurable from this camera view — film ") + where + " to measure it."
         rating = "unrated"
         conf = min(conf, 0.3)
         withheld, v = v, None
@@ -271,6 +273,7 @@ def _alignment_parts(c: Ctx, which: str) -> tuple[np.ndarray, np.ndarray, np.nda
 
 SIDE = ("side_on",)
 REAR = ("behind", "front_on")
+SQUARE = ("side_on", "behind", "front_on")   # any view square to the pitch (only an angled camera is excluded)
 
 
 def _release_height_2d(c: Ctx):
@@ -311,6 +314,7 @@ def compute(c: Ctx) -> dict:
     s, ev, fps, H = c.side, c.ev, c.fps, c.stature
     ts = time_series(c)
     view = c.view
+    gate = "oblique" if c.oblique else view   # the view plane-specific metrics are checked against
     side_view = view == "side_on"
     rear_view = view in ("behind", "front_on")
     fps_eff = c.fps_unique or fps   # precision follows the distinct frames, timings the frame clock
@@ -361,7 +365,7 @@ def compute(c: Ctx) -> dict:
         conf *= _conf2d(c, br, [s.c_sh, s.c_el, s.c_wr])
         metrics.append(_metric(
             "elbow_extension", "Elbow extension (UAH → release)", ext, event="uah-br", source="3d", confidence=conf,
-            needs=("side_on",), view=view, min_fps=100, fps=fps_eff,
+            needs=("side_on",), view=gate, min_fps=100, fps=fps_eff,
             explain="Straightening of the bowling elbow between the arm passing horizontal and release, computed "
                     "the ICC way (maximum flexion minus the following minimum). A single camera cannot replace an "
                     "accredited ICC test — use this only as a screening estimate.",
@@ -401,15 +405,15 @@ def compute(c: Ctx) -> dict:
             tech = "Constant brace"
         cf = kconf * min(_conf2d(c, ffc, [s.c_fhip, s.c_fkn, s.c_fan]), _conf2d(c, br, [s.c_fhip, s.c_fkn, s.c_fan]))
         metrics.append(_metric("front_knee_ffc", "Front knee at front-foot contact", k_ffc, event="ffc", source=src,
-                               confidence=cf, explain="180° = straight leg.", needs=SIDE, view=view))
+                               confidence=cf, explain="180° = straight leg.", needs=SIDE, view=gate))
         metrics.append(_metric("front_knee_br", "Front knee at release", k_br, event="br", source=src, confidence=cf,
-                               needs=SIDE, view=view,
+                               needs=SIDE, view=gate,
                                explain="A straighter front leg at release acts as a lever and is associated with "
                                        "higher ball speed; some flexion is normal and may reduce load.",
                                extra={"flexion_after_ffc": round(flexion, 1),
                                       "extension_to_br": round(extension, 1), "min_frame": i_min}))
         metrics.append(_metric("front_knee_flexion", "Front knee bend after landing", flexion, event="ffc-br",
-                               source=src, confidence=cf, needs=SIDE, view=view,
+                               source=src, confidence=cf, needs=SIDE, view=gate,
                                explain="Flexion of the front knee from landing to its most bent point. Together with "
                                        "the extension to release it gives the front-leg technique (Portus et al. 2004).",
                                extra={"technique": tech}))
@@ -418,7 +422,7 @@ def compute(c: Ctx) -> dict:
         metrics.append(_metric("back_knee_bfc", "Back knee at back-foot contact", float(bk[bfc]), event="bfc",
                                source="2d" if side_view else "3d",
                                confidence=(0.7 * _conf2d(c, bfc, [s.c_bhip, s.c_bkn, s.c_ban])) if side_view else 0.3,
-                               needs=SIDE, view=view,
+                               needs=SIDE, view=gate,
                                explain="A very flexed back leg at back-foot contact was one of the strongest "
                                        "predictors of lumbar stress injury in a prospective elite study."))
 
@@ -432,7 +436,7 @@ def compute(c: Ctx) -> dict:
     else:
         tf_use, tsrc, tconf = tf, "3d", 0.3
     metrics.append(_metric("trunk_forward_br", "Trunk forward flexion at release", float(tf_use[br]), event="br",
-                           source=tsrc, confidence=tconf * _conf2d(c, br, [5, 6, 11, 12]), needs=SIDE, view=view,
+                           source=tsrc, confidence=tconf * _conf2d(c, br, [5, 6, 11, 12]), needs=SIDE, view=gate,
                            explain="How far the trunk is pitched towards the batter at release. Fast bowlers "
                                    "flex strongly through the delivery stride. This is the lean at the moment of release; "
                                    "'Trunk flexion FFC → release' is how much it bends during the stride."))
@@ -440,7 +444,7 @@ def compute(c: Ctx) -> dict:
         metrics.append(_metric("trunk_flexion_ffc_br", "Trunk flexion FFC → release", float(tf_use[br] - tf_use[ffc]),
                                event="ffc-br", source=tsrc,
                                confidence=tconf * 0.9 * min(_conf2d(c, ffc, [5, 6, 11, 12]), _conf2d(c, br, [5, 6, 11, 12])),
-                               needs=SIDE, view=view,
+                               needs=SIDE, view=gate,
                                explain="Trunk flexion produced during the delivery stride — a key contributor to "
                                        "ball speed."))
     tl3 = np.array(ts["trunk_lateral_flexion"])
@@ -454,7 +458,7 @@ def compute(c: Ctx) -> dict:
     else:
         tl, lsrc, lconf = tl3, "3d", 0.3
     metrics.append(_metric("trunk_lateral_br", "Trunk side-bend at release", abs(float(tl[br])), event="br",
-                           source=lsrc, confidence=lconf * _conf2d(c, br, [5, 6, 11, 12]), needs=REAR, view=view,
+                           source=lsrc, confidence=lconf * _conf2d(c, br, [5, 6, 11, 12]), needs=REAR, view=gate,
                            explain="Lateral flexion of the trunk away from the bowling arm. Large side-bend "
                                    "loads the lower back; it is one of the better single-camera measures from "
                                    "behind the bowler."))
@@ -482,15 +486,15 @@ def compute(c: Ctx) -> dict:
         scr = float(th - sh[bfc:hi_ + 1].min())
         mixed = (30 <= abs(sep) <= 45) or (30 <= scr <= 60)   # same plausibility gates as the metrics
         metrics.append(_metric("shoulder_alignment_bfc", "Shoulder alignment at back-foot contact", th, event="bfc",
-                               source="2d+3d", confidence=acon, needs=REAR, view=view,
+                               source="2d+3d", confidence=acon, needs=REAR, view=gate,
                                explain="180 = side-on, 270 = front-on.",
                                extra={"action_type": "mixed" if mixed else action}))
         metrics.append(_metric("hip_shoulder_sep_bfc", "Hip-shoulder separation at BFC", abs(sep), event="bfc",
-                               source="2d+3d", confidence=acon * 0.9 * sep_conf, needs=REAR, view=view,
+                               source="2d+3d", confidence=acon * 0.9 * sep_conf, needs=REAR, view=gate,
                                explain="Misalignment between hips and shoulders when the back foot lands; large "
                                        "values define a 'mixed' action, which twists the lower back."))
         metrics.append(_metric("shoulder_counter_rotation", "Shoulder counter-rotation", max(scr, 0.0),
-                               event="bfc-ffc", source="2d+3d", confidence=acon * 0.85, needs=REAR, view=view,
+                               event="bfc-ffc", source="2d+3d", confidence=acon * 0.85, needs=REAR, view=gate,
                                explain="How much the shoulders rotate back towards side-on after back-foot "
                                        "contact."))
 
@@ -507,7 +511,7 @@ def compute(c: Ctx) -> dict:
                            explain=f"Height of the ball at release as a percentage of your height "
                                    f"(~{rel_h * H / 100:.2f} m for a stature of {H:.2f} m). Single-camera "
                                    "precision is about ± 8 points.",
-                           extra={"metres": round(float(rel_h * H / 100), 2)}))
+                           extra={"metres": round(float(rel_h * H / 100), 2)}, needs=SQUARE, view=gate))
     # arm slot: angle of shoulder->wrist from vertical in the frontal plane
     if rear_view:
         v = c.kp[br, s.c_wr] - c.kp[br, s.c_sh]
@@ -518,7 +522,7 @@ def compute(c: Ctx) -> dict:
         slot = abs(float(np.degrees(np.arctan2(aw[1], aw[2]))))
         ssrc, sconf = "3d", 0.35
     metrics.append(_metric("arm_slot_br", "Arm slot at release", slot, event="br", source=ssrc,
-                           confidence=sconf * _conf2d(c, br, [s.c_sh, s.c_wr]), needs=REAR, view=view,
+                           confidence=sconf * _conf2d(c, br, [s.c_sh, s.c_wr]), needs=REAR, view=gate,
                            explain="0° = bowling arm straight up (high arm); larger = more round-arm."))
     if rear_view:
         head_x = c.kp[br, 0, 0] if c.kc[br, 0] > 0.3 else (c.kp[br, 3, 0] + c.kp[br, 4, 0]) / 2
@@ -528,7 +532,7 @@ def compute(c: Ctx) -> dict:
                                source="2d", confidence=0.6 * _conf2d(c, br, [s.c_fan, 3, 4]), decimals=0,
                                explain="How far the head is laterally from the front foot at release. A head "
                                        "falling outside the front foot ('falling away') costs accuracy and "
-                                       "increases side-bend."))
+                                       "increases side-bend.", needs=REAR, view=gate))
     # ---------------- stride ----------------
     if ffc is not None:
         if side_view:
@@ -539,7 +543,7 @@ def compute(c: Ctx) -> dict:
             dx = float(np.hypot(d[0], d[1]))
             stsrc, stconf = "3d", 0.2
         metrics.append(_metric("stride_length_pct", "Delivery stride length", 100 * dx / H, event="ffc",
-                               source=stsrc, confidence=stconf * _conf2d(c, ffc, [s.c_fan, s.c_ban]), needs=SIDE, view=view,
+                               source=stsrc, confidence=stconf * _conf2d(c, ffc, [s.c_fan, s.c_ban]), needs=SIDE, view=gate,
                                explain="Distance between the ankles at front-foot contact.",
                                extra={"metres": round(float(dx), 2)}))
     # Values read at a contact that was only placed from typical timing are measured at a guessed frame: keep

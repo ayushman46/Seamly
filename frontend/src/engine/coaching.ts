@@ -233,7 +233,10 @@ export function coach(metrics: Metric[], view: string, fps: number): CoachingOut
       + `${pyFormat(pyMin(80, 2000 / fps), 0)}° from one frame to the next. Film in slow motion (120–240 fps) next time `
       + "for precise release and elbow measurements.");
   }
-  if (view === "behind" || view === "front_on") {
+  if (view === "oblique") {
+    capture.push("Filmed at an angle to the pitch: knee, trunk, stride, side-bend and alignment can't be measured "
+      + "reliably. Film square on: side-on (10–15 m away, hip height) or straight from behind the stumps.");
+  } else if (view === "behind" || view === "front_on") {
     capture.push("Filmed from behind/in front: side-bend, arm slot and alignment are measured well, but knee, "
       + "trunk-flexion and stride can't be measured from this angle. Add a side-on clip for those.");
   } else if (view === "side_on") {

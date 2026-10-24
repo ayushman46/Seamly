@@ -175,7 +175,10 @@ async function loadFiles(id: string, result: AnalysisResult) {
 function seriesCsv(r: AnalysisResult): string {
   const series = (r as unknown as { series: Record<string, (number | null)[]> }).series;
   const keys = Object.keys(series);
-  const rows = [["frame", "time_s", ...keys].join(",")];
+  // say where each column comes from: measured on the video (2D) or the 3D reconstruction (an estimate, and in some
+  // camera views far off: the app only rates the plane each view sees)
+  const head = keys.map((k) => (k.endsWith("_2d") ? `${k.slice(0, -3)}_video` : `${k}_3d`) + (k.endsWith("_pct") ? "" : "_deg"));
+  const rows = [["frame", "time_s", ...head].join(",")];
   r.frames.times.forEach((t, i) => rows.push([r.frames.start + i, t, ...keys.map((k) => series[k][i] ?? "")].join(",")));
   return rows.join("\r\n") + "\r\n";
 }
@@ -320,10 +323,13 @@ async function runJob(id: string) {
 // typical stature (m) for each age group, assumed when no height is entered (adults keep the engine's 1.80 m)
 const AGE_STATURE: Record<string, number> = { u11: 1.38, u13: 1.49, u15: 1.61, u17: 1.7, u19: 1.75 };
 
-/** Stage-B overrides plus the stature to assume for the analysis' player when no height was entered. */
+/** Stage-B overrides plus the analysis' player's stature when none was entered for the clip itself: the height in
+ * their profile (an entered height, so it counts as measured), else the typical height for their age group. */
 async function withAgeStature(meta: Meta, overrides: Overrides): Promise<Overrides> {
   const p = meta.player_id ? await db.get<StoredPlayer>("player", meta.player_id).catch(() => undefined) : undefined;
-  const h = p ? AGE_STATURE[p.age_group] : undefined;
+  if (!p) return overrides;
+  if (p.height_cm && overrides.height_m == null && !meta.options?.height_m) return { ...overrides, height_m: p.height_cm / 100 };
+  const h = AGE_STATURE[p.age_group];
   return h ? { ...overrides, default_height_m: h } : overrides;
 }
 
@@ -436,13 +442,13 @@ async function looksLikeVideo(file: Blob): Promise<boolean> {
 
 export const SAMPLES = {
   club: { url: `${import.meta.env.BASE_URL}samples/club-side-on.mp4`, dir: `${import.meta.env.BASE_URL}samples/club/`, id: "c1ab5a3d1e01",
-    name: "Sample: club bowler, side-on (real match)" },
+    name: "Example: club match, side-on" },
   synthetic: { url: `${import.meta.env.BASE_URL}samples/synthetic-side-on.mp4`, dir: `${import.meta.env.BASE_URL}samples/synthetic/`, id: "5e7a5a3d1e02",
-    name: "Sample: computer-generated bowler, every angle known exactly (60 fps)" },
+    name: "Example: 3D test bowler, 60 fps" },
 };
 export type SampleName = keyof typeof SAMPLES;
 // bump when the bundled sample analyses are regenerated, so a browser that imported an older copy gets the new one
-const SAMPLE_VERSION = 9;
+const SAMPLE_VERSION = 10;
 
 /** Import a precomputed sample analysis (opens instantly: no models to download). */
 async function importSample(which: SampleName): Promise<string> {
@@ -669,7 +675,7 @@ export const api = {
     const blob = await res.blob();
     const id = db.newId();
     await db.put("blob", `${id}/input`, blob);
-    const m = newMeta(id, s.name.replace("Sample:", "Sample clip:"), blob.size, { bowling_arm: "auto", height_m: which === "synthetic" ? 1.8 : null, slowmo_factor: 1 }, null, "video/mp4");
+    const m = newMeta(id, s.name.replace("Example:", "Example clip:"), blob.size, { bowling_arm: "auto", height_m: which === "synthetic" ? 1.8 : null, slowmo_factor: 1 }, null, "video/mp4");
     metas.set(id, m);
     await db.put("meta", id, m);
     submit(id);

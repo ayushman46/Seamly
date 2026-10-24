@@ -511,7 +511,9 @@ def export_csv(aid: str):
     keys = list(series.keys())
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow(["frame", "time_s"] + keys)
+    # where each column comes from: measured on the video (2D) or the 3D reconstruction (an estimate)
+    head = [(k[:-3] + "_video" if k.endswith("_2d") else k + "_3d") + ("" if k.endswith("_pct") else "_deg") for k in keys]
+    w.writerow(["frame", "time_s"] + head)
     for i, (fr, t) in enumerate(zip(range(res["frames"]["start"], res["frames"]["end"]), res["frames"]["times"])):
         w.writerow([fr, t] + [series[k][i] for k in keys])
     return PlainTextResponse(buf.getvalue(), media_type="text/csv",

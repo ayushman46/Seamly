@@ -106,5 +106,6 @@ export interface ViewInfo {
   angle_to_optical_axis_deg: number;
   hip_width_ratio: number | null;
   stride_across?: number;
+  oblique?: boolean;   // the 2D view cues disagree (camera well off the pitch line): plane metrics aren't rated
   source?: string;
 }

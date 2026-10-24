@@ -88,7 +88,7 @@ interface PriorityIn {
 interface MetricIn { key: string; value?: number | null; rating?: string; confidence?: number; note?: string | null }
 export interface InsightsResult {
   coaching: { score?: number | null; grade?: string | null; priorities?: PriorityIn[] | null; strengths?: string[] | null };
-  view: { view: string };
+  view: { view: string; oblique?: boolean };
   fps_real?: number;
   metrics: MetricIn[];
 }
@@ -131,7 +131,9 @@ export function summary(result: InsightsResult, player: InsightsPlayer | null = 
   }));
   const view = result.view.view;
   const unlock: string[] = [];
-  if (view === "behind" || view === "front_on") {
+  if (result.view.oblique) {
+    unlock.push("Film square to the pitch, side-on or straight from behind the stumps, to measure your action.");
+  } else if (view === "behind" || view === "front_on") {
     unlock.push("Film side-on (10–15 m away, hip height) to also measure your front knee, trunk flexion and stride.");
   } else {
     unlock.push("Film from behind the stumps to also measure side-bend, alignment and whether you fall away.");

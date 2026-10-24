@@ -1,7 +1,7 @@
 import { drillsForAge } from "../lib/player";
 import type { AnalysisResult, Insights } from "../types";
 import { RATING_LABEL } from "../lib/constants";
-import { IAlert, IBolt, ICheck, IPlay, IShield, ITarget } from "./Icons";
+import { IAlert, IBolt, ICheck, IEye, IShield, ITarget } from "./Icons";
 import { BackHealth } from "./InsightsCard";
 
 const CAT: Record<string, { label: string; icon: JSX.Element; cls: string }> = {
@@ -41,10 +41,9 @@ export default function CoachingPanel({ result, ins, onJump, age, style }: {
                   <span className={`chip ${p.rating}`} title={p.borderline ? "Just outside the target range, within what one camera can measure: worth a look, not a priority" : undefined}>
                     {RATING_LABEL[p.rating]}{p.borderline ? " · borderline" : ""}
                   </span>
-                  <span className={`chip ${cat.cls}`}>{cat.icon} {cat.label}</span>
-                  <span className="faint" style={{ fontSize: 12 }} title="Strength of the published evidence">{p.evidence}</span>
+                  <span className={`chip ${cat.cls}`} title={`Strength of the published evidence: ${p.evidence}`}>{cat.icon} {cat.label}</span>
                   <div className="grow" />
-                  {ev && <button className="btn sm ghost" onClick={() => onJump(ev)} aria-label={`Show in video: ${p.headline}`}><IPlay size={11} /> Show in video</button>}
+                  {ev && <button className="btn sm ghost" onClick={() => onJump(ev)} aria-label={`Show in video: ${p.headline}`}><IEye size={12} /> Show in video</button>}
                 </div>
                 <h4>{p.headline}</h4>
                 {guessedHeight && HEIGHT_BASED.has(p.key) && (
@@ -65,14 +64,7 @@ export default function CoachingPanel({ result, ins, onJump, age, style }: {
         })}
       </div>
       <div className="stack">
-        <div role="heading" aria-level={3} className="card-title">What you do well</div>
-        {c.strengths.length ? (
-          <div className="stack" style={{ gap: 8 }}>
-            {c.strengths.map((s) => <div key={s} className="row" style={{ gap: 8 }}><span className="chip good"><ICheck size={13} /></span><span>{s}</span></div>)}
-          </div>
-        ) : <div className="faint">Strengths appear here once enough metrics are measured reliably.</div>}
-        {ins?.back_health && <><div className="divider" /><BackHealth ins={ins} /></>}
-        <div className="divider" />
+        {ins?.back_health && <><BackHealth ins={ins} /><div className="divider" /></>}
         <div role="heading" aria-level={3} className="card-title">Get a better reading</div>
         <div className="stack" style={{ gap: 8 }}>
           <ul className="plain" style={{ margin: 0 }}>{c.capture_tips.map((t) => <li key={t} className="muted">{t}</li>)}</ul>

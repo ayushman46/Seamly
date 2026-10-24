@@ -294,7 +294,7 @@ export default function Viewer3D({ id, result, frame }: { id: string; result: An
           {PRESETS.map((p) => <button key={p.key} className={preset === p.key ? "on" : ""} aria-pressed={preset === p.key} title={p.title} onClick={() => setPreset(p.key)}>{p.label}</button>)}
         </div>
         <div className="seg">
-          {(["mesh", "both", "skeleton"] as const).map((m) => <button key={m} className={mode === m ? "on" : ""} aria-pressed={mode === m} onClick={() => setMode(m)}>{m === "both" ? "Mesh + bones" : m[0].toUpperCase() + m.slice(1)}</button>)}
+          {(["mesh", "both", "skeleton"] as const).map((m) => <button key={m} className={mode === m ? "on" : ""} aria-pressed={mode === m} onClick={() => setMode(m)}>{m === "both" ? "Body + bones" : m === "mesh" ? "Body" : "Bones"}</button>)}
         </div>
         <button className={`btn sm ${ghost ? "active" : ""}`} aria-pressed={ghost} onClick={() => setGhost((g) => !g)} title="Overlay the body at BFC, FFC and release">Ghosts</button>
         <button className={`btn sm ${follow ? "active" : ""}`} aria-pressed={follow} onClick={() => setFollow((f) => !f)} title="Camera follows the bowler">Follow</button>

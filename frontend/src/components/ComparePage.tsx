@@ -119,7 +119,7 @@ export default function ComparePage({ a, b, go }: { a: string; b: string; go: (t
         <div className="an-head">
           <div className="an-head-main">
             <button type="button" className="back-link" onClick={() => go("/")}><IBack size={15} /> Your analyses</button>
-            <h1 className="an-title">Side by side</h1>
+            <h1 className="an-title">{mode === "over" ? "Overlay" : "Side by side"}</h1>
             <p className="muted" style={{ margin: 0 }}>Both deliveries at the same moment of the action. A is the earlier one, B the later one: "Improved" means B is better.</p>
           </div>
         </div>
@@ -200,9 +200,12 @@ function Row({ a, b, fps, judge = true }: { a?: Metric; b?: Metric; fps: number;
   const m = a ?? b!;
   const comparable = !!a && !!b && a.value !== null && b.value !== null && a.reliability === "measured" && b.reliability === "measured";
   const d = comparable ? (b!.value as number) - (a!.value as number) : null;
-  let verdict: "better" | "worse" | "same" | null = null;
-  if (judge && comparable && Math.abs(d!) >= resolution(m, fps) && a!.rating in ORDER && b!.rating in ORDER && ORDER[a!.rating] <= 2 && ORDER[b!.rating] <= 2) {
-    verdict = ORDER[b!.rating] < ORDER[a!.rating] ? "better" : ORDER[b!.rating] > ORDER[a!.rating] ? "worse" : "same";
+  let verdict: "better" | "worse" | "same" | "noise" | null = null;
+  const res = resolution(m, fps);
+  if (judge && comparable && a!.rating in ORDER && b!.rating in ORDER && ORDER[a!.rating] <= 2 && ORDER[b!.rating] <= 2) {
+    const moved = ORDER[b!.rating] < ORDER[a!.rating] ? "better" : ORDER[b!.rating] > ORDER[a!.rating] ? "worse" : "same";
+    // a change of rating smaller than what one camera resolves at this frame rate isn't called either way
+    verdict = Math.abs(d!) >= res ? moved : moved === "same" ? null : "noise";
   }
   const cell = (x: Metric | undefined, side: "A" | "B") => (
     <td className={!x || x.reliability === "estimate" ? "faint" : ""} data-label={side}>
@@ -216,7 +219,10 @@ function Row({ a, b, fps, judge = true }: { a?: Metric; b?: Metric; fps: number;
       {cell(a, "A")}
       {cell(b, "B")}
       <td className="mono" data-label="Change B − A">{d === null ? <span className="faint">not comparable</span> : `${d > 0 ? "+" : ""}${fmt(d, Math.abs(d) < 10 ? 1 : 0)}${unitLabel(m.unit)}`}</td>
-      <td className="cmp-verdict">{verdict && verdict !== "same" && <span className={`chip ${verdict === "better" ? "good" : "risk"}`}>{verdict === "better" ? "Improved" : "Worse"}</span>}</td>
+      <td className="cmp-verdict">
+        {(verdict === "better" || verdict === "worse") && <span className={`chip ${verdict === "better" ? "good" : "risk"}`}>{verdict === "better" ? "Improved" : "Worse"}</span>}
+        {verdict === "noise" && <span className="chip" title={`One camera at ${fmt(fps, 0)} fps resolves about ±${fmt(res, 0)}${unitLabel(m.unit)} for this, so the change can't be called`}>Within error</span>}
+      </td>
     </tr>
   );
 }

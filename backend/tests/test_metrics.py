@@ -71,3 +71,30 @@ def test_coaching_says_which_way_a_band_was_missed():
     assert short.startswith("Short delivery stride (52%") and long_.startswith("Long delivery stride (98%")
     # one-sided bands (no lower bound) still work
     assert coach([m("front_knee_flexion", 35), m("trunk_lateral_br", 55)], "side_on", 240)["priorities"]
+
+
+def test_classify_view_flags_oblique_cameras():
+    """The two 2D view cues disagreeing (or both undecided) marks an oblique camera; agreeing cues don't."""
+    import numpy as np
+    from bowlnet.events import classify_view
+
+    def kp_ratio(r, n=6):
+        kp = np.zeros((n, 17, 2))
+        kp[:, 11] = [100 - 50 * r, 300]
+        kp[:, 12] = [100 + 50 * r, 300]
+        kp[:, 5] = kp[:, 6] = [100, 200]     # torso 100 px, so hip width / torso = r
+        return kp
+
+    run = np.arange(6)
+    fwd_behind = np.array([0.0, 0.0, 1.0])
+    side = classify_view(np.array([1.0, 0, 0]), kp_ratio(0.1), None, run, 1.05)
+    behind = classify_view(fwd_behind, kp_ratio(0.5), None, run, 0.2)
+    assert (side["view"], side.get("oblique")) == ("side_on", None)
+    assert (behind["view"], behind.get("oblique")) == ("behind", None)
+    clash = classify_view(fwd_behind, kp_ratio(0.05), None, run, 0.01)          # hips side-on, feet along the axis
+    assert clash["oblique"] is True
+    undecided = classify_view(fwd_behind, kp_ratio(0.33), None, run, 0.5)       # both cues in between
+    assert undecided["oblique"] is True
+    one_cue = classify_view(fwd_behind, kp_ratio(0.33), None, run, 0.2)         # stride decides, ratio unsure
+    assert one_cue.get("oblique") is None
+    assert classify_view(fwd_behind).get("oblique") is None                     # no 2D cue at all: unchanged

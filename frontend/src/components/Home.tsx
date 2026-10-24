@@ -119,14 +119,6 @@ export default function Home({ go }: { go: (to: string) => void }) {
                   {MODE === "browser" ? "Everything here is saved in this browser, on this device." : "Analyses and players saved on your Seamly server."}
                 </p>
               </div>
-              <div className="ws-quick">
-                {items && items.length > 0 && (
-                  <button type="button" className="chip lg" onClick={() => scrollToId("ws-analyses")}><IVideo size={14} /> {items.length} {items.length === 1 ? "analysis" : "analyses"}</button>
-                )}
-                {players.length > 0 && (
-                  <button type="button" className="chip lg" onClick={() => scrollToId("ws-players")}><IUsers size={14} /> {players.length} {players.length === 1 ? "player" : "players"}</button>
-                )}
-              </div>
             </div>
             {restored && <div className="notice ok" role="status" style={{ marginBottom: 16 }}><ICheck size={16} /> <div>{restored}</div></div>}
             <div className="ws-grid">
@@ -211,7 +203,7 @@ function PlayersPanel({ players, current, adding, setAdding, onCreate, go }: {
         <h2 id="players-title" style={{ fontSize: 17 }}>Players</h2>
         {players.length > 0 && <span className="count">{players.length}</span>}
         <div className="grow" />
-        {!adding && <button className="btn sm" onClick={() => setAdding(true)}><IPlus size={14} /> Add player</button>}
+        {!adding && players.length > 0 && <button className="btn sm" onClick={() => setAdding(true)}><IPlus size={14} /> Add player</button>}
       </div>
       {adding && (
         <div className="card card-pad">

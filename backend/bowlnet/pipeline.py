@@ -538,16 +538,17 @@ def stage_b(out_dir: Path, overrides: dict | None = None, progress: Progress | N
     stride_x = stride_across(kp_s, skel.px_per_m, float(skel.bone_lengths[1] + skel.bone_lengths[2]), side, ev.ffc, ev.br)
     view = classify_view(wf.forward, kp_s, kc, runup if len(runup) >= 4 else None, stride_x)
     if overrides.get("view") in ("side_on", "behind", "front_on"):
-        view = {**view, "view": overrides["view"], "source": "user"}
+        view = {**{k: v for k, v in view.items() if k != "oblique"}, "view": overrides["view"], "source": "user"}
+    oblique = bool(view.get("oblique"))
     prog.stage("metrics", 0.2)
 
     W = wf.to_world(P)
     rep = float(meta["quality"].get("repeated_frames") or 0.0)
     fps_unique = real_fps * (1.0 - rep)   # frame-repeat slow motion / frame-rate conversion add no information
     ctx = Ctx(P=P, W=W, kp=kp_s, kc=kc, side=side, wf=wf, view=view["view"], fps=real_fps, stature=height,
-              k=skel.px_per_m, ev=ev, bone_lengths=skel.bone_lengths, fps_unique=fps_unique)
+              k=skel.px_per_m, ev=ev, bone_lengths=skel.bone_lengths, fps_unique=fps_unique, oblique=oblique)
     mres = compute(ctx)
-    coaching = coach(mres["metrics"], view["view"], fps_unique if rep >= 0.4 else real_fps)
+    coaching = coach(mres["metrics"], "oblique" if oblique else view["view"], fps_unique if rep >= 0.4 else real_fps)
     # a real delivery's arm turns at >~700°/s; much slower suggests a slowed-down (replay) clip
     peak_real = float(sweep.get("peak_speed_dps") or 0.0)   # measured in real time (stage A uses real fps)
     if meta.get("version", 2) < 3:

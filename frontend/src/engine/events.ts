@@ -425,5 +425,12 @@ export function classifyView(forwardCam: number[], kp?: Arr3 | null, _kc?: Arr2 
   const out: ViewInfo = { view, angle_to_optical_axis_deg: round(ang, 1),
     hip_width_ratio: ratio === null ? null : round(ratio, 3) };
   if (strideX != null) out.stride_across = round(strideX, 2);
+  // An oblique camera (well off the line of the pitch, or high in the stands) shows up as the two 2D cues
+  // contradicting each other, or both sitting in their in-between bands so only the weak 3D direction decided.
+  // Plane-specific measurements aren't trustworthy then.
+  const sDec = strideX != null && (strideX > 0.7 || strideX < 0.4);
+  const rDec = ratio !== null && (ratio < 0.28 || ratio > 0.42);
+  const clash = sDec && rDec && ((strideX! > 0.7) !== (ratio! < 0.28));
+  if (clash || (!sDec && !rDec && (strideX != null || ratio !== null))) out.oblique = true;
   return out;
 }

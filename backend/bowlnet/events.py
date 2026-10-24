@@ -370,5 +370,14 @@ def classify_view(forward_cam: np.ndarray, kp: np.ndarray | None = None, kc: np.
             view = "side_on" if ang > 55 else ("behind" if f[2] >= 0 else "front_on")
     else:
         view = "side_on" if ang > 55 else ("behind" if f[2] > 0 else "front_on")
+    # An oblique camera (well off the line of the pitch, or high in the stands) shows up as the two 2D cues
+    # contradicting each other, or both sitting in their in-between bands so only the weak 3D direction decided.
+    # Plane-specific measurements aren't trustworthy then.
+    s_dec = stride_x is not None and (stride_x > 0.7 or stride_x < 0.4)
+    r_dec = ratio is not None and (ratio < 0.28 or ratio > 0.42)
+    clash = s_dec and r_dec and ((stride_x > 0.7) != (ratio < 0.28))
+    oblique = clash or (not s_dec and not r_dec and (stride_x is not None or ratio is not None))
+    if oblique:
+        extra["oblique"] = True
     return {"view": view, "angle_to_optical_axis_deg": round(ang, 1),
             "hip_width_ratio": None if ratio is None else round(ratio, 3), **extra}

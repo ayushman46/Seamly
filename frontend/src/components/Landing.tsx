@@ -38,9 +38,9 @@ export function Hero({ onAnalyse, onDemo, demoBusy, demoError, disabled }: {
 }
 
 // the example's release frame (the club sample), its keypoints in the 960 × 720 crop, and what Seamly measured there
-const SHOT_KP: [number, number, number][] = [[465, 119, 0.58], [528, 152, 0.05], [459, 114, 0.5], [411, 125, 0.31], [437, 135, 0.97],
-  [359, 159, 1], [418, 222, 1], [341, 91, 0.98], [407, 328, 1], [348, 26, 0.92], [414, 419, 0.99], [300, 340, 1], [363, 363, 1],
-  [247, 463, 1], [454, 476, 1], [159, 592, 0.99], [493, 602, 0.99]];
+const SHOT_KP: [number, number, number][] = [[465, 119, 0.57], [530, 152, 0.05], [458, 114, 0.47], [411, 125, 0.31], [437, 136, 0.97],
+  [361, 159, 1], [417, 222, 1], [341, 92, 0.98], [406, 329, 1], [346, 26, 0.93], [413, 419, 0.99], [301, 341, 1], [364, 365, 1],
+  [236, 462, 1], [455, 476, 1], [161, 592, 0.99], [490, 603, 0.99]];
 const SHOT_BOWL = new Set([5, 7, 9, 11, 13, 15]);   // a left-arm bowler: the bowling side is the left
 const SHOT_FRONT = new Set([6, 8, 10, 12, 14, 16]);
 
@@ -55,7 +55,7 @@ export function HeroShot() {
   );
   return (
     <figure className="hero-shot">
-      <svg viewBox="0 0 960 720" role="img" aria-label="A club bowler at ball release with Seamly's skeleton overlay: front knee 159 degrees, trunk lean 20 degrees, release height 97% of height">
+      <svg viewBox="0 0 960 720" role="img" aria-label="A club bowler at ball release with Seamly's skeleton overlay: front knee 157 degrees, trunk lean 19 degrees, release height 94% of height">
         <image href={`${import.meta.env.BASE_URL}hero-release.webp`} width="960" height="720" preserveAspectRatio="xMidYMid slice" />
         {COCO_EDGES.map(([a, b]) => {
           if (P(a)[2] < 0.2 || P(b)[2] < 0.2) return null;
@@ -63,13 +63,13 @@ export function HeroShot() {
           return <line key={`${a}-${b}`} x1={P(a)[0]} y1={P(a)[1]} x2={P(b)[0]} y2={P(b)[1]} stroke={c} strokeWidth="6" strokeLinecap="round" />;
         })}
         {SHOT_KP.map(([x, y, c], j) => (j >= 5 && c > 0.2 ? <circle key={j} cx={x} cy={y} r="6" fill="#fff" /> : null))}
-        {label(372, 40, "Release height 97%", "#fda4af")}
-        {label(436, 200, "Trunk lean 20°", "#e4e4e7")}
-        {label(488, 486, "Front knee 159°", "#6ee7b7")}
+        {label(372, 40, "Release height 94%", "#fda4af")}
+        {label(436, 200, "Trunk lean 19°", "#e4e4e7")}
+        {label(488, 486, "Front knee 157°", "#6ee7b7")}
       </svg>
       <figcaption>
         <span className="hero-shot-score"><b>72</b> Strong</span>
-        <span className="hero-shot-next">Next: drive the chest through</span>
+        <span className="hero-shot-next">Next: brace the front leg</span>
       </figcaption>
     </figure>
   );

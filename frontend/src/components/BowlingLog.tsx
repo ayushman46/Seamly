@@ -45,7 +45,7 @@ export default function BowlingLog({ player, onChange }: { player: Player; onCha
     <section className="card card-pad" aria-labelledby="log-title">
       <div role="heading" aria-level={2} id="log-title" className="card-title">Bowling log</div>
       <p className="muted" style={{ margin: "0 0 12px", fontSize: 13.5 }}>
-        Count every bowling session (matches, club nets, school, the practice plan) to keep {player.name}'s week inside
+        Count every bowling session (matches, nets, the practice plan) to keep {player.name}'s week inside
         {limits ? ` the ${limits.label} limits: at most ${limits.days_week} bowling days a week${limits.day ? ` and ${limits.day} overs a day` : ""}.` : " a sensible load."}
       </p>
       <div className="log-form">
@@ -70,7 +70,7 @@ export default function BowlingLog({ player, onChange }: { player: Player; onCha
       {err && <div className="notice error" role="alert" style={{ marginTop: 10 }}><IAlert size={16} /> <div>{err}</div></div>}
 
       <div className="row wrap" style={{ gap: 8, marginTop: 14 }}>
-        <span className="chip">This week: {week.days} bowling {week.days === 1 ? "day" : "days"}{limits ? ` of ${limits.days_week}` : ""}</span>
+        <span className="chip">This week: {week.days} bowling {week.days === 1 ? "day" : "days"}{limits ? ` (limit ${limits.days_week})` : ""}</span>
         <span className="chip">{formatOvers(week.balls)} overs</span>
       </div>
       {week.warnings.length > 0 ? (

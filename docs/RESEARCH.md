@@ -147,7 +147,7 @@ The detection models are smaller than the server's:
 | Clip | Ground truth or server | Browser |
 |---|---|---|
 | Synthetic side-on, 60 fps: BFC / FFC / BR | truth 36 / 48 / 55; server 35 / 47 / 55 | 35 / 47 / 55 |
-| Synthetic: front knee at FFC; trunk flexion; release height | 165° / 32° / 105% (server 168.5° / 30.4° / 114%) | 164.1° / 31.8° / 109% |
+| Synthetic: front knee at FFC; trunk flexion; release height | 165° / 32° / 105% (server 168.5° / 30.4° / 114%) | 164.0° / 31.7° / 109% |
 | Club match, side-on, 25 fps | server BFC / FFC / BR 52 / 57 / 60 | 51 / 56 / 59 (±1 frame at 25 fps) |
 | Broadcast, behind (Shami) | server events 22 / 28 / 31 / 32 / 40 | identical |
 | Broadcast, behind (Bumrah) | server BFC / FFC / BR 37 / 43 / 47 | 38 / 43 / 47 |
@@ -160,3 +160,42 @@ Speed on an M4 laptop, with the models already downloaded:
 | WebAssembly fallback (single thread) | 51 s | — |
 
 Both backends give the same events.
+
+### Behind the bowler and professional clips (browser engine, 2026-10-25)
+
+**Synthetic delivery from behind.** The same scripted right-arm delivery, rendered from behind the stumps (`tools/synth_bowler.py --view behind`), re-encoded to H.264 and analysed in the browser:
+
+| | Truth | 30 fps | 60 fps |
+|---|---|---|---|
+| BFC / FFC / UAH / BR (frame) | 18 / 24 / 26 / 28 and 36 / 48 / 52 / 55 | 18 / 24 / 26 / 28 | 37 / 48 / 53 / 56 |
+| Trunk side-bend at BR | 21.7° / 21.2° | 24.7° | 25.2° |
+| Release height | 104.1% / 105.3% | 108.2% | 109.9% |
+
+Events, side-bend and release height are within the stated precision. One failure: the browser's smaller pose models read the faceless synthetic body as *front-on* rather than from behind (the server's larger models read it correctly), which mirrors the bowling arm (left, 4 of 4 cues). Real rear-view clips below were all classified as behind, so this is a limit of the synthetic test, but it is the reason the arm question exists.
+
+**Bowling arm on real footage.** Six clips of professional bowlers (two broadcast clips kept locally, four 2012 county T20 clips by Nev1 on Wikimedia Commons, CC BY-SA 3.0), with the arm checked by eye on the frames around release rather than taken from the player's name:
+
+| Clip | View found | Arm found (agreement) | Correct | What the app does |
+|---|---|---|---|---|
+| Bumrah, broadcast | behind | right (100%) | yes | — |
+| Shami, broadcast | behind | left (20%) | no | asks "Is this a left-arm bowler?" |
+| Graham Onions, Commons | front-on | right (100%) | yes | — |
+| Stephen Parry, Commons | front-on | right (100%) | yes (by eye) | — |
+| Gary Keedy, Commons | behind | left (70%) | yes | — |
+| Ben Stokes, Commons | front-on | left (50%) | no | asks (since 2026-10-25: a 3-to-1 split from behind or front-on now asks too) |
+
+Every wrong call had 50% agreement or less, and the app now asks at that level from behind or front-on. Side-on keeps the old threshold (below 50%), where the arm cues are strongest.
+
+**Measurements on the professional clips** (30 fps, stature assumed 1.80 m, only values measured from that view; arm confirmed where it was wrong):
+
+| Bowler | View | Side-bend at BR | Release height | Arm slot | Other |
+|---|---|---|---|---|---|
+| Bumrah | behind | 34.8° | 96.5% | 10.8° | shoulders 213° at BFC (semi-open), hip–shoulder separation 3° |
+| Shami (arm set right) | behind | 31.5° | 129.5% | 6.6° | — |
+| Onions | front-on (cues disagree) | 0.5° | 89.8% | 27.4° | hip–shoulder separation 1° |
+| Parry | front-on | 21.1° | 107.4% | 21.7° | — |
+| Keedy | behind | 10.7° | 95.4% | 40.9° | shoulders 270° at BFC (front-on), counter-rotation 48° |
+
+Bumrah and Shami, filmed from directly behind, bend 31–35° away from the bowling arm, which is typical of elite seamers. Onions reads 0.5°, which is unlikely for a seamer. On that clip the view cues disagree (hips as narrow as side-on, feet together as from the front), the camera is high in the stands and the bowler is about 100 pixels tall: the app still picks one view and rates the metric. Since this test both engines mark such a clip as an *angled* view, when the stride and hip-width cues contradict each other or both sit in their in-between bands, and withhold every body-measurement rating, release height and head position included, with a note to film square on. On Onions and Stokes that leaves no score at all, which is the honest answer for that footage. The cues also depend on the arm: Stokes reads front-on as a left-armer and side-on once the arm is set to right, because the front and back ankles swap. Release height spreads from 90% to 130% across these elite bowlers, much wider than the 113 ± 4% reported for elite men. From behind the stumps the synthetic test is within 5 points, so the spread most likely comes from the footage: long lenses from high in the stands, 30–50° off the line of the pitch, the bowler 100–200 pixels tall, and the assumed stature (Shami is about 1.73 m, not 1.80 m; entering the real height rescales the value). Treat release height from broadcast or stand footage as indicative; a phone side-on or behind the stumps at the bowler's own height is the reference set-up.
+
+Not possible tonight: IPL net-session footage. None is openly licensed (Wikimedia Commons has none), and downloading it from YouTube or Instagram was ruled out.

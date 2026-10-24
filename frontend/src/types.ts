@@ -89,7 +89,7 @@ export interface AnalysisResult {
   bowler: { track: number; shot: number; score: Candidate };
   candidates: Candidate[];
   bowling_arm: { arm: "left" | "right"; confidence: number; source: string };
-  view: { view: View; source?: string; angle_to_optical_axis_deg: number };
+  view: { view: View; source?: string; angle_to_optical_axis_deg: number; oblique?: boolean };
   events: Record<EventKey, EventInfo | null>;
   events_edited: EventKey[];
   metrics: Metric[];

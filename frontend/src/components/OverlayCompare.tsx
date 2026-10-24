@@ -119,6 +119,18 @@ export default function OverlayCompare({ a, b, ev, onEvent }: { a: AnalysisResul
         <div className="overlay-track">
           <input type="range" min={0} max={Math.max(0, keys.length - 1)} step={0.01} value={s} disabled={keys.length < 2} aria-label="Moment of the action"
             aria-valuetext={onKey ? label.label : `Between key moments, near ${label.label.toLowerCase()}`}
+            onKeyDown={(e) => {
+              // arrows step from one key moment to the next (with Shift: a small step between them)
+              if (e.key !== "ArrowRight" && e.key !== "ArrowLeft" && e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+              e.preventDefault();
+              setPlaying(false);
+              const up = e.key === "ArrowRight" || e.key === "ArrowUp";
+              const to = e.shiftKey ? Math.max(0, Math.min(keys.length - 1, s + (up ? 0.1 : -0.1)))
+                : Math.max(0, Math.min(keys.length - 1, up ? Math.floor(s + 1e-6) + 1 : Math.ceil(s - 1e-6) - 1));
+              setS(to);
+              const r = Math.round(to);
+              if (Math.abs(to - r) < 1e-6 && keys[r] !== ev) { fromChip.current = true; onEvent(keys[r]); }
+            }}
             onChange={(e) => {
               setPlaying(false);
               const v = Number(e.target.value);

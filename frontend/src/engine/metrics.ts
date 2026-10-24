@@ -224,6 +224,7 @@ export interface Ctx {
   ev: Events;
   bone_lengths: Arr1;
   fps_unique?: number | null;   // distinct frames per real second (repeated frames add no information)
+  oblique?: boolean;            // camera well off the pitch line: no plane-specific measurement is rated
 }
 
 /** Signed angle (deg) of image vector v (x right, y down) from image-up; + = towards image right. */
@@ -260,7 +261,7 @@ export interface MetricOpts {
   explain?: string;
   extra?: Record<string, unknown> | null;
   needs?: readonly View[] | null;   // camera views in which this metric is measured reliably
-  view?: View | null;
+  view?: View | "oblique" | null;
   minFps?: number | null;
   fps?: number | null;
   tolerance?: number;
@@ -292,7 +293,9 @@ export function metric(key: string, label: string, value: number | null, o: Metr
     // that can be far off (e.g. a 170° front knee read as 96° from behind), and nothing tells a good
     // estimate from a bad one, so the value is withheld (kept as estimate_3d in the JSON export).
     reliability = "estimate";
-    note = "Not measurable from this camera view — film " + needs!.map((x) => VIEW_LABEL[x]).join(" or ") + " to measure it.";
+    const where = needs!.length === 3 ? "side-on or from behind the stumps" : needs!.map((x) => VIEW_LABEL[x]).join(" or ");
+    note = (view === "oblique" ? "The camera is at an angle to the pitch, so this can't be measured reliably — film "
+      : "Not measurable from this camera view — film ") + where + " to measure it.";
     rating = "unrated";
     conf = pyMin(conf, 0.3);
     [withheld, v] = [v, null];
@@ -408,6 +411,7 @@ export function alignmentParts(c: Ctx, which: "shoulder" | "hip"): [Arr1, Arr1, 
 // ------------------------------------------------------------------------------------------------------
 const SIDE: readonly View[] = ["side_on"];
 const REAR: readonly View[] = ["behind", "front_on"];
+const SQUARE: readonly View[] = ["side_on", "behind", "front_on"];   // any view square to the pitch (only an angled camera is excluded)
 
 /** Ball height at release from the image, scaled by the athlete's own body *at release*.
  *
@@ -443,6 +447,7 @@ export function compute(c: Ctx): { metrics: MetricDict[]; series: Series } {
   const { side: s, ev, fps, stature: H } = c;
   const ts = timeSeries(c);
   const view = c.view;
+  const gate = c.oblique ? "oblique" as const : view;   // the view plane-specific metrics are checked against
   const sideView = view === "side_on";
   const rearView = view === "behind" || view === "front_on";
   // precision follows the distinct frames, timings the frame clock
@@ -496,7 +501,7 @@ export function compute(c: Ctx): { metrics: MetricDict[]; series: Series } {
     let conf = lowFps ? 0.25 : 0.45;
     conf *= conf2d(c, br, [s.c_sh, s.c_el, s.c_wr]);
     metrics.push(metric("elbow_extension", "Elbow extension (UAH → release)", ext, {
-      event: "uah-br", source: "3d", confidence: conf, needs: ["side_on"], view, minFps: 100, fps: fpsEff,
+      event: "uah-br", source: "3d", confidence: conf, needs: ["side_on"], view: gate, minFps: 100, fps: fpsEff,
       explain: "Straightening of the bowling elbow between the arm passing horizontal and release, computed "
         + "the ICC way (maximum flexion minus the following minimum). A single camera cannot replace an "
         + "accredited ICC test — use this only as a screening estimate.",
@@ -533,14 +538,14 @@ export function compute(c: Ctx): { metrics: MetricDict[]; series: Series } {
     const legJ = [s.c_fhip, s.c_fkn, s.c_fan];
     const cf = kconf * pyMin(conf2d(c, ffc, legJ), conf2d(c, br, legJ));
     metrics.push(metric("front_knee_ffc", "Front knee at front-foot contact", kFfc, {
-      event: "ffc", source: src, confidence: cf, explain: "180° = straight leg.", needs: SIDE, view }));
+      event: "ffc", source: src, confidence: cf, explain: "180° = straight leg.", needs: SIDE, view: gate }));
     metrics.push(metric("front_knee_br", "Front knee at release", kBr, {
-      event: "br", source: src, confidence: cf, needs: SIDE, view,
+      event: "br", source: src, confidence: cf, needs: SIDE, view: gate,
       explain: "A straighter front leg at release acts as a lever and is associated with "
         + "higher ball speed; some flexion is normal and may reduce load.",
       extra: { flexion_after_ffc: pyRound(flexion, 1), extension_to_br: pyRound(extension, 1), min_frame: iMin } }));
     metrics.push(metric("front_knee_flexion", "Front knee bend after landing", flexion, {
-      event: "ffc-br", source: src, confidence: cf, needs: SIDE, view,
+      event: "ffc-br", source: src, confidence: cf, needs: SIDE, view: gate,
       explain: "Flexion of the front knee from landing to its most bent point. Together with "
         + "the extension to release it gives the front-leg technique (Portus et al. 2004).",
       extra: { technique: tech } }));
@@ -549,7 +554,7 @@ export function compute(c: Ctx): { metrics: MetricDict[]; series: Series } {
     const bk = sideView ? jointAngle(jnt(c.kp, s.c_bhip), jnt(c.kp, s.c_bkn), jnt(c.kp, s.c_ban)) : ts.knee_back;
     metrics.push(metric("back_knee_bfc", "Back knee at back-foot contact", bk[bfc], {
       event: "bfc", source: sideView ? "2d" : "3d",
-      confidence: sideView ? 0.7 * conf2d(c, bfc, [s.c_bhip, s.c_bkn, s.c_ban]) : 0.3, needs: SIDE, view,
+      confidence: sideView ? 0.7 * conf2d(c, bfc, [s.c_bhip, s.c_bkn, s.c_ban]) : 0.3, needs: SIDE, view: gate,
       explain: "A very flexed back leg at back-foot contact was one of the strongest "
         + "predictors of lumbar stress injury in a prospective elite study." }));
   }
@@ -566,14 +571,14 @@ export function compute(c: Ctx): { metrics: MetricDict[]; series: Series } {
   }
   const TRUNK = [5, 6, 11, 12];
   metrics.push(metric("trunk_forward_br", "Trunk forward flexion at release", tfUse[br], {
-    event: "br", source: tsrc, confidence: tconf * conf2d(c, br, TRUNK), needs: SIDE, view,
+    event: "br", source: tsrc, confidence: tconf * conf2d(c, br, TRUNK), needs: SIDE, view: gate,
     explain: "How far the trunk is pitched towards the batter at release. Fast bowlers "
       + "flex strongly through the delivery stride. This is the lean at the moment of release; "
       + "'Trunk flexion FFC → release' is how much it bends during the stride." }));
   if (ffc !== null && br > ffc) {
     metrics.push(metric("trunk_flexion_ffc_br", "Trunk flexion FFC → release", tfUse[br] - tfUse[ffc], {
       event: "ffc-br", source: tsrc,
-      confidence: tconf * 0.9 * pyMin(conf2d(c, ffc, TRUNK), conf2d(c, br, TRUNK)), needs: SIDE, view,
+      confidence: tconf * 0.9 * pyMin(conf2d(c, ffc, TRUNK), conf2d(c, br, TRUNK)), needs: SIDE, view: gate,
       explain: "Trunk flexion produced during the delivery stride — a key contributor to ball speed." }));
   }
   let tl: Arr1, lsrc: string, lconf: number;
@@ -586,7 +591,7 @@ export function compute(c: Ctx): { metrics: MetricDict[]; series: Series } {
     [tl, lsrc, lconf] = [ts.trunk_lateral_flexion, "3d", 0.3];
   }
   metrics.push(metric("trunk_lateral_br", "Trunk side-bend at release", Math.abs(tl[br]), {
-    event: "br", source: lsrc, confidence: lconf * conf2d(c, br, TRUNK), needs: REAR, view,
+    event: "br", source: lsrc, confidence: lconf * conf2d(c, br, TRUNK), needs: REAR, view: gate,
     explain: "Lateral flexion of the trunk away from the bowling arm. Large side-bend "
       + "loads the lower back; it is one of the better single-camera measures from "
       + "behind the bowler." }));
@@ -616,14 +621,14 @@ export function compute(c: Ctx): { metrics: MetricDict[]; series: Series } {
     const scr = th - amin(sh.slice(bfc, hi + 1));
     const mixed = (30 <= Math.abs(sep) && Math.abs(sep) <= 45) || (30 <= scr && scr <= 60);   // same gates as the metrics
     metrics.push(metric("shoulder_alignment_bfc", "Shoulder alignment at back-foot contact", th, {
-      event: "bfc", source: "2d+3d", confidence: acon, needs: REAR, view, explain: "180 = side-on, 270 = front-on.",
+      event: "bfc", source: "2d+3d", confidence: acon, needs: REAR, view: gate, explain: "180 = side-on, 270 = front-on.",
       extra: { action_type: mixed ? "mixed" : action } }));
     metrics.push(metric("hip_shoulder_sep_bfc", "Hip-shoulder separation at BFC", Math.abs(sep), {
-      event: "bfc", source: "2d+3d", confidence: acon * 0.9 * sepConf, needs: REAR, view,
+      event: "bfc", source: "2d+3d", confidence: acon * 0.9 * sepConf, needs: REAR, view: gate,
       explain: "Misalignment between hips and shoulders when the back foot lands; large "
         + "values define a 'mixed' action, which twists the lower back." }));
     metrics.push(metric("shoulder_counter_rotation", "Shoulder counter-rotation", pyMax(scr, 0.0), {
-      event: "bfc-ffc", source: "2d+3d", confidence: acon * 0.85, needs: REAR, view,
+      event: "bfc-ffc", source: "2d+3d", confidence: acon * 0.85, needs: REAR, view: gate,
       explain: "How much the shoulders rotate back towards side-on after back-foot contact." }));
   }
 
@@ -641,7 +646,7 @@ export function compute(c: Ctx): { metrics: MetricDict[]; series: Series } {
     explain: "Height of the ball at release as a percentage of your height "
       + `(~${pyFormat((relH * H) / 100, 2)} m for a stature of ${pyFormat(H, 2)} m). Single-camera `
       + "precision is about ± 8 points.",
-    extra: { metres: pyRound((relH * H) / 100, 2) } }));
+    extra: { metres: pyRound((relH * H) / 100, 2) }, needs: SQUARE, view: gate }));
   // arm slot: angle of shoulder->wrist from vertical in the frontal plane
   let slot: number, ssrc: string, sconf: number;
   if (rearView) {
@@ -653,7 +658,7 @@ export function compute(c: Ctx): { metrics: MetricDict[]; series: Series } {
     [ssrc, sconf] = ["3d", 0.35];
   }
   metrics.push(metric("arm_slot_br", "Arm slot at release", slot, {
-    event: "br", source: ssrc, confidence: sconf * conf2d(c, br, [s.c_sh, s.c_wr]), needs: REAR, view,
+    event: "br", source: ssrc, confidence: sconf * conf2d(c, br, [s.c_sh, s.c_wr]), needs: REAR, view: gate,
     explain: "0° = bowling arm straight up (high arm); larger = more round-arm." }));
   if (rearView) {
     const f = c.kp[br];
@@ -664,7 +669,7 @@ export function compute(c: Ctx): { metrics: MetricDict[]; series: Series } {
       event: "br", source: "2d", confidence: 0.6 * conf2d(c, br, [s.c_fan, 3, 4]), decimals: 0,
       explain: "How far the head is laterally from the front foot at release. A head "
         + "falling outside the front foot ('falling away') costs accuracy and "
-        + "increases side-bend." }));
+        + "increases side-bend.", needs: REAR, view: gate }));
   }
   // ---------------- stride ----------------
   if (ffc !== null) {
@@ -678,7 +683,7 @@ export function compute(c: Ctx): { metrics: MetricDict[]; series: Series } {
       [stsrc, stconf] = ["3d", 0.2];
     }
     metrics.push(metric("stride_length_pct", "Delivery stride length", (100 * dx) / H, {
-      event: "ffc", source: stsrc, confidence: stconf * conf2d(c, ffc, [s.c_fan, s.c_ban]), needs: SIDE, view,
+      event: "ffc", source: stsrc, confidence: stconf * conf2d(c, ffc, [s.c_fan, s.c_ban]), needs: SIDE, view: gate,
       explain: "Distance between the ankles at front-foot contact.", extra: { metres: pyRound(dx, 2) } }));
   }
   // Values read at a contact that was only placed from typical timing are measured at a guessed frame: keep them

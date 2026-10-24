@@ -1,6 +1,6 @@
 import type { AnalysisResult, EventKey, Insights } from "../types";
 import { fmt } from "../lib/format";
-import { IArrowRight, ICalendar, IPlay } from "./Icons";
+import { IArrowRight, ICalendar, IEye } from "./Icons";
 
 function ScoreRing({ score, grade }: { score: number | null | undefined; grade: string | null | undefined }) {
   const R = 50, C = 2 * Math.PI * R;
@@ -59,7 +59,7 @@ export function Verdict({ result, ins, onJump, onPlan, onCoaching }: {
         <div className="verdict-actions">
           <button type="button" className="btn primary sm" onClick={onPlan}><ICalendar size={14} /> 2-week practice plan</button>
           {ev && result.events[ev] && (
-            <button type="button" className="btn sm" onClick={() => onJump(ev)} aria-label={`Show me in the video${fix ? `: ${fix.title}` : ""}`}><IPlay size={11} /> Show me</button>
+            <button type="button" className="btn sm" onClick={() => onJump(ev)} aria-label={`Show me in the video${fix ? `: ${fix.title}` : ""}`}><IEye size={12} /> Show me</button>
           )}
           {c.priorities.length > 0 && (
             <button type="button" className="btn ghost sm" onClick={onCoaching}>All coaching <IArrowRight size={13} /></button>
@@ -74,6 +74,7 @@ export function Verdict({ result, ins, onJump, onPlan, onCoaching }: {
         <div>
           <dt>Camera</dt>
           <dd title={slow ? c.capture_tips[0] : undefined}>
+            {result.view.oblique && <>At an angle to the pitch, so most angles aren't rated: film side-on or from behind the stumps. </>}
             {fmt(result.fps_real)} fps{slow ? ": timings are approximate. Slow motion (120–240 fps) is far more precise." : ", precise enough for timings."}
           </dd>
         </div>

@@ -221,7 +221,10 @@ def coach(metrics: list[dict], view: str, fps: float) -> dict:
         capture.append(f"Filmed at {fps:.0f} fps, so release timing is approximate: the arm moves about "
                        f"{min(80, 2000 / fps):.0f}° from one frame to the next. Film in slow motion (120–240 fps) next time "
                        "for precise release and elbow measurements.")
-    if view in ("behind", "front_on"):
+    if view == "oblique":
+        capture.append("Filmed at an angle to the pitch: knee, trunk, stride, side-bend and alignment can't be measured "
+                       "reliably. Film square on: side-on (10–15 m away, hip height) or straight from behind the stumps.")
+    elif view in ("behind", "front_on"):
         capture.append("Filmed from behind/in front: side-bend, arm slot and alignment are measured well, but knee, "
                        "trunk-flexion and stride can't be measured from this angle. Add a side-on clip for those.")
     elif view == "side_on":

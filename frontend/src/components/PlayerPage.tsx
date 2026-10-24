@@ -85,7 +85,7 @@ export default function PlayerPage({ pid, go }: { pid: string; go: (to: string) 
     <>
       <Header go={go} title={p.name} />
       <main className="page" id="main" tabIndex={-1}>
-        <button type="button" className="back-link" onClick={() => go("/")} style={{ marginBottom: 10 }}><IBack size={15} /> Your workspace</button>
+        <button type="button" className="back-link" onClick={() => go("/")} style={{ marginBottom: 10 }}><IBack size={15} /> Your analyses</button>
         <div className="card profile-card">
           {editing ? (
             <>
@@ -135,11 +135,6 @@ export default function PlayerPage({ pid, go }: { pid: string; go: (to: string) 
                 )}
               </div>
               <div className="card stat"><small>Best score</small><b>{s.best_score ?? "–"}</b><span className="faint">out of 100</span></div>
-              <div className="card stat">
-                <small>Current focus</small>
-                <b style={{ fontSize: 17 }}>{data.focus ? data.focus.title : "Keep it up"}</b>
-                <span className="faint">{data.focus ? (data.focus.sessions > 1 ? `top priority for ${data.focus.sessions} sessions` : "from the latest session") : "no priority flagged"}</span>
-              </div>
             </div>
 
             <div className="player-grid">

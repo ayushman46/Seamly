@@ -30,7 +30,7 @@ export default function Settings({ result, busy, onRecompute, onRerun, playerId,
           </select>
         </div>
         <div className="field">
-          <label id="set-arm">Bowling arm ({result.bowling_arm.source === "user" ? "set by you" : `detected: ${result.bowling_arm.arm}, ${Math.round(result.bowling_arm.confidence * 100)}% agreement`})</label>
+          <label id="set-arm">Bowling arm ({result.bowling_arm.source === "user" ? "set by you" : `detected: ${result.bowling_arm.arm}, ${armAgreement(result.bowling_arm)}`})</label>
           <div className="seg" role="group" aria-labelledby="set-arm">
             {["right", "left"].map((a) => (
               <button key={a} className={result.bowling_arm.arm === a ? "on" : ""} aria-pressed={result.bowling_arm.arm === a} disabled={busy} onClick={() => onRecompute({ bowling_arm: a }, `Bowling arm set to ${a}`)}>{a === "right" ? "Right-arm" : "Left-arm"}</button>
@@ -71,8 +71,10 @@ export default function Settings({ result, busy, onRecompute, onRerun, playerId,
           return (
             <div key={`${c.shot}-${c.track}`} className={`row cand ${isSel ? "sel" : ""}`}>
               <div className="grow">
-                <b>Delivery {i + 1}</b> <span className="faint">· frames {c.first}–{c.last}</span>
-                <div className="faint" style={{ fontSize: 12 }}>Arm sweep {fmt(c.sweep?.sweep_deg)}° · peak {fmt(c.sweep?.peak_speed_dps)}°/s</div>
+                <b>Delivery {i + 1}</b>{" "}
+                <span className="faint" title={`Frames ${c.first}–${c.last}; bowling arm sweeps ${fmt(c.sweep?.sweep_deg)}° at up to ${fmt(c.sweep?.peak_speed_dps)}°/s`}>
+                  · {fmt(c.first / result.video.fps, 1)}–{fmt(c.last / result.video.fps, 1)} s into the video
+                </span>
               </div>
               {isSel ? <span className="chip good">Analysed</span> : <button className="btn sm" disabled={busy} onClick={() => onRerun({ candidate: i })}>Analyse this one</button>}
             </div>
@@ -92,12 +94,19 @@ export default function Settings({ result, busy, onRecompute, onRerun, playerId,
             <><dt>Repeated frames</dt><dd title="Frames identical to the previous one (frame-rate conversion or frame-repeat slow motion)">{Math.round((result.quality.repeated_frames ?? 0) * 100)}%</dd></>
           )}
           <dt>3D model</dt><dd>{result.pose3d === "sam3d" ? "SAM 3D Body (image-based)" : "MotionBERT (2D-to-3D lifter)"}</dd>
-          <dt>3D re-projection error</dt><dd>{fmt(result.skeleton.reproj_err_px_median, 1)} px</dd>
+          <dt title="How far the fitted 3D body lands from the joints found on the video">3D fit error</dt><dd>{fmt(result.skeleton.reproj_err_px_median, 1)} px</dd>
           <dt>Body model</dt><dd>NAVER Anny ({result.mesh.vertices.toLocaleString()}-point mesh)</dd>
-          <dt>3D pose</dt><dd>{result.pose3d === "sam3d" ? "SAM 3D Body (image-based)" : "MotionBERT (lifted from the 2D joints)"}</dd>
           <dt>Processing time</dt><dd>{fmt(result.timing_s)} s</dd>
         </dl>
       </div>
     </div>
   );
+}
+
+/** "3 of 4 cues agree" (falls back to a percentage when the individual cues aren't stored). */
+function armAgreement(a: AnalysisResult["bowling_arm"] & { votes?: Record<string, number> }): string {
+  const v = Object.values(a.votes ?? {});
+  if (!v.length) return `${Math.round(a.confidence * 100)}% agreement`;
+  const agree = v.filter((x) => (x > 0) === (a.arm === "right")).length;
+  return `${agree} of ${v.length} cues agree`;
 }

@@ -91,7 +91,9 @@ def summary(result: dict, player: dict | None = None) -> dict:
               "cue": p["drill"]["cue"], "event": p.get("event"), "rating": p.get("rating")} for p in pr[:2]]
     view = result["view"]["view"]
     unlock = []
-    if view in ("behind", "front_on"):
+    if result["view"].get("oblique"):
+        unlock.append("Film square to the pitch, side-on or straight from behind the stumps, to measure your action.")
+    elif view in ("behind", "front_on"):
         unlock.append("Film side-on (10–15 m away, hip height) to also measure your front knee, trunk flexion and stride.")
     else:
         unlock.append("Film from behind the stumps to also measure side-bend, alignment and whether you fall away.")

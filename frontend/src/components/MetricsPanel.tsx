@@ -4,7 +4,7 @@ import { fmt, unitLabel } from "../lib/format";
 
 const GROUPS: { title: string; keys: string[] }[] = [
   { title: "Rhythm & timing", keys: ["bfc_to_ffc_ms", "ffc_to_br_ms"] },
-  { title: "Front leg", keys: ["front_knee_ffc", "front_knee_br", "front_knee_flexion", "back_knee_bfc", "stride_length_pct"] },
+  { title: "Legs & stride", keys: ["front_knee_ffc", "front_knee_br", "front_knee_flexion", "back_knee_bfc", "stride_length_pct"] },
   { title: "Trunk & alignment", keys: ["trunk_lateral_br", "trunk_forward_br", "trunk_flexion_ffc_br", "shoulder_alignment_bfc", "hip_shoulder_sep_bfc", "shoulder_counter_rotation"] },
   { title: "Release", keys: ["release_height_pct", "arm_slot_br", "head_offset_br", "elbow_extension"] },
 ];
@@ -36,11 +36,13 @@ export default function MetricsPanel({ result, selected, onSelect }: { result: A
           <div>
             <div role="heading" aria-level={3} className="card-title">Needs another camera angle or frame rate</div>
             <div className="stack" style={{ gap: 6 }}>
-              {out.map((m) => (
-                <div key={m.key} className="faint" style={{ fontSize: 12.5 }}>
-                  <b className="muted">{m.label}</b> — {m.note || "Couldn't be measured in this clip."}
-                </div>
-              ))}
+              {/* one line per reason, listing the metrics it applies to */}
+              {[...out.reduce((acc, m) => acc.set(m.note || "Couldn't be measured in this clip.", [...(acc.get(m.note || "Couldn't be measured in this clip.") ?? []), m.label]), new Map<string, string[]>())]
+                .map(([note, labels]) => (
+                  <div key={note} className="faint" style={{ fontSize: 12.5 }}>
+                    <b className="muted">{labels.join(", ")}</b>: {note[0].toLowerCase() + note.slice(1)}
+                  </div>
+                ))}
             </div>
           </div>
         );
