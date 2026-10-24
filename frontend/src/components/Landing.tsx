@@ -55,7 +55,7 @@ export function HeroShot() {
   );
   return (
     <figure className="hero-shot">
-      <svg viewBox="0 0 960 720" role="img" aria-label="A club bowler at ball release with Seamly's skeleton overlay: front knee 157 degrees, trunk lean 19 degrees, release height 94% of height">
+      <svg viewBox="0 0 960 720" role="img" aria-label="A club bowler at ball release with Seamly's skeleton overlay: front knee 157 degrees, trunk lean 19 degrees, release height 95% of height">
         <image href={`${import.meta.env.BASE_URL}hero-release.webp`} width="960" height="720" preserveAspectRatio="xMidYMid slice" />
         {COCO_EDGES.map(([a, b]) => {
           if (P(a)[2] < 0.2 || P(b)[2] < 0.2) return null;
@@ -63,7 +63,7 @@ export function HeroShot() {
           return <line key={`${a}-${b}`} x1={P(a)[0]} y1={P(a)[1]} x2={P(b)[0]} y2={P(b)[1]} stroke={c} strokeWidth="6" strokeLinecap="round" />;
         })}
         {SHOT_KP.map(([x, y, c], j) => (j >= 5 && c > 0.2 ? <circle key={j} cx={x} cy={y} r="6" fill="#fff" /> : null))}
-        {label(372, 40, "Release height 94%", "#fda4af")}
+        {label(372, 40, "Release height 95%", "#fda4af")}
         {label(436, 200, "Trunk lean 19°", "#e4e4e7")}
         {label(488, 486, "Front knee 157°", "#6ee7b7")}
       </svg>

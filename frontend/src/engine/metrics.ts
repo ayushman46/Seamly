@@ -448,14 +448,26 @@ export function releaseHeight2d(c: Ctx): [number, string, number] | [null, null,
   if (npMean(need.map((j) => kc[br][j])) < 0.35) return [null, null, null];
   const armPx = seg(s.c_sh, s.c_el) + seg(s.c_el, s.c_wr);
   const legPx = seg(s.c_fhip, s.c_fkn) + seg(s.c_fkn, s.c_fan);
-  const est = [armPx / 0.332, legPx / 0.491].filter((x) => Number.isFinite(x));
+  // the trunk (mid-shoulder to mid-hip = 0.288 H) averages both shoulders and both hips; side-on only, as its forward
+  // lean at release runs along the camera axis from behind or in front and foreshortens it
+  const trunks: number[] = [];
+  for (let t = lo; t < hi; t++) {
+    if (c.view === "side_on" && Math.min(kc[t][5], kc[t][6], kc[t][11], kc[t][12]) > 0.3) {
+      const p = kp[t];
+      trunks.push(Math.hypot((p[5][0] + p[6][0]) / 2 - (p[11][0] + p[12][0]) / 2, (p[5][1] + p[6][1]) / 2 - (p[11][1] + p[12][1]) / 2));
+    }
+  }
+  const trunkPx = trunks.length ? amax(trunks) : NaN;
+  const est = [armPx / 0.332, legPx / 0.491, trunkPx / 0.288].filter((x) => Number.isFinite(x));
   if (!est.length) return [null, null, null];
-  const staturePx = est.reduce(pyMax);   // foreshortening only ever shortens segments
+  // three independent scales: the median ignores the one a misplaced keypoint distorts (the shoulder drifting as the
+  // arm passes over the head lengthens the arm); with fewer, the longest, as foreshortening only shortens segments
+  const staturePx = est.length === 3 ? npMedian(est) : est.reduce(pyMax);
   const handY = kp[br][s.c_wr][1] + (kp[br][s.c_wr][1] - kp[br][s.c_el][1]) * 0.25;   // ball sits beyond the wrist
   const groundY = kp[br][s.c_fan][1] + ANKLE_HEIGHT_FRAC * staturePx;
   const pct = (100.0 * (groundY - handY)) / Math.max(staturePx, 1e-6);
   if (!(60 <= pct && pct <= 140)) return [null, null, null];
-  const agree = est.length === 2 ? est.reduce(pyMin) / est.reduce(pyMax) : 0.6;
+  const agree = est.length >= 2 ? est.reduce(pyMin) / est.reduce(pyMax) : 0.6;
   return [pct, "2d", 0.5 + 0.3 * agree];
 }
 

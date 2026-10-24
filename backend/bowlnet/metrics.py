@@ -295,8 +295,8 @@ def _release_height_2d(c: Ctx):
 
     At release the bowling arm is near-vertical and the front leg braced, so both lie close to the image
     plane in side and rear views; their pixel lengths divided by anthropometric segment ratios (upper arm +
-    forearm = 0.332 H, thigh + shank = 0.491 H; Drillis & Contini 1966) give the stature in pixels right at
-    that frame, independent of camera zoom or the bowler's distance from the camera."""
+    forearm = 0.332 H, thigh + shank = 0.491 H; Drillis & Contini 1966; with the trunk, 0.288 H) give the stature in
+    pixels right at that frame, independent of camera zoom or the bowler's distance from the camera."""
     s, br = c.side, c.ev.br
     kp, kc = c.kp, c.kc
     lo, hi = max(0, br - 2), min(len(kp), br + 3)
@@ -311,16 +311,23 @@ def _release_height_2d(c: Ctx):
         return None, None, None
     arm_px = seg(s.c_sh, s.c_el) + seg(s.c_el, s.c_wr)
     leg_px = seg(s.c_fhip, s.c_fkn) + seg(s.c_fkn, s.c_fan)
-    est = [x for x in (arm_px / 0.332, leg_px / 0.491) if np.isfinite(x)]
+    # the trunk (mid-shoulder to mid-hip = 0.288 H) averages both shoulders and both hips; side-on only, as its
+    # forward lean at release runs along the camera axis from behind or in front and foreshortens it
+    ok = (np.min(kc[lo:hi][:, [5, 6, 11, 12]], axis=1) > 0.3) & (c.view == "side_on")
+    mid = (kp[lo:hi, 5] + kp[lo:hi, 6]) / 2 - (kp[lo:hi, 11] + kp[lo:hi, 12]) / 2
+    trunk_px = float(np.linalg.norm(mid, axis=1)[ok].max()) if ok.any() else float("nan")
+    est = [x for x in (arm_px / 0.332, leg_px / 0.491, trunk_px / 0.288) if np.isfinite(x)]
     if not est:
         return None, None, None
-    stature_px = float(max(est))                    # foreshortening only ever shortens segments
+    # three independent scales: the median ignores the one a misplaced keypoint distorts (the shoulder drifting as the
+    # arm passes over the head lengthens the arm); with fewer, the longest, as foreshortening only shortens segments
+    stature_px = float(np.median(est)) if len(est) == 3 else float(max(est))
     hand_y = kp[br, s.c_wr, 1] + (kp[br, s.c_wr, 1] - kp[br, s.c_el, 1]) * 0.25   # ball sits beyond the wrist
     ground_y = kp[br, s.c_fan, 1] + ANKLE_HEIGHT_FRAC * stature_px
     pct = 100.0 * (ground_y - hand_y) / max(stature_px, 1e-6)
     if not (60 <= pct <= 140):
         return None, None, None
-    agree = min(est) / max(est) if len(est) == 2 else 0.6
+    agree = min(est) / max(est) if len(est) >= 2 else 0.6
     return float(pct), "2d", float(0.5 + 0.3 * agree)
 
 
