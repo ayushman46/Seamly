@@ -1,18 +1,23 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { api } from "../api";
 import type { AnalysisMeta, AnalysisResult } from "../types";
-import { paceFrom, rangeText, realSeconds, type PaceTarget } from "../lib/pace";
+import { paceFrom, rangeText, realSeconds, type Pace, type PaceTarget } from "../lib/pace";
 import type { Runup } from "../lib/runup";
 import { fmt } from "../lib/format";
-import { IBolt } from "./Icons";
+import { IBolt, INext, IPrev } from "./Icons";
 
 // what the numbers mean against other bowlers (published values; see docs/RESEARCH.md)
-export const PACE_BANDS = "Typical release speeds: under-15 and club bowlers about 100 km/h, state under-19s about 125, first-class seamers about 127, international quicks 140+, the fastest 150+.";
-const RUNUP_NORM = "Elite men average 5.8 ± 0.6 m/s, juniors 5.8 ± 0.7; finger spinners about 2.5.";
+export const PACE_BANDS = "Typical release speeds: club and under-15 bowlers about 100 km/h, state under-19 and first-class seamers 125–128, international fast bowlers 140 and up, the fastest 150 and up.";
+const RUNUP_NORM = "Elite men average 5.8 m/s, and a squad of state juniors ran in just as fast; finger spinners about 2.5.";
+// no bowled ball reaches the batter sooner than this after release; a ball can't pitch sooner than this either
+const EARLIEST_ARRIVAL_S = 0.35, EARLIEST_PITCH_S = 0.18;
 
 /**
- * Pace from the same clip as the action: ball speed from the release frame and the frame the ball reaches the batter
- * (timed over the pitch, so no calibration), the run-up speed at back-foot contact, and the bowling arm's peak speed.
+ * Pace from the same clip as the action: ball speed from three marks (the release, found by the analysis; where the
+ * ball pitched, optional; where it reaches the batter), timed over the pitch so no calibration is needed, plus the
+ * run-up speed and the technique factors most linked to ball speed. While measuring, a bar fixed under the screen
+ * holds the frame controls and the marks, so the video and the result are in view together on a phone.
  */
 export default function PaceCard({ id, result, meta, frame, onSeek, onMeta, flash }: {
   id: string; result: AnalysisResult; meta: AnalysisMeta; frame: number;
@@ -25,43 +30,66 @@ export default function PaceCard({ id, result, meta, frame, onSeek, onMeta, flas
     return () => { live = false; };
   }, [id, result]);
 
-  const br = result.events.br?.frame ?? result.frames.start;
+  const f0 = result.frames.start, fEnd = result.frames.end - 1;
+  const br = result.events.br?.frame ?? f0;
+  const sideOn = result.view.view === "side_on";
   const [measuring, setMeasuring] = useState(false);
   const [release, setRelease] = useState(br);
+  const [pitch, setPitch] = useState<number | null>(null);
+  const [arrival, setArrival] = useState<number | null>(null);
   const [target, setTarget] = useState<PaceTarget>("crease");
   const [bounced, setBounced] = useState(true);
-  const [pitch, setPitch] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
+  const barRef = useRef<HTMLDivElement>(null);
   const saved = meta.pace ?? null;
-  const preview = measuring && frame > release && (pitch === null || frame > pitch)
-    ? paceFrom(result, { release, arrival: frame, target, bounced, pitch }) : null;
+
+  const since = (f: number) => realSeconds(result, release, f) ?? 0;
+  const pace: Pace | null = arrival !== null && arrival > release && (pitch === null || pitch < arrival)
+    ? paceFrom(result, { release, arrival, target, bounced: bounced || pitch !== null, pitch }) : null;
+  const tooSoon = arrival !== null && !pace && since(arrival) < 0.6;   // faster than any bowled ball
   const coarse = result.fps_real < 50;
-  // the analysed part of the clip can end before the ball reaches the batter (0.45–0.7 s after release)
-  const room = realSeconds(result, release, result.frames.end - 1) ?? 0;
-  const sel = result.candidates.find((c) => c.track === result.bowler.track && c.shot === result.bowler.shot) ?? result.candidates[0];
-  // the arm's turning speed is only true to life when its circle faces the camera (side-on, square), and at 50 fps or
-  // more: slower footage averages the peak over a tenth of a second and reads low
-  const armDps = result.view.view === "side_on" && !result.view.oblique && result.fps_real >= 50
-    ? (sel as unknown as { sweep?: { peak_speed_dps?: number } } | undefined)?.sweep?.peak_speed_dps ?? null : null;
+  const room = since(fEnd);   // the analysed part of the clip can end before the ball arrives (0.45–0.7 s)
+  const canPitch = since(frame) >= EARLIEST_PITCH_S && (arrival === null || frame < arrival);
+  const canArrive = frame > release && (pitch === null || frame > pitch);
+  const skipTo = (() => { for (let f = release + 1; f <= fEnd; f++) if (since(f) >= EARLIEST_ARRIVAL_S) return f; return fEnd; })();
 
   // the technique factors most linked to ball speed that this clip measured (Keily 2021: front-foot contact to release
   // r = -0.60; Ramachandran 2021: front knee at release r = 0.40)
   const factor = (key: string) => result.metrics.find((m) => m.key === key && m.value !== null && m.reliability === "measured" && m.rating !== "unrated") ?? null;
   const ffcBr = factor("ffc_to_br_ms"), kneeBr = factor("front_knee_br");
 
-  // a ball between 100 and 150 km/h reaches the batter 0.45–0.7 s after release: start the search just before that
-  const ahead = (from: number, sec: number) => {
-    for (let f = from + 1; f < result.frames.end; f++) if ((realSeconds(result, from, f) ?? 0) >= sec) return f;
-    return result.frames.end - 1;
+  const start = () => {
+    setRelease(br); setPitch(null); setArrival(null); setMeasuring(true); onSeek(br);
+    document.querySelector(".card.player")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    window.setTimeout(() => barRef.current?.querySelector<HTMLElement>("[data-next]")?.focus({ preventScroll: true }), 60);
   };
-  const start = () => { setRelease(br); setPitch(null); setMeasuring(true); onSeek(br); };
+  const stop = () => {
+    setMeasuring(false);
+    window.setTimeout(() => document.getElementById("pace-title")?.closest("section")?.querySelector<HTMLElement>("button")?.focus({ preventScroll: true }), 0);
+  };
+  // Esc leaves measuring; the page gets room at the bottom so the bar covers nothing
+  useEffect(() => {
+    if (!measuring) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") stop(); };
+    document.addEventListener("keydown", onKey);
+    document.body.classList.add("pace-measuring");
+    return () => { document.removeEventListener("keydown", onKey); document.body.classList.remove("pace-measuring"); };
+  }, [measuring]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  const nudgeRelease = (d: number) => {
+    const f = Math.max(f0, Math.min(fEnd - 1, release + d));
+    setRelease(f);
+    if (pitch !== null && pitch <= f) setPitch(null);       // marks can't come before the release
+    if (arrival !== null && arrival <= f) setArrival(null);
+    onSeek(f);
+  };
   const save = async () => {
-    if (!preview) return;
+    if (!pace || arrival === null) return;
     setBusy(true);
     try {
-      onMeta(await api.patch(id, { pace: { release, arrival: frame, target, bounced: bounced || pitch !== null, pitch, kmh: preview.kmh, lo: preview.lo, hi: preview.hi } }));
-      setMeasuring(false);
-      flash(`Ball speed saved: about ${Math.round(preview.kmh)} km/h`);
+      onMeta(await api.patch(id, { pace: { release, arrival, target, bounced: bounced || pitch !== null, pitch, kmh: pace.kmh, lo: pace.lo, hi: pace.hi } }));
+      stop();
+      flash(`Ball speed saved: about ${Math.round(pace.kmh)} km/h`);
     } catch (e) {
       flash((e as Error).message, true);
     } finally {
@@ -71,6 +99,41 @@ export default function PaceCard({ id, result, meta, frame, onSeek, onMeta, flas
   const remove = async () => {
     try { onMeta(await api.patch(id, { pace: null })); } catch (e) { flash((e as Error).message, true); }
   };
+
+  const readout = pace
+    ? <><span className="pace-big sm">{Math.round(pace.kmh)}<small> km/h</small></span> <span className="faint">est. {rangeText(pace)}</span></>
+    : <span className="faint">{arrival !== null
+      ? (tooSoon ? "Too soon for a bowled ball to reach the batter: check the arrival frame." : "Longer than a bowled ball takes: check the frames.")
+      : frame <= release ? "Step forward from the release." : `+${Math.round(since(frame) * 1000)} ms: step on until the ball reaches the batter.`}</span>;
+
+  const bar = measuring && createPortal(
+    <div className="pace-bar" ref={barRef} role="region" aria-label="Ball speed marks">
+      <div className="pace-bar-in">
+        <div className="pace-bar-step">
+          <button type="button" className="btn sm ghost icon" aria-label="Previous frame" onClick={() => onSeek(Math.max(f0, frame - 1))}><IPrev size={16} /></button>
+          <span className="mono pace-bar-f">f {frame}{frame > release ? ` · +${Math.round(since(frame) * 1000)} ms` : ""}</span>
+          <button type="button" className="btn sm ghost icon" data-next aria-label="Next frame" onClick={() => onSeek(Math.min(fEnd, frame + 1))}><INext size={16} /></button>
+          {frame < skipTo && <button type="button" className="btn sm ghost" onClick={() => onSeek(skipTo)} title="No bowled ball reaches the batter sooner than this">Skip to +{Math.round(EARLIEST_ARRIVAL_S * 1000)} ms</button>}
+        </div>
+        <div className="pace-bar-marks">
+          <button type="button" className={`btn sm ${pitch !== null ? "on" : ""}`} disabled={pitch === null && !canPitch} onClick={() => canPitch && setPitch(frame)}
+            title={canPitch ? "Mark the frame where the ball lands (optional)" : "Too soon after the release for the ball to have pitched"}>
+            {pitch !== null ? `Pitched: f ${pitch}` : "Pitched here"}
+          </button>
+          <button type="button" className={`btn sm ${arrival !== null ? "on" : "primary"}`} disabled={arrival === null && !canArrive} onClick={() => canArrive && setArrival(frame)}
+            title={arrival !== null ? "Press again on another frame to move the arrival" : undefined}>
+            {arrival !== null ? `Arrives: f ${arrival}` : "Arrives here"}
+          </button>
+        </div>
+        <div className="pace-bar-out" aria-live="polite">{readout}</div>
+        <div className="pace-bar-act">
+          <button type="button" className="btn sm primary" disabled={!pace || busy} onClick={save}>Save</button>
+          <button type="button" className="btn sm ghost" onClick={stop}>Cancel</button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
 
   return (
     <section className="card card-pad pace-card" aria-labelledby="pace-title">
@@ -91,8 +154,10 @@ export default function PaceCard({ id, result, meta, frame, onSeek, onMeta, flas
       ) : !measuring ? (
         <div>
           <p className="muted" style={{ margin: "0 0 10px", fontSize: 13 }}>
-            Ball speed from this clip, timed over the pitch: it needs the ball reaching the batter in view (film from behind the
-            bowler's stumps; slow motion makes it far more precise).
+            Ball speed from this clip, timed over the pitch. It needs the ball reaching the batter in the picture: film from behind the
+            bowler's stumps, in slow motion if you can.
+            {sideOn && " Side-on clips rarely show it."}
+            {room < 0.42 && ` This clip's analysed part ends ${room.toFixed(2)} s after the release, before most balls arrive.`}
           </p>
           <button type="button" className="btn sm primary" onClick={start}>Measure ball speed</button>
         </div>
@@ -102,25 +167,21 @@ export default function PaceCard({ id, result, meta, frame, onSeek, onMeta, flas
             <li>
               <b>Release</b>: frame {release}{release === br ? " (found automatically)" : ""}{" "}
               <span className="seg" role="group" aria-label="Move the release frame" style={{ marginLeft: 4, verticalAlign: "middle" }}>
-                <button type="button" aria-label="Release one frame earlier" onClick={() => setRelease((f) => Math.max(result.frames.start, f - 1))}>−1</button>
-                <button type="button" aria-label="Release one frame later" onClick={() => {
-                  const f = Math.min(result.frames.end - 1, release + 1);
-                  setRelease(f);
-                  if (pitch !== null && pitch <= f) setPitch(null);   // a pitch can't come before the release
-                }}>+1</button>
+                <button type="button" aria-label="Release one frame earlier" onClick={() => nudgeRelease(-1)}>−1</button>
+                <button type="button" aria-label="Release one frame later" onClick={() => nudgeRelease(1)}>+1</button>
               </span>
             </li>
             <li>
               <b>Pitch</b> <span className="faint">(optional, narrows the range)</span>:{" "}
-              {pitch !== null ? (
-                <>frame {pitch} <button type="button" className="link-btn" onClick={() => setPitch(null)}>Clear</button></>
-              ) : (
-                <>step to the frame the ball lands, then{" "}
-                  <button type="button" className="btn sm" disabled={frame <= release} onClick={() => setPitch(frame)}>Pitched here</button></>
-              )}
+              {pitch !== null
+                ? <>frame {pitch} <button type="button" className="link-btn" onClick={() => setPitch(null)}>Clear</button></>
+                : "step to the frame where the ball lands and press Pitched here."}
             </li>
             <li>
-              <b>Arrival</b>: step on to the frame where the ball reaches the batter's
+              <b>Arrival</b>:{" "}
+              {arrival !== null
+                ? <>frame {arrival} <button type="button" className="link-btn" onClick={() => setArrival(null)}>Clear</button></>
+                : "step on to the frame where the ball reaches the batter's"}
               <span className="seg" role="group" aria-label="Where the ball is timed to" style={{ margin: "0 6px", verticalAlign: "middle" }}>
                 {(["crease", "stumps"] as const).map((t) => (
                   <button key={t} type="button" className={target === t ? "on" : ""} aria-pressed={target === t} onClick={() => setTarget(t)}>
@@ -128,23 +189,16 @@ export default function PaceCard({ id, result, meta, frame, onSeek, onMeta, flas
                   </button>
                 ))}
               </span>
-              {frame < ahead(release, 0.4) && (
-                <button type="button" className="btn sm ghost" style={{ marginLeft: 2 }} onClick={() => onSeek(ahead(release, 0.4))}>Skip to 0.4 s after release</button>
-              )}
+              {arrival === null && "and press Arrives here."}
               {pitch === null && (
-                <label className="pick" style={{ display: "inline-flex", paddingLeft: 0, marginTop: 6 }}>
-                  <input type="checkbox" checked={bounced} onChange={(e) => setBounced(e.target.checked)} /> It pitched on the way (frame not marked)
+                <label className="pick" style={{ display: "flex", paddingLeft: 0, marginTop: 6 }}>
+                  <input type="checkbox" checked={bounced} onChange={(e) => setBounced(e.target.checked)} />
+                  The ball pitched before reaching the batter (the bounce slows it, which the estimate allows for)
                 </label>
               )}
             </li>
           </ol>
-          <div className="pace-preview" aria-live="polite">
-            {preview
-              ? <><span className="pace-big sm">{Math.round(preview.kmh)}<small> km/h</small></span> <span className="faint">({rangeText(preview)}) at frame {frame}</span></>
-              : <span className="faint">{frame <= release ? "Step forward from the release: → one frame, Shift+→ five, or the timeline."
-                : pitch !== null && frame <= pitch ? "Now step on to where the ball reaches the batter."
-                : "That's too long or too short for a bowled ball: check the frames."}</span>}
-          </div>
+          <div className="pace-preview">{readout}</div>
           {room < 0.42 && (
             <p className="faint" style={{ fontSize: 12, margin: "6px 0 0" }}>
               The analysed part of this clip ends {room.toFixed(2)} s after the release, before most balls reach the batter (0.45–0.7 s), so
@@ -157,10 +211,6 @@ export default function PaceCard({ id, result, meta, frame, onSeek, onMeta, flas
               several times tighter.
             </p>
           )}
-          <div className="row" style={{ gap: 8, marginTop: 10 }}>
-            <button type="button" className="btn sm primary" disabled={!preview || busy} onClick={save}>Save this speed</button>
-            <button type="button" className="btn sm ghost" onClick={() => setMeasuring(false)}>Cancel</button>
-          </div>
         </div>
       )}
 
@@ -169,21 +219,19 @@ export default function PaceCard({ id, result, meta, frame, onSeek, onMeta, flas
           <dt>Run-up</dt>
           <dd>
             {runup === undefined ? "…" : runup ? (
-              <><b>{fmt(runup.kmh, 0)} km/h</b> ({fmt(runup.ms, 1)} m/s) at back-foot contact{runup.estimated ? " (contact frame estimated)" : ""}. <span className="faint">{RUNUP_NORM}</span></>
-            ) : <span className="faint">Needs a side-on clip showing the last strides of the run-up.</span>}
+              <><b>{fmt(runup.ms, 1)} m/s</b> ({fmt(runup.kmh, 0)} km/h) at back-foot contact{runup.estimated ? " (contact frame estimated)" : ""}. <span className="faint">{RUNUP_NORM}</span></>
+            ) : <span className="faint">{sideOn ? "Needs the last strides of the run-up in the picture: here the bowler comes into view too late." : "Needs a side-on clip showing the last strides of the run-up."}</span>}
           </dd>
         </div>
         {ffcBr && (
-          <div><dt>Landing to release</dt><dd><b>{fmt(ffcBr.value, 0)} ms</b>. <span className="faint">Elite men about 103 ms; the quicker this is, the faster the ball tends to be.</span></dd></div>
+          <div><dt>Front-foot contact to release</dt><dd><b>{fmt(ffcBr.value, 0)} ms</b>. <span className="faint">Elite men take about 103 ms; the quicker this is, the faster the ball tends to be.</span></dd></div>
         )}
         {kneeBr && (
           <div><dt>Front knee</dt><dd><b>{fmt(kneeBr.value, 0)}°</b> at release. <span className="faint">A straighter front knee goes with faster balls.</span></dd></div>
         )}
-        {armDps !== null && armDps > 0 && (
-          <div><dt>Bowling arm</dt><dd><b>{fmt(armDps, 0)}°/s</b> at its fastest.</dd></div>
-        )}
       </dl>
-      <p className="faint" style={{ fontSize: 12, margin: "10px 0 0" }}>{PACE_BANDS} An estimate from the video, not a radar reading.</p>
+      <p className="faint" style={{ fontSize: 12, margin: "10px 0 0" }}>{PACE_BANDS} Ball speed here is an estimate from the video, not a radar reading.</p>
+      {bar}
     </section>
   );
 }

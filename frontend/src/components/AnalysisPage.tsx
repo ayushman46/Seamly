@@ -460,8 +460,8 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
       // single-key shortcuts only while nothing else has focus or focus is in the video player, so they never
       // clash with screen-reader keys or typing elsewhere on the page
       // (clicking an empty part of the page focuses <main>, which counts as nothing)
-      if (el && el !== document.body && el.tagName !== "H1" && el.tagName !== "MAIN" && !el.closest?.(".card.player, .card.viewer, .pace-card")) return;
-      if (el?.closest?.("input, select, textarea, [contenteditable], [role=tablist], [role=menu]")) return;   // they use the arrows
+      if (el && el !== document.body && el.tagName !== "H1" && el.tagName !== "MAIN" && !el.closest?.(".card.player, .card.viewer, .pace-card, .pace-bar")) return;
+      if (el?.closest?.("input:not([type=checkbox]), select, textarea, [contenteditable], [role=tablist], [role=menu]")) return;   // they use the arrows
       if (el?.closest?.("button, a") && (e.key === " " || e.key === "Enter")) return;   // native activation
       if (e.key === " " || e.key === "k") { e.preventDefault(); setPlaying((p) => !p); }
       else if (e.key === "ArrowRight" || e.key === "l") { e.preventDefault(); setPlaying(false); setFrame((f) => Math.min(f1 - 1, f + (e.shiftKey ? 5 : 1))); }

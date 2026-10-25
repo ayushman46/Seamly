@@ -182,7 +182,7 @@ export function FilmingGuide() {
             <div className="film-diagram"><BehindDiagram /></div>
             <div className="film-body">
               <h3>From behind the stumps</h3>
-              <p>In line with the stumps, looking down the pitch. Measures side-bend, hip–shoulder alignment and the back-health check.</p>
+              <p>In line with the bowler's stumps, looking down the pitch. Measures side-bend, hip–shoulder alignment and the back-health check, and ball speed when the batter is in the picture.</p>
             </div>
           </article>
         </div>

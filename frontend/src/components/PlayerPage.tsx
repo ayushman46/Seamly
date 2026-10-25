@@ -186,7 +186,7 @@ export default function PlayerPage({ pid, go }: { pid: string; go: (to: string) 
               const dayBest = today.reduce((m, x) => (x.kmh > m.kmh ? x : m), today[0]);
               const drop = today.length > 1 && dayBest !== last ? (1 - last.kmh / dayBest.kmh) * 100 : 0;
               return (
-                <section className="card card-pad" aria-labelledby="speed-title">
+                <section className="card card-pad speed-card" aria-labelledby="speed-title">
                   <div role="heading" aria-level={2} id="speed-title" className="card-title">Ball speed</div>
                   <div className="speed-grid">
                     <dl className="speed-stats">
@@ -194,7 +194,8 @@ export default function PlayerPage({ pid, go }: { pid: string; go: (to: string) 
                       {pts.length > 1 && <div><dt>Best</dt><dd><span className="pace-big sm">{Math.round(best.kmh)}<small> km/h</small></span><span className="faint">{dateOf(best.created)}</span></dd></div>}
                     </dl>
                     {pts.length > 1
-                      ? <div className="speed-chart"><Trend points={pts.map((x) => ({ value: x.kmh, range: [x.lo, x.hi] as [number, number], label: `${dateOf(x.created)}: ${Math.round(x.lo)}–${Math.round(x.hi)} km/h`, id: x.id }))} height={96} format={(v) => `${Math.round(v)}`} onPick={(i) => go(`/a/${i}`)} /></div>
+                      ? <div className="speed-chart"><Trend points={pts.map((x) => ({ value: x.kmh, range: [x.lo, x.hi] as [number, number], label: `${dateOf(x.created)}: ${Math.round(x.lo)}–${Math.round(x.hi)} km/h`, id: x.id }))} height={96} format={(v) => `${Math.round(v)}`} onPick={(i) => go(`/a/${i}`)} />
+                          <div className="faint speed-dates"><span>{dateOf(pts[0].created)}</span><span>{dateOf(last.created)}</span></div></div>
                       : <p className="faint" style={{ fontSize: 12.5, margin: 0 }}>Measure the ball speed on another delivery to see the trend.</p>}
                   </div>
                   {drop >= 5 && (

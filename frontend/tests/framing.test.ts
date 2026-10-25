@@ -51,6 +51,12 @@ describe("camera check", () => {
     const a = person(300, 600, 200, false), b = person(900, 600, 300, false), c = person(600, 700, 600, true, 0.2);
     const p = mainPerson({ boxes: [a.box, b.box, c.box], confs: [0.9, 0.8, 0.2], kps: [a.kps, b.kps, c.kps], kcs: [a.kcs, b.kcs, c.kcs] });
     expect(p!.box).toEqual(b.box);
+    // stays on the person it was following, unless someone much bigger comes into view
+    const near = person(300, 600, 260, false);   // a little smaller than b
+    const det = { boxes: [near.box, b.box], confs: [0.9, 0.9], kps: [near.kps, b.kps], kcs: [near.kcs, b.kcs] };
+    expect(mainPerson(det, near.box)!.box).toEqual(near.box);
+    const big = person(900, 650, 420, false);
+    expect(mainPerson({ ...det, boxes: [near.box, big.box], kps: [near.kps, big.kps] }, near.box)!.box).toEqual(big.box);
     expect(bodyWidth(person(0, 600, 260, false))!).toBeLessThan(0.45);
     expect(bodyWidth(person(0, 600, 260, true))!).toBeGreaterThan(0.5);
   });

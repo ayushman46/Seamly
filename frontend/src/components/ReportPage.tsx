@@ -60,7 +60,7 @@ export default function ReportPage({ id, go }: { id: string; go: (to: string) =>
           {meta.pace && (
             <div className="rp-score rp-pace" title="Estimated release speed from the marked frames">
               <b>{Math.round(meta.pace.kmh)}</b>
-              <span>km/h · {Math.round(meta.pace.lo)}–{Math.round(meta.pace.hi)}</span>
+              <span>km/h ball speed, est. {Math.round(meta.pace.lo)}–{Math.round(meta.pace.hi)}</span>
             </div>
           )}
           {runup && (

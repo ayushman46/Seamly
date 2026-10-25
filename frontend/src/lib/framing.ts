@@ -14,14 +14,29 @@ export interface Check { key: "person" | "body" | "size" | "angle" | "orientatio
 export const SIZE: Record<FilmView, [number, number]> = { side_on: [0.18, 0.66], behind: [0.25, 0.85] };
 const KP_OK = 0.3;
 
-/** The most prominent person: the biggest confident box. */
-export function mainPerson(det: { boxes: number[][]; confs: number[]; kps: number[][][]; kcs: number[][] }): Person | null {
-  let best: Person | null = null, area = 0;
+const iou = (a: number[], b: number[]) => {
+  const w = Math.max(0, Math.min(a[2], b[2]) - Math.max(a[0], b[0])), h = Math.max(0, Math.min(a[3], b[3]) - Math.max(a[1], b[1]));
+  const i = w * h, u = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - i;
+  return u > 0 ? i / u : 0;
+};
+
+/**
+ * The bowler: the person followed so far (the box overlapping the last one), else the biggest confident box. Staying
+ * on the same person stops the check jumping to the non-striker or an umpire for a frame.
+ */
+export function mainPerson(det: { boxes: number[][]; confs: number[]; kps: number[][][]; kcs: number[][] }, prev?: number[] | null): Person | null {
+  let best: Person | null = null, area = 0, overlap = 0.3;
+  let kept: Person | null = null;
   det.boxes.forEach((b, i) => {
+    if (det.confs[i] < 0.4) return;
+    const p = { box: b, kps: det.kps[i], kcs: det.kcs[i], conf: det.confs[i] };
     const a = (b[2] - b[0]) * (b[3] - b[1]);
-    if (det.confs[i] >= 0.4 && a > area) { area = a; best = { box: b, kps: det.kps[i], kcs: det.kcs[i], conf: det.confs[i] }; }
+    if (a > area) { area = a; best = p; }
+    if (prev) { const o = iou(b, prev); if (o >= overlap) { overlap = o; kept = p; } }
   });
-  return best;
+  // a much bigger person than the one followed is the bowler walking up to the crease: switch to them
+  const size = (p: Person | null) => (p ? (p.box[2] - p.box[0]) * (p.box[3] - p.box[1]) : 0);
+  return kept && size(best) <= 1.6 * size(kept) ? kept : best;
 }
 
 const dist = (a: number[], b: number[]) => Math.hypot(a[0] - b[0], a[1] - b[1]);
@@ -93,7 +108,9 @@ export function assess(p: Person | null, w: number, h: number, view: FilmView, f
   if (fps !== null) {
     checks.push(fps >= 50
       ? { key: "fps", ok: true, label: `${Math.round(fps)} fps` }
-      : { key: "fps", ok: null, label: `${Math.round(fps)} fps`, tip: "Fine for the angles. For precise timings and ball speed, film from this spot with the phone's slow-motion mode (120–240 fps)." });
+      : { key: "fps", ok: null, label: `${Math.round(fps)} fps`, tip: view === "behind"
+        ? "Fine for the angles. For precise timings and ball speed, film from this spot in the phone's slow-motion mode (120–240 fps), with the batter in the picture."
+        : "Fine for the angles. For precise timings, film from this spot in the phone's slow-motion mode (120–240 fps). Ball speed needs a clip from behind the bowler's stumps." });
   }
   return checks;
 }

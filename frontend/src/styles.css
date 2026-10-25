@@ -761,6 +761,9 @@ svg.chart { width: 100%; height: 170px; display: block; cursor: crosshair; }
 .delta.same { color: var(--c-text-3); }
 .player-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 18px; }
 .focus-card { margin-top: 18px; }
+.focus-card .grow { min-width: 220px; }
+.speed-card { margin-top: 18px; }
+.speed-dates { display: flex; justify-content: space-between; font-size: 11px; margin-top: 2px; }
 .trend-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
 .trend-card { display: flex; flex-direction: column; gap: 6px; box-shadow: none; }
 .session-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; cursor: pointer; box-shadow: none; transition: border-color 0.15s, background 0.15s; }
@@ -1141,6 +1144,18 @@ button:focus:not(:focus-visible) { outline: none; }
 .pace-facts > div { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 10px; font-size: 13px; line-height: 1.45; }
 .pace-facts dt { color: var(--c-text-3); font-size: 12px; padding-top: 1px; }
 .pace-facts dd { margin: 0; color: var(--c-text-2); }
+.pace-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); background: rgba(11, 11, 12, 0.94); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); border-top: 1px solid var(--c-line); }
+.pace-bar-in { max-width: 1240px; margin: 0 auto; display: flex; align-items: center; gap: 8px 16px; flex-wrap: wrap; }
+.pace-bar-step, .pace-bar-marks, .pace-bar-act { display: flex; align-items: center; gap: 6px; }
+.pace-bar-f { font-size: 12.5px; min-width: 128px; text-align: center; color: var(--c-text-2); }
+.pace-bar-out { flex: 1 1 220px; min-width: 0; font-size: 13px; }
+.pace-bar-out .pace-big.sm { font-size: 22px; }
+.pace-bar .btn.on { border-color: var(--c-accent); color: var(--c-accent); }
+body.pace-measuring { padding-bottom: 150px; }
+@media (max-width: 640px) {
+  .pace-bar-out { flex-basis: 100%; order: -1; }
+  .pace-bar-in { gap: 8px 10px; }
+}
 .speed-grid { display: grid; grid-template-columns: auto minmax(0, 420px); gap: 16px 32px; align-items: center; justify-content: space-between; margin-top: 10px; }
 .speed-stats { display: flex; gap: 28px; margin: 0; }
 .speed-stats dt { color: var(--c-text-3); font-size: 12px; margin-bottom: 4px; }
@@ -1164,4 +1179,10 @@ button:focus:not(:focus-visible) { outline: none; }
 .cam-checks li.info .cam-ico { color: var(--c-info); background: rgba(148, 163, 184, 0.12); }
 .cam-ready { margin-top: 14px; padding: 12px 14px; border-radius: var(--r-md, 12px); border: 1px solid var(--c-line); background: var(--c-surface-2); display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .cam-ready p { margin: 0; flex: 1 1 320px; font-size: 13.5px; color: var(--c-text-2); }
+/* a phone held sideways (as the side-on check asks): advice beside the picture, not below the fold */
+@media (orientation: landscape) and (max-height: 540px) {
+  .cam-intro { display: none; }
+  .cam-body { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+  .cam-stage { max-height: calc(100vh - 150px); }
+}
 .film-check { margin: 18px 0 0; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; font-size: 13px; }

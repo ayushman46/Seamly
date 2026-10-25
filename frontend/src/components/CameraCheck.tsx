@@ -56,7 +56,10 @@ export default function CameraCheck({ go }: { go: (to: string) => void }) {
   const lumaRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const models = useRef<PoseModels | null>(null);
-  const history = useRef<Check[][]>([]);
+  const history = useRef<{ t: number; checks: Check[] }[]>([]);
+  const lastBox = useRef<number[] | null>(null);
+  const good = useRef<{ on: boolean; since: number }>({ on: false, since: 0 });
+  const [isGood, setIsGood] = useState(false);
   const viewRef = useRef(view);
   viewRef.current = view;
 
@@ -74,7 +77,7 @@ export default function CameraCheck({ go }: { go: (to: string) => void }) {
       models.current = null;
     };
   }, []);
-  useEffect(() => { history.current = []; }, [view]);
+  useEffect(() => { history.current = []; good.current = { on: false, since: 0 }; setIsGood(false); }, [view]);
 
   const start = async (face = facing) => {
     setErr(null);
@@ -97,13 +100,15 @@ export default function CameraCheck({ go }: { go: (to: string) => void }) {
         models.current = await PoseModels.scanOnly(setProgress);
       }
       if (!alive.current) { stop(); return; }
-      history.current = [];
+      history.current = []; lastBox.current = null; good.current = { on: false, since: 0 }; setIsGood(false);
       setState("live");
     } catch (e) {
       const name = (e as DOMException).name;
-      setErr(name === "NotAllowedError" ? "Camera access was blocked. Allow the camera for this site in the browser's settings, then try again."
+      setErr(name === "NotAllowedError" ? "Camera access was blocked. Allow the camera for this site in the browser's settings (on a phone: the site settings next to the address), then try again."
         : name === "NotFoundError" || name === "OverconstrainedError" ? "No camera was found on this device."
-        : (e as Error).message);
+        : name === "NotReadableError" || name === "AbortError" ? "The camera is busy: another app or tab may be using it. Close it and try again."
+        : name === "SecurityError" ? "The camera only opens on a secure (https) page."
+        : `The camera couldn't be opened here (${(e as Error).message || name}). A recent Chrome or Safari on a phone works best.`);
       setState("error");
       stop();
     }
@@ -120,14 +125,25 @@ export default function CameraCheck({ go }: { go: (to: string) => void }) {
       if (!v || !m || v.readyState < 2 || !v.videoWidth) { timer = window.setTimeout(tick, 200); return; }
       try {
         const w = v.videoWidth, h = v.videoHeight;
-        const p = mainPerson(await m.detect(v, w, h, 0.35));
+        const p = mainPerson(await m.detect(v, w, h, 0.35), lastBox.current);
+        lastBox.current = p ? p.box : null;
         const fps = streamRef.current?.getVideoTracks()[0]?.getSettings().frameRate ?? null;
+        const t = performance.now();
         const now = assess(p, w, h, viewRef.current, fps, meanLuma(v, lumaRef.current!));
-        history.current = [...history.current.slice(-4), now];
-        const shown = steady(history.current);
+        // smooth over the last ~2 s (at least three pictures), so advice changes only once it has held
+        const kept = history.current.filter((x) => t - x.t < 1800);
+        history.current = [...(kept.length >= 2 ? kept : history.current.slice(-2)), { t, checks: now }];
+        const shown = steady(history.current.map((x) => x.checks));
+        // "Good spot" appears once the checks pass and stays unless they keep failing for over a second
+        const g = good.current, ok = ready(shown);
+        if (ok !== g.on) {
+          if (!g.since) g.since = t;
+          if (ok || t - g.since > 1200) { g.on = ok; g.since = 0; }
+        } else g.since = 0;
         if (!alive) return;
         setChecks(shown);
-        drawPose(overlayRef.current, p, w, h, ready(shown));
+        setIsGood(g.on);
+        drawPose(overlayRef.current, p, w, h, g.on);
       } catch (e) {
         setErr((e as Error).message);
       }
@@ -137,7 +153,7 @@ export default function CameraCheck({ go }: { go: (to: string) => void }) {
     return () => { alive = false; window.clearTimeout(timer); };
   }, [state]);
 
-  const isReady = state === "live" && checks.length > 0 && ready(checks);
+  const isReady = state === "live" && checks.length > 0 && isGood;
   const flip = () => { const f = facing === "environment" ? "user" : "environment"; setFacing(f); start(f); };
   const toUpload = () => {
     stop();
@@ -150,7 +166,7 @@ export default function CameraCheck({ go }: { go: (to: string) => void }) {
       <Header go={go} />
       <main className="page narrow cam-page" id="main" tabIndex={-1}>
         <h1 className="an-title">Camera check</h1>
-        <p className="muted" style={{ marginTop: 6, maxWidth: 640 }}>
+        <p className="muted cam-intro" style={{ marginTop: 6, maxWidth: 640 }}>
           Put the phone where you'll film from and have the bowler stand at the crease. Seamly checks the angle, distance, framing
           and light live, before you record. Nothing is recorded or sent anywhere.
         </p>
@@ -162,6 +178,8 @@ export default function CameraCheck({ go }: { go: (to: string) => void }) {
           </span>
         </div>
 
+        <div className="cam-body">
+        <div className="cam-left">
         <div className={`cam-stage ${facing === "user" ? "mirror" : ""} ${isReady ? "ready" : ""}`}>
           <video ref={videoRef} playsInline muted aria-label="Live camera picture" />
           <canvas ref={overlayRef} aria-hidden="true" />
@@ -186,6 +204,7 @@ export default function CameraCheck({ go }: { go: (to: string) => void }) {
             <button type="button" className="btn sm ghost" onClick={() => { stop(); setState("idle"); setChecks([]); }}>Stop</button>
           </div>
         )}
+        </div>
         {state === "live" && (
           <section aria-label="Checks" aria-live="polite">
             <ul className="cam-checks">
@@ -207,6 +226,7 @@ export default function CameraCheck({ go }: { go: (to: string) => void }) {
             )}
           </section>
         )}
+        </div>
       </main>
     </>
   );
