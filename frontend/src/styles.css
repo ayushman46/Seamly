@@ -1113,3 +1113,16 @@ button:focus:not(:focus-visible) { outline: none; }
   .since-row { flex-wrap: wrap; row-gap: 2px; }
   .since-row .grow { flex-basis: 100%; order: -1; font-weight: 600; }
 }
+
+/* live angle tags in the 3D view: small chips that follow their joints */
+.viewer-tags { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 2; }
+.viewer-tag { position: absolute; left: 0; top: 0; white-space: nowrap; font-size: 11.5px; font-weight: 650; font-variant-numeric: tabular-nums;
+  padding: 2px 7px; border-radius: 6px; background: rgba(10, 10, 11, 0.78); color: var(--c-text); border: 1px solid var(--c-line-3); }
+.viewer-tag.bowl { border-color: rgba(251, 113, 133, 0.7); }
+.viewer-tag.front { border-color: rgba(52, 211, 153, 0.7); }
+
+/* the 3D view enlarged over the page */
+.card.viewer.big { position: fixed; inset: 12px; z-index: 60; display: flex; flex-direction: column; box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6); }
+.card.viewer.big .viewer-stage { flex: 1; height: auto; min-height: 0; aspect-ratio: auto; }
+.viewer-play { display: flex; align-items: center; gap: 12px; padding: 10px 14px 0; }
+.viewer-play input[type=range] { flex: 1; accent-color: var(--c-text); }

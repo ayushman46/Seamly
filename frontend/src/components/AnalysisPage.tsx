@@ -459,7 +459,7 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
       // single-key shortcuts only while nothing else has focus or focus is in the video player, so they never
       // clash with screen-reader keys or typing elsewhere on the page
       // (clicking an empty part of the page focuses <main>, which counts as nothing)
-      if (el && el !== document.body && el.tagName !== "H1" && el.tagName !== "MAIN" && !el.closest?.(".card.player")) return;
+      if (el && el !== document.body && el.tagName !== "H1" && el.tagName !== "MAIN" && !el.closest?.(".card.player, .card.viewer")) return;
       if (el?.closest?.("input, select, textarea, [contenteditable], [role=tablist], [role=menu]")) return;   // they use the arrows
       if (el?.closest?.("button, a") && (e.key === " " || e.key === "Enter")) return;   // native activation
       if (e.key === " " || e.key === "k") { e.preventDefault(); setPlaying((p) => !p); }
@@ -669,7 +669,8 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
           <div className="stack">
             <ErrorBoundary label="The 3D viewer">
               <Suspense fallback={<div className="card viewer"><div className="viewer-stage" style={{ display: "grid", placeItems: "center" }}><div className="spinner" /></div></div>}>
-                <Viewer3D id={id} result={result} frame={frame} />
+                <Viewer3D id={id} result={result} frame={frame} playing={playing}
+                  onTogglePlay={() => setPlaying((p) => !p)} onSeek={(f) => { setPlaying(false); setFrame(f); }} />
               </Suspense>
             </ErrorBoundary>
             <FrameCard result={result} frame={frame} onOpen={() => setTab("frame")} onConfirm={setEvent} busy={busy} />

@@ -4,9 +4,13 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { api } from "../api";
 import type { AnalysisResult, EventKey } from "../types";
 import { loadMesh, skinFrame, type MeshData } from "../lib/mesh";
-import { EVENT_HEX } from "../lib/constants";
+import { EVENTS, EVENT_HEX, SERIES_INFO, measuredForView } from "../lib/constants";
+import { IPause, IPlay } from "./Icons";
+import { fmt, unitLabel } from "../lib/format";
 
 type Preset = "side_r" | "side_l" | "behind" | "front" | "top";
+const TAG_NAME: Record<string, string> = { front_knee_2d: "Knee", elbow_flexion_2d: "Elbow", trunk_angle_2d: "Trunk",
+  bowling_arm_elevation: "Arm", hip_shoulder_separation: "Hips–shoulders", bowling_wrist_height_pct: "Wrist" };
 const PRESETS: { key: Preset; label: string; title: string }[] = [
   { key: "side_r", label: "Side R", title: "Side-on, from the right" },
   { key: "side_l", label: "Side L", title: "Side-on, from the left" },
@@ -15,13 +19,26 @@ const PRESETS: { key: Preset; label: string; title: string }[] = [
   { key: "top", label: "Top", title: "From above" },
 ];
 
-export default function Viewer3D({ id, result, frame }: { id: string; result: AnalysisResult; frame: number }) {
+export default function Viewer3D({ id, result, frame, playing, onTogglePlay, onSeek }: {
+  id: string; result: AnalysisResult; frame: number;
+  playing?: boolean; onTogglePlay?: () => void; onSeek?: (f: number) => void;   // playback, offered in the enlarged view
+}) {
   const host = useRef<HTMLDivElement>(null);
   const st = useRef<{
     renderer: THREE.WebGLRenderer; scene: THREE.Scene; camera: THREE.PerspectiveCamera; controls: OrbitControls;
     mesh?: THREE.Mesh; geom?: THREE.BufferGeometry; data?: MeshData; skel: THREE.LineSegments; joints: THREE.InstancedMesh;
     ghosts: THREE.Group; follow: THREE.Vector3; raf: number; invalidate: () => void;
+    tags: { el: HTMLDivElement; at: THREE.Vector3; key: string; joint: number }[];
   } | null>(null);
+  const tagHost = useRef<HTMLDivElement>(null);
+  const [showTags, setShowTags] = useState(true);
+  const [big, setBig] = useState(false);   // the 3D view enlarged over the page
+  useEffect(() => {
+    if (!big) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setBig(false); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [big]);
   const [mode, setMode] = useState<"mesh" | "both" | "skeleton">("both");
   const [preset, setPreset] = useState<Preset>(result.view.view === "side_on" ? "side_r" : "behind");
   const [presetN, setPresetN] = useState(0);   // a click on the current preset re-applies it
@@ -35,6 +52,17 @@ export default function Viewer3D({ id, result, frame }: { id: string; result: An
   const parents = result.skeleton3d.parents;
   const right = result.bowling_arm.arm === "right";
   const [bowlingIdx, frontIdx] = useMemo(() => (right ? [[14, 15, 16], [11, 12, 13]] : [[11, 12, 13], [14, 15, 16]]), [right]);
+
+  // which angles get a live tag, and the 3D joint each one sits at (H36M order: 2/5 knees, 12/15 elbows, 8 thorax,
+  // 11/14 shoulders, 13/16 wrists, 0 pelvis)
+  const tagSpecs = useMemo(() => {
+    const fKnee = right ? 5 : 2, bElbow = bowlingIdx[1], bShoulder = bowlingIdx[0], bWrist = bowlingIdx[2];
+    return result.view.view === "side_on"
+      ? [{ key: "front_knee_2d", joint: fKnee, cls: "front" }, { key: "elbow_flexion_2d", joint: bElbow, cls: "bowl" },
+        { key: "trunk_angle_2d", joint: 8, cls: "" }, { key: "bowling_arm_elevation", joint: bShoulder, cls: "bowl" }]
+      : [{ key: "trunk_angle_2d", joint: 8, cls: "" }, { key: "bowling_arm_elevation", joint: bShoulder, cls: "bowl" },
+        { key: "hip_shoulder_separation", joint: 0, cls: "" }, { key: "bowling_wrist_height_pct", joint: bWrist, cls: "bowl" }];
+  }, [result.view.view, right, bowlingIdx]);
 
   // ---------- init scene once ----------
   useEffect(() => {
@@ -93,11 +121,27 @@ export default function Viewer3D({ id, result, frame }: { id: string; result: An
 
     // draw only when something changed (a frame, the camera, a setting), not 60 times a second: a phone's battery
     // and the page's scrolling are worth more than an idle animation loop
-    const s = { renderer, scene, camera, controls, skel, joints, ghosts, follow: new THREE.Vector3(), raf: 0, invalidate: () => undefined as void };
+    const s = { renderer, scene, camera, controls, skel, joints, ghosts, follow: new THREE.Vector3(), raf: 0, invalidate: () => undefined as void,
+      tags: [] as { el: HTMLDivElement; at: THREE.Vector3; key: string; joint: number }[] };
+    const v = new THREE.Vector3();
     const draw = () => {
       s.raf = 0;
       const moving = controls.update();   // true while the orbit is still easing to a stop
       renderer.render(scene, camera);
+      // live angle tags: each follows its joint on screen as the body moves and the camera orbits
+      const w = el.clientWidth, h = el.clientHeight;
+      const placed: [number, number, number][] = [];   // x, y, width of the tags already placed (they must not overlap)
+      for (const tag of s.tags) {
+        v.copy(tag.at).project(camera);
+        const off = v.z > 1 || Math.abs(v.x) > 1.05 || Math.abs(v.y) > 1.05;
+        tag.el.style.display = off ? "none" : "";
+        if (off) continue;
+        const x = ((v.x + 1) / 2) * w + 10, tw = tag.el.offsetWidth || 80;
+        let y = ((1 - v.y) / 2) * h - 10;
+        for (let k = 0; k < 6 && placed.some(([px, py, pw]) => x < px + pw && px < x + tw && Math.abs(py - y) < 22); k++) y += 22;
+        placed.push([x, y, tw]);
+        tag.el.style.transform = `translate(${x}px, ${y}px)`;
+      }
       if (moving) s.raf = requestAnimationFrame(draw);
     };
     s.invalidate = () => { if (!s.raf) s.raf = requestAnimationFrame(draw); };
@@ -126,6 +170,19 @@ export default function Viewer3D({ id, result, frame }: { id: string; result: An
       st.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    const s = st.current, hostEl = tagHost.current;
+    if (!s || !hostEl) return;
+    hostEl.replaceChildren();
+    s.tags = tagSpecs.filter((spec) => result.series[spec.key]).map((spec) => {
+      const el = document.createElement("div");
+      el.className = `viewer-tag ${spec.cls}`;
+      hostEl.appendChild(el);
+      return { el, at: new THREE.Vector3(), key: spec.key, joint: spec.joint };
+    });
+    s.invalidate();
+  }, [tagSpecs, result.series]);
 
   // ---------- load body mesh ----------
   useEffect(() => {
@@ -201,6 +258,18 @@ export default function Viewer3D({ id, result, frame }: { id: string; result: An
     const m4 = new THREE.Matrix4();
     J.forEach((p, j) => { m4.makeTranslation(p[0], p[1], p[2]); s.joints.setMatrixAt(j, m4); });
     s.joints.instanceMatrix.needsUpdate = true;
+    // live angle tags at the joints they describe: the same per-frame values as "At this frame" (measured on the video
+    // where this camera view sees that angle, the 3D model's estimate otherwise, marked ≈)
+    for (const tag of s.tags) {
+      tag.at.set(J[tag.joint][0], J[tag.joint][1], J[tag.joint][2]);
+      const val = result.series[tag.key]?.[t];
+      const info = SERIES_INFO[tag.key];
+      const ok = measuredForView(tag.key, info.plane, result.view.view);
+      tag.el.textContent = val === null || val === undefined || !Number.isFinite(val) ? ""
+        : `${TAG_NAME[tag.key] ?? info.label} ${ok ? "" : "≈"}${fmt(val, 0)}${info.unit === "deg" ? "°" : unitLabel(info.unit)}`;
+      tag.el.title = `${info.label}${ok ? "" : " (3D estimate: this camera view doesn't see this angle)"}`;
+      tag.el.style.visibility = showTags && tag.el.textContent ? "visible" : "hidden";
+    }
     // follow the pelvis
     if (follow) {
       const target = new THREE.Vector3(J[0][0], Math.max(0.85, J[0][1]), J[0][2]);
@@ -209,7 +278,7 @@ export default function Viewer3D({ id, result, frame }: { id: string; result: An
       s.camera.position.add(delta);
     }
     s.invalidate();
-  }, [frame, mode, follow, result, f0, parents, bowlingIdx, frontIdx, status]);
+  }, [frame, mode, follow, result, f0, parents, bowlingIdx, frontIdx, status, showTags, tagSpecs]);
 
   // ---------- camera presets ----------
   useEffect(() => {
@@ -277,8 +346,9 @@ export default function Viewer3D({ id, result, frame }: { id: string; result: An
   }, [active]);
 
   return (
-    <div className="card viewer">
+    <div className={`card viewer ${big ? "big" : ""}`} role={big ? "dialog" : undefined} aria-label={big ? "3D view, enlarged" : undefined}>
       <div className="viewer-stage" ref={host}>
+        <div className="viewer-tags" ref={tagHost} aria-hidden="true" />
         {!active && status === "ready" && (
           <button type="button" ref={activateRef} className="viewer-activate" onClick={() => setActive(true)} aria-label="Explore the 3D body: rotate and zoom">
             <span className="mouse">Click to rotate and zoom</span><span className="touch">Tap to rotate and zoom</span>
@@ -293,6 +363,16 @@ export default function Viewer3D({ id, result, frame }: { id: string; result: An
           <span className="chip" style={{ background: "rgba(10,10,11,.72)" }}><span className="dot" style={{ background: "#34d399" }} /> Front side</span>
         </div>
       </div>
+      {big && onSeek && (
+        <div className="viewer-play">
+          {onTogglePlay && <button type="button" className="btn icon sm" onClick={onTogglePlay} aria-label={playing ? "Pause" : "Play"}>{playing ? <IPause size={14} /> : <IPlay size={14} />}</button>}
+          <input type="range" min={f0} max={result.frames.end - 1} value={frame} aria-label="Frame"
+            onChange={(e) => onSeek(Number(e.target.value))} />
+          <span className="mono faint" style={{ minWidth: 92, textAlign: "right" }}>
+            {EVENTS.find((e) => result.events[e.key]?.frame === frame)?.label ?? `frame ${frame}`}
+          </span>
+        </div>
+      )}
       <div className="viewer-bar">
         <div className="seg">
           {PRESETS.map((p) => {
@@ -305,6 +385,8 @@ export default function Viewer3D({ id, result, frame }: { id: string; result: An
         </div>
         <button className={`btn sm ${ghost ? "active" : ""}`} aria-pressed={ghost} onClick={() => setGhost((g) => !g)} title="Overlay the body at BFC, FFC and release">Ghosts</button>
         <button className={`btn sm ${follow ? "active" : ""}`} aria-pressed={follow} onClick={() => setFollow((f) => !f)} title="Camera follows the bowler">Follow</button>
+        <button className={`btn sm ${showTags ? "active" : ""}`} aria-pressed={showTags} onClick={() => setShowTags((x) => !x)} title="Live joint angles on the body">Angles</button>
+        <button className={`btn sm ${big ? "active" : ""}`} aria-pressed={big} onClick={() => { if (!big) setActive(true); setBig((x) => !x); }} title={big ? "Back to the page (Esc)" : "Enlarge the 3D view"}>{big ? "Close" : "Expand"}</button>
       </div>
     </div>
   );
