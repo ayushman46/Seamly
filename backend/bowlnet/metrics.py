@@ -466,7 +466,7 @@ def compute(c: Ctx) -> dict:
         tsrc, tconf = "2d", 0.75
     else:
         tf_use, tsrc, tconf = tf, "3d", 0.3
-    metrics.append(_metric("trunk_forward_br", "Trunk forward flexion at release", float(tf_use[br]), event="br",
+    metrics.append(_metric("trunk_forward_br", "Trunk lean at release", float(tf_use[br]), event="br",
                            source=tsrc, confidence=tconf * _conf2d(c, br, [5, 6, 11, 12]), needs=SIDE, view=gate,
                            explain="How far the trunk is pitched towards the batter at release. Fast bowlers "
                                    "flex strongly through the delivery stride. This is the lean at the moment of release; "

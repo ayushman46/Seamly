@@ -268,11 +268,11 @@ def practice_plan(result: dict, player: dict | None = None) -> dict:
     if day_limit:
         budget = min(budget, int(0.75 * day_limit))
     warm = 4 if age == "u11" else 6
-    # cues end with a full stop; they are quoted inside a sentence below
-    cue = (focus[0]["cue"] if focus else "Smooth rhythm, hit your length").rstrip(".")
+    # the focus cue heads the plan, so sessions just say "your cue"; with no focus the general one is quoted
+    cue = "your cue" if focus else "“Smooth rhythm, hit your length”"
 
     def bowling_session(w: int, i: int) -> dict:
-        items = [{"text": f"Warm-up (10 min): easy jog, leg swings, lunges, arm circles, then {warm} build-up deliveries off a short run."}]
+        items = [{"text": f"Warm-up (10 min), then {warm} build-up deliveries off a short run."}]
         # two drills: the first focus, then the second focus (or another drill for the first)
         picks: list[tuple[dict, str]] = []
         if keys:
@@ -304,13 +304,13 @@ def practice_plan(result: dict, player: dict | None = None) -> dict:
         if overs >= 1:
             ov = lambda n: f"{n} over{'s' if n > 1 else ''}"
             if w == 1:
-                items.append({"text": f"Short run-up (5–7 steps): {ov(overs)} focusing only on “{cue}”."})
+                items.append({"text": f"Short run-up (5–7 steps): {ov(overs)} focusing only on {cue}."})
             else:
-                txt = f"Full run-up: {ov(overs)} at about 80% effort, keeping “{cue}”."
+                txt = f"Full run-up: {ov(overs)} at about 80% effort, keeping {cue}."
                 if second:
                     txt += f" Rest at least 20 minutes, then an optional second spell of up to {ov(second)}."
                 items.append({"text": txt})
-        items.append({"text": "Cool-down (5 min): walk, then calf, hamstring and hip-flexor stretches."})
+        items.append({"text": "Cool-down (5 min): walk and stretch."})
         total = warm + drill_balls + 6 * (overs + second)
         return {"day": ("Mon", "Wed", "Fri")[i], "kind": "bowling", "title": f"Bowling session {i + 1}", "items": items,
                 "load": {"deliveries": total, "limit": day_limit}}

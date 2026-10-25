@@ -607,7 +607,7 @@ export function compute(c: Ctx): { metrics: MetricDict[]; series: Series } {
     [tfUse, tsrc, tconf] = [ts.trunk_forward_flexion, "3d", 0.3];
   }
   const TRUNK = [5, 6, 11, 12];
-  metrics.push(metric("trunk_forward_br", "Trunk forward flexion at release", tfUse[br], {
+  metrics.push(metric("trunk_forward_br", "Trunk lean at release", tfUse[br], {
     event: "br", source: tsrc, confidence: tconf * conf2d(c, br, TRUNK), needs: SIDE, view: gate,
     explain: "How far the trunk is pitched towards the batter at release. Fast bowlers "
       + "flex strongly through the delivery stride. This is the lean at the moment of release; "

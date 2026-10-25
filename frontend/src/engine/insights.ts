@@ -319,11 +319,11 @@ export function practicePlan(result: InsightsResult, player: InsightsPlayer | nu
   let budget = 2 * spellOvers * 6;
   if (dayLimit) budget = Math.min(budget, Math.trunc(0.75 * dayLimit));
   const warm = age === "u11" ? 4 : 6;
-  // cues end with a full stop; they are quoted inside a sentence below
-  const cue = (focus.length ? focus[0].cue : "Smooth rhythm, hit your length").replace(/\.+$/, "");
+  // the focus cue heads the plan, so sessions just say "your cue"; with no focus the general one is quoted
+  const cue = focus.length ? "your cue" : "“Smooth rhythm, hit your length”";
 
   const bowlingSession = (w: number, i: number): Day => {
-    const items: Item[] = [{ text: `Warm-up (10 min): easy jog, leg swings, lunges, arm circles, then ${warm} build-up deliveries off a short run.` }];
+    const items: Item[] = [{ text: `Warm-up (10 min), then ${warm} build-up deliveries off a short run.` }];
     // two drills: the first focus, then the second focus (or another drill for the first)
     let picks: [PlanDrill, string | null][] = [];
     if (keys.length) {
@@ -354,14 +354,14 @@ export function practicePlan(result: InsightsResult, player: InsightsPlayer | nu
     if (overs >= 1) {
       const ov = (n: number) => `${n} over${n > 1 ? "s" : ""}`;
       if (w === 1) {
-        items.push({ text: `Short run-up (5–7 steps): ${ov(overs)} focusing only on “${cue}”.` });
+        items.push({ text: `Short run-up (5–7 steps): ${ov(overs)} focusing only on ${cue}.` });
       } else {
-        let txt = `Full run-up: ${ov(overs)} at about 80% effort, keeping “${cue}”.`;
+        let txt = `Full run-up: ${ov(overs)} at about 80% effort, keeping ${cue}.`;
         if (second) txt += ` Rest at least 20 minutes, then an optional second spell of up to ${ov(second)}.`;
         items.push({ text: txt });
       }
     }
-    items.push({ text: "Cool-down (5 min): walk, then calf, hamstring and hip-flexor stretches." });
+    items.push({ text: "Cool-down (5 min): walk and stretch." });
     const total = warm + drillBalls + 6 * (overs + second);
     return { day: ["Mon", "Wed", "Fri"][i], kind: "bowling", title: `Bowling session ${i + 1}`, items,
       load: { deliveries: total, limit: dayLimit } };

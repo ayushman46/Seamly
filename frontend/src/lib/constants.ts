@@ -26,7 +26,7 @@ export const SERIES_INFO: Record<string, { label: string; unit: string; plane: "
   knee_back: { label: "Back knee angle", unit: "deg", plane: "sagittal", help: "180 = straight leg" },
   front_knee_2d: { label: "Front knee (on video)", unit: "deg", plane: "sagittal", help: "Measured directly on the video" },
   elbow_flexion_2d: { label: "Bowling elbow (on video)", unit: "deg", plane: "sagittal", help: "0 = straight arm, measured on the video" },
-  trunk_forward_flexion: { label: "Trunk forward flexion", unit: "deg", plane: "sagittal", help: "Positive = towards the batter" },
+  trunk_forward_flexion: { label: "Trunk lean (3D model)", unit: "deg", plane: "sagittal", help: "Positive = towards the batter" },
   trunk_lateral_flexion: { label: "Trunk side-bend", unit: "deg", plane: "frontal", help: "Positive = away from the bowling arm" },
   trunk_angle_2d: { label: "Trunk lean (on video)", unit: "deg", plane: "any", help: "Trunk line vs. image vertical" },
   shoulder_alignment: { label: "Shoulder alignment", unit: "deg", plane: "transverse", help: "180 = side-on, 270 = front-on" },
