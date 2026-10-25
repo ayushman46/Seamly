@@ -658,7 +658,8 @@ export const api = {
     if ("slowmo_factor" in req && req.slowmo_factor !== oldOpts.slowmo_factor && !("candidate" in req)) opts.candidate = null;
     const keep: Overrides = prev.gender !== undefined ? { gender: prev.gender } : {};
     const previous = meta.status === "done" ? { options: oldOpts, overrides: prev } : null;
-    await writeMeta(id, { options: optionsFrom(opts) as unknown as AnalysisMeta["options"], overrides: keep, error: null, previous, status: "queued", progress: 0, stage: null, suggest: null, owner: TAB });
+    // a saved ball speed was timed on the old analysis' frames (and clip speed): it has to be measured again
+    await writeMeta(id, { options: optionsFrom(opts) as unknown as AnalysisMeta["options"], overrides: keep, error: null, previous, status: "queued", progress: 0, stage: null, suggest: null, owner: TAB, pace: null });
     submit(id);
     return { id };
   }),

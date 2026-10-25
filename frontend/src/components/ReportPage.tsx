@@ -6,12 +6,15 @@ import { DATE_LOCALE, clamp, fmt, unitLabel } from "../lib/format";
 import { LogoMark } from "./Brand";
 import { AGE_LABEL, drillsForAge } from "../lib/player";
 import { DISCLAIMER } from "./Landing";
+import type { Runup } from "../lib/runup";
 
 export default function ReportPage({ id, go }: { id: string; go: (to: string) => void }) {
   const [data, setData] = useState<{ meta: AnalysisMeta; result: AnalysisResult } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ins, setIns] = useState<Insights | null>(null);
+  const [runup, setRunup] = useState<Runup | null>(null);
   useEffect(() => {
+    api.runup(id).then(setRunup).catch(() => setRunup(null));
     api.get(id).then((r) => (r.result ? setData({ meta: r.meta, result: r.result }) : setError("This analysis isn't finished yet."))).catch((e) => setError(e.message));
     api.insights(id).then(setIns).catch(() => setIns(null));
   }, [id]);
@@ -58,6 +61,12 @@ export default function ReportPage({ id, go }: { id: string; go: (to: string) =>
             <div className="rp-score rp-pace" title="Estimated release speed from the marked frames">
               <b>{Math.round(meta.pace.kmh)}</b>
               <span>km/h · {Math.round(meta.pace.lo)}–{Math.round(meta.pace.hi)}</span>
+            </div>
+          )}
+          {runup && (
+            <div className="rp-score rp-pace" title="Run-up speed at back-foot contact">
+              <b>{fmt(runup.ms, 1)}</b>
+              <span>m/s run-up</span>
             </div>
           )}
           <div className="rp-score">

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import Header from "./Header";
 import { usePageTitle } from "../lib/title";
 import { COCO_EDGES } from "../lib/constants";
-import { assess, mainPerson, ready, type Check, type FilmView, type Person } from "../lib/framing";
+import { assess, mainPerson, ready, steady, type Check, type FilmView, type Person } from "../lib/framing";
 import type { PoseModels } from "../engine/detector";
 import { IAlert, ICamera, ICheck, IInfo, IRefresh } from "./Icons";
 
@@ -17,18 +17,6 @@ function meanLuma(src: HTMLVideoElement, c: HTMLCanvasElement): number {
   let s = 0;
   for (let i = 0; i < d.length; i += 4) s += 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
   return s / (d.length / 4);
-}
-
-/** Each check by majority over the last few pictures, so a single missed detection doesn't flicker the list. */
-function steady(history: Check[][]): Check[] {
-  const last = history[history.length - 1];
-  return last.map((c) => {
-    const same = history.map((h) => h.find((x) => x.key === c.key)).filter((x): x is Check => !!x);
-    const bad = same.filter((x) => x.ok === false), good = same.filter((x) => x.ok === true);
-    if (bad.length > good.length) return { ...c, ok: false, tip: c.ok === false ? c.tip : bad[bad.length - 1].tip };
-    if (good.length > bad.length) return { ...c, ok: true, tip: c.ok === true ? c.tip : undefined };
-    return c;
-  });
 }
 
 function drawPose(c: HTMLCanvasElement | null, p: Person | null, w: number, h: number, ok: boolean) {
@@ -72,11 +60,20 @@ export default function CameraCheck({ go }: { go: (to: string) => void }) {
   const viewRef = useRef(view);
   viewRef.current = view;
 
+  const alive = useRef(true);
   const stop = () => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
   };
-  useEffect(() => stop, []);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+      stop();
+      models.current?.release().catch(() => undefined);
+      models.current = null;
+    };
+  }, []);
   useEffect(() => { history.current = []; }, [view]);
 
   const start = async (face = facing) => {
@@ -89,6 +86,8 @@ export default function CameraCheck({ go }: { go: (to: string) => void }) {
         audio: false,
         video: { facingMode: { ideal: face }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 60 } },
       });
+      // the page may have been left while the camera was opening: let go of it straight away
+      if (!alive.current) { stream.getTracks().forEach((t) => t.stop()); return; }
       streamRef.current = stream;
       const v = videoRef.current!;
       v.srcObject = stream;
@@ -97,6 +96,7 @@ export default function CameraCheck({ go }: { go: (to: string) => void }) {
         const { PoseModels } = await import("../engine/detector");
         models.current = await PoseModels.scanOnly(setProgress);
       }
+      if (!alive.current) { stop(); return; }
       history.current = [];
       setState("live");
     } catch (e) {

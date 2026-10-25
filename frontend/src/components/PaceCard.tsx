@@ -36,11 +36,18 @@ export default function PaceCard({ id, result, meta, frame, onSeek, onMeta, flas
   const preview = measuring && frame > release && (pitch === null || frame > pitch)
     ? paceFrom(result, { release, arrival: frame, target, bounced, pitch }) : null;
   const coarse = result.fps_real < 50;
+  // the analysed part of the clip can end before the ball reaches the batter (0.45–0.7 s after release)
+  const room = realSeconds(result, release, result.frames.end - 1) ?? 0;
   const sel = result.candidates.find((c) => c.track === result.bowler.track && c.shot === result.bowler.shot) ?? result.candidates[0];
   // the arm's turning speed is only true to life when its circle faces the camera (side-on, square), and at 50 fps or
   // more: slower footage averages the peak over a tenth of a second and reads low
   const armDps = result.view.view === "side_on" && !result.view.oblique && result.fps_real >= 50
     ? (sel as unknown as { sweep?: { peak_speed_dps?: number } } | undefined)?.sweep?.peak_speed_dps ?? null : null;
+
+  // the technique factors most linked to ball speed that this clip measured (Keily 2021: front-foot contact to release
+  // r = -0.60; Ramachandran 2021: front knee at release r = 0.40)
+  const factor = (key: string) => result.metrics.find((m) => m.key === key && m.value !== null && m.reliability === "measured" && m.rating !== "unrated") ?? null;
+  const ffcBr = factor("ffc_to_br_ms"), kneeBr = factor("front_knee_br");
 
   // a ball between 100 and 150 km/h reaches the batter 0.45–0.7 s after release: start the search just before that
   const ahead = (from: number, sec: number) => {
@@ -134,10 +141,16 @@ export default function PaceCard({ id, result, meta, frame, onSeek, onMeta, flas
           <div className="pace-preview" aria-live="polite">
             {preview
               ? <><span className="pace-big sm">{Math.round(preview.kmh)}<small> km/h</small></span> <span className="faint">({rangeText(preview)}) at frame {frame}</span></>
-              : <span className="faint">{frame <= release ? "Step forward (→ or the timeline) from the release."
+              : <span className="faint">{frame <= release ? "Step forward from the release: → one frame, Shift+→ five, or the timeline."
                 : pitch !== null && frame <= pitch ? "Now step on to where the ball reaches the batter."
                 : "That's too long or too short for a bowled ball: check the frames."}</span>}
           </div>
+          {room < 0.42 && (
+            <p className="faint" style={{ fontSize: 12, margin: "6px 0 0" }}>
+              The analysed part of this clip ends {room.toFixed(2)} s after the release, before most balls reach the batter (0.45–0.7 s), so
+              the arrival frame may not be in it.
+            </p>
+          )}
           {coarse && (
             <p className="faint" style={{ fontSize: 12, margin: "6px 0 0" }}>
               At {fmt(result.fps_real, 0)} fps each frame is {Math.round(1000 / result.fps_real)} ms, so this is a rough guide: 120 fps or more is
@@ -156,12 +169,18 @@ export default function PaceCard({ id, result, meta, frame, onSeek, onMeta, flas
           <dt>Run-up</dt>
           <dd>
             {runup === undefined ? "…" : runup ? (
-              <><b>{fmt(runup.kmh, 0)} km/h</b> ({fmt(runup.ms, 1)} m/s) at back-foot contact{runup.estimated ? ", which was estimated" : ""}. <span className="faint">{RUNUP_NORM}</span></>
+              <><b>{fmt(runup.kmh, 0)} km/h</b> ({fmt(runup.ms, 1)} m/s) at back-foot contact{runup.estimated ? " (contact frame estimated)" : ""}. <span className="faint">{RUNUP_NORM}</span></>
             ) : <span className="faint">Needs a side-on clip showing the last strides of the run-up.</span>}
           </dd>
         </div>
+        {ffcBr && (
+          <div><dt>Landing to release</dt><dd><b>{fmt(ffcBr.value, 0)} ms</b>. <span className="faint">Elite men about 103 ms; the quicker this is, the faster the ball tends to be.</span></dd></div>
+        )}
+        {kneeBr && (
+          <div><dt>Front knee</dt><dd><b>{fmt(kneeBr.value, 0)}°</b> at release. <span className="faint">A straighter front knee goes with faster balls.</span></dd></div>
+        )}
         {armDps !== null && armDps > 0 && (
-          <div><dt>Bowling arm</dt><dd><b>{fmt(armDps, 0)}°/s</b> at its fastest</dd></div>
+          <div><dt>Bowling arm</dt><dd><b>{fmt(armDps, 0)}°/s</b> at its fastest.</dd></div>
         )}
       </dl>
       <p className="faint" style={{ fontSize: 12, margin: "10px 0 0" }}>{PACE_BANDS} An estimate from the video, not a radar reading.</p>

@@ -57,6 +57,23 @@ describe("run-up speed at back-foot contact", () => {
     expect(r.ms).toBeGreaterThan(4.3);
     expect(r.ms).toBeLessThan(5.9);
   });
+  it("undoes a panning camera in display pixels (the motions are in source pixels)", () => {
+    // 50 fps, display at half the source size; the camera pans 30 source px a frame while the bowler runs
+    // 40 source px a frame; legs 180 display px for 0.9 m: the true speed is 40 × 0.5 × 50 / 200 = 5 m/s
+    const fps = 50, n = 60, ds = 0.5, pan = 30, run = 40;
+    const xy = Array.from({ length: n }, (_, t) => {
+      const x = (600 + (run - pan) * t) * ds;
+      return Array.from({ length: 17 }, (_, j) => [x, j >= 15 ? 480 : j >= 13 ? 390 : 300]);
+    });
+    const r = {
+      events: { bfc: { frame: 40, method: "foot_stops_stabilised_2d" } }, view: { view: "side_on" },
+      frames: { start: 0, end: n, times: Array.from({ length: n }, (_, i) => i / fps) }, options: { slowmo_factor: 1 },
+      keypoints2d: { xy, conf: xy.map((f) => f.map(() => 0.9)) }, video: { width: 1920 }, display_scale: ds,
+      skeleton: { bone_lengths_m: [0, 0.45, 0.45] },
+    } as unknown as AnalysisResult;
+    const motions = Array.from({ length: n }, () => [[1, 0, -pan], [0, 1, 0]]);
+    expect(runupSpeed(r, motions)!.ms).toBeCloseTo(5, 1);
+  });
   it("gives a plausible speed for the club example", () => {
     const b = bundle("club");
     const r = runupSpeed(b.result, b.stagea.motions);

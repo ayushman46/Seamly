@@ -1,7 +1,7 @@
 import { fmt } from "../lib/format";
-/** Small SVG line chart for values over sessions, with an optional "good" band and clickable points. */
+/** Small SVG line chart for values over sessions, with an optional "good" band, per-point ranges and clickable points. */
 export default function Trend({ points, band, height = 90, color = "var(--accent)", format = (v) => fmt(v, 0), onPick }: {
-  points: { value: number; label: string; id?: string; rating?: string }[];
+  points: { value: number; label: string; id?: string; rating?: string; range?: [number, number] }[];
   band?: [number | null, number | null] | null;
   height?: number;
   color?: string;
@@ -10,7 +10,7 @@ export default function Trend({ points, band, height = 90, color = "var(--accent
 }) {
   const W = 320, H = height, PX = 14, PY = 14;
   if (!points.length) return <div className="faint" style={{ fontSize: 12 }}>No measurements yet.</div>;
-  const vals = points.map((p) => p.value);
+  const vals = points.flatMap((p) => (p.range ? [p.value, ...p.range] : [p.value]));
   const bandVals = band ? band.filter((b): b is number => b !== null) : [];
   let lo = Math.min(...vals, ...bandVals), hi = Math.max(...vals, ...bandVals);
   if (hi - lo < 1e-6) { lo -= 1; hi += 1; }
@@ -31,10 +31,11 @@ export default function Trend({ points, band, height = 90, color = "var(--accent
       <path d={path} fill="none" stroke={color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
       {points.map((p, i) => (
         <g key={i} style={{ cursor: onPick && p.id ? "pointer" : undefined }} onClick={() => onPick && p.id && onPick(p.id)}>
+          {p.range && <line x1={x(i)} x2={x(i)} y1={y(p.range[0])} y2={y(p.range[1])} stroke={color} strokeWidth={2} opacity={0.3} strokeLinecap="round" />}
           <circle cx={x(i)} cy={y(p.value)} r={4.5} fill={ratingColor(p.rating)} stroke="var(--panel)" strokeWidth={2} />
           <title>{`${p.label}: ${format(p.value)}`}</title>
           {(i === points.length - 1 || points.length <= 6) && (
-            <text x={x(i)} y={y(p.value) - 8} textAnchor="middle" fontSize={10} fill="var(--text-2)">{format(p.value)}</text>
+            <text x={x(i)} y={(p.range ? y(p.range[1]) : y(p.value)) - (p.range ? 4 : 8)} textAnchor="middle" fontSize={10} fill="var(--text-2)">{format(p.value)}</text>
           )}
         </g>
       ))}

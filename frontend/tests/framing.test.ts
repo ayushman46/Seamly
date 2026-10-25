@@ -1,6 +1,6 @@
 /** Live camera check (lib/framing.ts): judged from one pose on the picture. */
 import { describe, expect, it } from "vitest";
-import { assess, bodyWidth, mainPerson, ready, type Person } from "../src/lib/framing";
+import { assess, bodyWidth, mainPerson, ready, steady, type Person } from "../src/lib/framing";
 
 // a standing person `ht` px tall with its feet at y = foot, centred at x; `wide` = seen square on, else side-on
 function person(x: number, foot: number, ht: number, wide: boolean, conf = 0.9): Person {
@@ -53,5 +53,15 @@ describe("camera check", () => {
     expect(p!.box).toEqual(b.box);
     expect(bodyWidth(person(0, 600, 260, false))!).toBeLessThan(0.45);
     expect(bodyWidth(person(0, 600, 260, true))!).toBeGreaterThan(0.5);
+  });
+  it("smooths over missed detections without dropping a failing check", () => {
+    const far = assess(person(640, 600, 90, false), 1280, 720, "side_on", 60, 120);   // too far: distance fails
+    const missed = assess(null, 1280, 720, "side_on", 60, 120);
+    const shown = steady([far, far, missed, far, missed]);
+    expect(shown.find((c) => c.key === "person")!.ok).toBe(true);
+    expect(shown.find((c) => c.key === "size")!.ok).toBe(false);
+    expect(ready(shown)).toBe(false);
+    // the bowler mostly gone: the body checks go too
+    expect(steady([missed, missed, far]).some((c) => c.key === "size")).toBe(false);
   });
 });

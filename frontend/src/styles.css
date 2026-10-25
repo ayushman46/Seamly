@@ -1141,6 +1141,11 @@ button:focus:not(:focus-visible) { outline: none; }
 .pace-facts > div { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 10px; font-size: 13px; line-height: 1.45; }
 .pace-facts dt { color: var(--c-text-3); font-size: 12px; padding-top: 1px; }
 .pace-facts dd { margin: 0; color: var(--c-text-2); }
+.speed-grid { display: grid; grid-template-columns: auto minmax(0, 420px); gap: 16px 32px; align-items: center; justify-content: space-between; margin-top: 10px; }
+.speed-stats { display: flex; gap: 28px; margin: 0; }
+.speed-stats dt { color: var(--c-text-3); font-size: 12px; margin-bottom: 4px; }
+.speed-stats dd { margin: 0; display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
+@media (max-width: 640px) { .speed-grid { grid-template-columns: minmax(0, 1fr); } }
 .speed-drop { margin: 10px 0 0; padding: 8px 10px; border-left: 3px solid var(--c-watch); background: var(--c-surface-2); border-radius: 0 var(--r-sm) var(--r-sm) 0; font-size: 13px; color: var(--c-text-2); }
 
 /* ---------------- camera check ---------------- */

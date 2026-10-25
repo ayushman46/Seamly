@@ -98,6 +98,28 @@ export function assess(p: Person | null, w: number, h: number, view: FilmView, f
   return checks;
 }
 
+const ORDER: Check["key"][] = ["orientation", "light", "person", "body", "size", "angle", "fps"];
+
+/**
+ * Each check by majority over the last few pictures, so a single missed detection doesn't flicker the list. Every
+ * check seen in that time counts (a picture where the bowler was missed has no body, distance or angle checks: the
+ * earlier ones carry over rather than dropping out); once the bowler is mostly missing, those checks go.
+ */
+export function steady(history: Check[][]): Check[] {
+  const out: Check[] = [];
+  for (const key of ORDER) {
+    const same = history.map((h) => h.find((x) => x.key === key)).filter((x): x is Check => !!x);
+    if (!same.length) continue;
+    const c = same[same.length - 1];
+    const bad = same.filter((x) => x.ok === false), good = same.filter((x) => x.ok === true);
+    if (bad.length > good.length) out.push({ ...c, ok: false, tip: c.ok === false ? c.tip : bad[bad.length - 1].tip });
+    else if (good.length > bad.length) out.push({ ...c, ok: true, tip: c.ok === true ? c.tip : undefined });
+    else out.push(c);
+  }
+  const person = out.find((c) => c.key === "person");
+  return person && person.ok === true ? out : out.filter((c) => c.key !== "body" && c.key !== "size" && c.key !== "angle");
+}
+
 /** Blocking checks all passed (the frame rate is advice only). */
 export const ready = (checks: Check[]) => checks.every((c) => c.ok !== false || c.key === "fps") && checks.some((c) => c.key === "person" && c.ok)
   && checks.every((c) => c.key === "fps" || c.ok !== null);

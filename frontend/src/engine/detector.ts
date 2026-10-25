@@ -258,6 +258,12 @@ export class PoseModels {
     return new PoseModels(scan, scan, canvas(PoseModels.SCAN, PoseModels.SCAN), canvas(PoseModels.REFINE, PoseModels.REFINE));
   }
 
+  /** Frees the models' memory (WebGPU buffers or WebAssembly heap). */
+  async release(): Promise<void> {
+    await this.scan.release();
+    if (this.refine !== this.scan) await this.refine.release();
+  }
+
   /** Full-frame people + keypoints in source pixels (letterboxed like ultralytics). */
   async detect(src: CanvasImageSource, w: number, h: number, conf = DET_CONF): Promise<PersonDets> {
     const S = PoseModels.SCAN;
