@@ -1107,3 +1107,9 @@ button:focus:not(:focus-visible) { outline: none; }
 @media (max-width: 560px) { .cons-row { flex-wrap: wrap; gap: 4px 10px; } .cons-row .grow { flex-basis: 100%; } }
 
 .card.player:focus { outline: none; }
+
+/* player "since last time" on a phone: the measurement name gets its own line */
+@media (max-width: 560px) {
+  .since-row { flex-wrap: wrap; row-gap: 2px; }
+  .since-row .grow { flex-basis: 100%; order: -1; font-weight: 600; }
+}

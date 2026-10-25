@@ -43,7 +43,7 @@ export default function FrameCard({ result, frame, onOpen, onConfirm, busy }: {
           const ok = measuredForView(k, info.plane, result.view.view);
           return (
             <div key={k} className="fm" style={{ opacity: ok ? 1 : 0.6 }} title={info.help + (ok ? "" : " (3D estimate for this camera view)")}>
-              <div className="fm-v">{fmt(result.series[k][t], 0)}<small>{unitLabel(info.unit)}</small></div>
+              <div className="fm-v">{fmt(result.series[k][t], 0)}{info.unit === "deg" ? "°" : <small>{unitLabel(info.unit)}</small>}</div>
               <div className="fm-l">{info.label.replace(" (on video)", "")}{!ok && " · est."}</div>
             </div>
           );

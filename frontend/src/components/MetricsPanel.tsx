@@ -65,7 +65,7 @@ function MetricCard({ m, sel, onClick }: { m: Metric; sel: boolean; onClick: () 
         <span className="mlabel grow">{m.label}</span>
         <span className={`chip ${m.rating}`}>{RATING_LABEL[m.rating]}</span>
       </div>
-      <div className="mv">{fmt(m.value, 0)}<small>{unitLabel(m.unit)}</small></div>
+      <div className="mv">{fmt(m.value, 0)}{m.unit === "deg" ? "°" : <small>{unitLabel(m.unit)}</small>}</div>
       {extra && <div className="muted" style={{ fontSize: 12.5, fontWeight: 600 }}>{extra}</div>}
       {m.key === "elbow_extension" && m.flexion_at_br !== undefined && m.flexion_at_br !== null && (
         <div className="faint" style={{ fontSize: 12 }}>Flexion at UAH {fmt(m.flexion_at_uah)}° · max {fmt(m.max_flexion)}° · at release {fmt(m.flexion_at_br)}°</div>

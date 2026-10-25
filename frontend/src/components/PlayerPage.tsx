@@ -94,6 +94,8 @@ export default function PlayerPage({ pid, go }: { pid: string; go: (to: string) 
             <>
               <div role="heading" aria-level={2} className="card-title">Edit profile</div>
               <PlayerForm initial={p} submitLabel="Save profile" onSave={save} onCancel={() => setEditing(false)} />
+              <div className="divider" />
+              <button className="btn ghost sm" onClick={remove}><ITrash size={14} /> Delete {p.name}'s profile</button>
             </>
           ) : (
             <div className="row wrap" style={{ gap: 16 }}>
@@ -108,7 +110,6 @@ export default function PlayerPage({ pid, go }: { pid: string; go: (to: string) 
                 </div>
               </div>
               <div className="profile-actions">
-                <button className="btn ghost" onClick={remove} aria-label={`Delete ${p.name}'s profile`}><ITrash size={15} /> <span className="hide-sm">Delete</span></button>
                 <button className="btn" onClick={() => setEditing(true)}>Edit profile</button>
                 <button className="btn primary" onClick={upload}><IUpload size={16} /> Analyse a new delivery</button>
               </div>
@@ -137,7 +138,7 @@ export default function PlayerPage({ pid, go }: { pid: string; go: (to: string) 
                   </span>
                 )}
               </div>
-              <div className="card stat"><small>Best score</small><b>{s.best_score ?? "–"}</b><span className="faint">out of 100</span></div>
+              <div className="card stat"><small>Best score</small><b>{s.best_score ?? "–"}</b><span className="faint">{s.count > 1 && s.best_score !== null && s.best_score === s.latest_score ? "the latest is the best" : "out of 100"}</span></div>
             </div>
 
             <div className="player-grid">
@@ -158,7 +159,7 @@ export default function PlayerPage({ pid, go }: { pid: string; go: (to: string) 
                   <div className="stack" style={{ gap: 8 }}>
                     <div className="faint" style={{ fontSize: 12 }}>Latest clip vs the previous one filmed from the same angle ({dateOf(data.compared_to.created)}).</div>
                     {data.since_last.map((d) => (
-                      <div key={d.key} className="row" style={{ gap: 10 }}>
+                      <div key={d.key} className="row since-row" style={{ gap: 10 }}>
                         <span className={`delta ${d.improved === true ? "up" : d.improved === false ? "down" : "same"}`}>
                           {d.improved === true ? "▲ better" : d.improved === false ? "▼ worse" : d.rated === false ? "○ info" : "● no clear change"}
                         </span>
