@@ -252,6 +252,12 @@ export class PoseModels {
     return new PoseModels(scan, refine, canvas(PoseModels.SCAN, PoseModels.SCAN), canvas(PoseModels.REFINE, PoseModels.REFINE));
   }
 
+  /** Only the full-frame model, for the live camera check (it never refines crops). */
+  static async scanOnly(onProgress?: (f: number) => void): Promise<PoseModels> {
+    const scan = await createSession("yolo11n-pose.onnx", onProgress, true, PoseModels.SCAN);
+    return new PoseModels(scan, scan, canvas(PoseModels.SCAN, PoseModels.SCAN), canvas(PoseModels.REFINE, PoseModels.REFINE));
+  }
+
   /** Full-frame people + keypoints in source pixels (letterboxed like ultralytics). */
   async detect(src: CanvasImageSource, w: number, h: number, conf = DET_CONF): Promise<PersonDets> {
     const S = PoseModels.SCAN;

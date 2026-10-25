@@ -12,7 +12,9 @@ Film one delivery on your phone. Seamly finds the bowler and marks the key momen
 ## What you get
 
 - **The key moments on your own video**, with the skeleton, joint angles and wrist trail drawn on the frame. If a marker is a frame off, drag it, and everything recomputes in about a third of a second.
-- **A 3D body model** of the delivery that you can orbit, with side, behind, batter's-view and top presets.
+- **Pace from the same clip, free.** Ball speed from the release frame and the frame the ball reaches the batter, timed over the pitch's fixed length (no calibration, slow motion divided back to real time), with an honest range that narrows if you mark where the ball pitched. Run-up speed at back-foot contact from a side-on clip, the strongest technique predictor of ball speed, and the bowling arm's peak angular speed. The player page tracks speed across sessions and flags when a spell drops 5% below the day's best.
+- **Camera check before you film**: point the phone where it will film from and the camera's live picture tells you whether the angle, distance, framing and light will measure well (side-on or behind the stumps), using the same pose model on the device. Nothing is recorded.
+- **A 3D body model** of the delivery that you can orbit, with side, behind, batter's-view and top presets, live joint-angle tags that follow the body as it plays, and an enlarged view with its own playback.
 - **Measured angles against published norms**, each with a confidence and a reference:
   - front knee at landing and release
   - trunk flexion
@@ -37,7 +39,7 @@ Film one delivery on your phone. Seamly finds the bowler and marks the key momen
 ## Filming tips
 
 - **Side-on:** 10–15 m away, at hip height, square to the popping crease. This view measures the knees, trunk flexion, stride and release height.
-- **From behind the stumps:** this view measures side-bend, alignment and head position.
+- **From behind the stumps:** this view measures side-bend, alignment and head position. Film from behind the *bowler's* stumps, not the batter's: a batter close to the camera gets analysed instead of a far-away bowler.
 - **Keep the whole action in frame**, from the last strides of the run-up to the follow-through. A tripod helps.
 - **Use slow motion (120–240 fps) if your phone has it**; 30 fps works. Below 20 distinct frames per second a delivery stride lasts only 4–5 frames, so those clips are refused rather than mis-measured.
 
@@ -59,7 +61,7 @@ video ─► exact frame times from the container (MP4/MOV via mp4box), frame-ac
       ─► NAVER Anny body model posed by IK, skinned in three.js
 ```
 
-The analysis engine (`frontend/src/engine/`) is a TypeScript port of the Python pipeline in `backend/bowlnet/`. The test suite (`frontend/tests/`, 350 tests) checks every stage after pose detection against fixtures recorded from the Python pipeline. The results match Python exactly or to floating-point precision: events, metrics, coaching, insights, progress, the body-model binaries, and the skeleton fit to about 1 mm.
+The analysis engine (`frontend/src/engine/`) is a TypeScript port of the Python pipeline in `backend/bowlnet/`. The test suite (`frontend/tests/`, 361 tests) checks every stage after pose detection against fixtures recorded from the Python pipeline. The results match Python exactly or to floating-point precision: events, metrics, coaching, insights, progress, the body-model binaries, and the skeleton fit to about 1 mm.
 
 The first analysis downloads about 70 MB of models, which the browser caches afterwards. On a recent laptop a short clip takes about 15–30 s; phones take longer.
 
@@ -128,6 +130,7 @@ These are surfaced in the app rather than hidden:
 - **Angled cameras.** When the camera is well off the line of the pitch (high in the stands, or far to one side), the view cues contradict each other. Seamly then marks the view as angled, rates none of the body measurements (knee, trunk, stride, side-bend, alignment, release height, head position) and asks for a clip filmed square on.
 - **Foot contacts from behind** are often placed from typical timing. Their timings stay unrated until you confirm the markers: drag them, or use "Set this frame as" in the Frame tab.
 - **25–30 fps** limits release and timing precision to ±1 frame (33–40 ms). Elbow extension needs side-on video at 100 fps or more, and it is shown for reference only, never rated: on a rendered straight-armed delivery at 120 fps one camera read 12°.
+- **Ball speed is an estimate, not a radar reading.** It is timed between two frames you mark, so its precision follows the frame rate and how much the ball slowed: a 240 fps clip with the pitching frame marked is within about ±5%, a 30 fps clip without it about ±12%. The range is always shown. The ball is too small and blurred at normal frame rates to be tracked automatically.
 - **Analysis pauses while its tab is in the background.** Browsers throttle hidden tabs and can hand back stale video frames, so Seamly waits and carries on when you come back, rather than measuring the wrong frames. Keep the tab open on screen until it finishes.
 - **Analyses live in the browser that made them** (IndexedDB). Nothing is uploaded, so a link only opens on that device. Clearing site data deletes them, so use **Download backup** in your workspace to keep a copy or move players and analyses to another device (Restore a backup), and the PDF report to share one.
 - **The bowling arm is hard to tell from behind or front-on.** On rear-view broadcast clips the detector is often unsure, and a low-confidence call can differ between devices. Below 50% agreement Seamly asks "Is this a left-arm bowler?" with one-tap Yes/No (and marks the arm with a "?" up to 70%), and saves the answer to the player's profile so later clips don't have to guess. Setting the arm in the profile skips detection entirely.

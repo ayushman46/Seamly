@@ -129,6 +129,13 @@ export interface AnalysisMeta {
   notice?: string | null;   // e.g. a failed re-analysis that fell back to the previous result
   suggest?: { slowmo_factor?: number } | null;   // option change that would make a failed analysis work
   player_id?: string | null;
+  pace?: PaceRecord | null;   // ball speed measured on this clip (the marked frames and the result)
+}
+
+/** Ball speed from the marked frames (lib/pace.ts), kept with the analysis. */
+export interface PaceRecord {
+  release: number; arrival: number; target: "crease" | "stumps"; bounced: boolean; pitch?: number | null;
+  kmh: number; lo: number; hi: number;
 }
 
 // ---------------- players, progress, insights ----------------
@@ -174,6 +181,7 @@ export interface PlayerProgress {
   compared_to: { id: string; created: number; view: View } | null;
   focus: { key: string; headline: string; title: string; sessions: number; first_value: number | null; latest_value: number | null } | null;
   stats: { count: number; best_score: number | null; latest_score: number | null; first_score: number | null; first: number | null; last: number | null };
+  pace?: { id: string; created: number; kmh: number; lo: number; hi: number }[];   // measured ball speeds, oldest first
 }
 
 export interface PlanItem { id: string; text: string; detail: string | null }

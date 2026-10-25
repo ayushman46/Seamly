@@ -15,6 +15,7 @@ import Inspector from "./Inspector";
 import Settings from "./Settings";
 import ErrorBoundary from "./ErrorBoundary";
 import FrameCard from "./FrameCard";
+import PaceCard from "./PaceCard";
 import PlanPanel from "./PlanPanel";
 import { Verdict } from "./InsightsCard";
 import { setCurrentPlayer } from "../lib/player";
@@ -459,7 +460,7 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
       // single-key shortcuts only while nothing else has focus or focus is in the video player, so they never
       // clash with screen-reader keys or typing elsewhere on the page
       // (clicking an empty part of the page focuses <main>, which counts as nothing)
-      if (el && el !== document.body && el.tagName !== "H1" && el.tagName !== "MAIN" && !el.closest?.(".card.player, .card.viewer")) return;
+      if (el && el !== document.body && el.tagName !== "H1" && el.tagName !== "MAIN" && !el.closest?.(".card.player, .card.viewer, .pace-card")) return;
       if (el?.closest?.("input, select, textarea, [contenteditable], [role=tablist], [role=menu]")) return;   // they use the arrows
       if (el?.closest?.("button, a") && (e.key === " " || e.key === "Enter")) return;   // native activation
       if (e.key === " " || e.key === "k") { e.preventDefault(); setPlaying((p) => !p); }
@@ -624,7 +625,7 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
           </div>
         )}
         {ins || insErr
-          ? <Verdict result={result} ins={ins} onPlan={openPlan} onCoaching={openCoaching} onJump={jumpTo} />
+          ? <Verdict result={result} ins={ins} pace={meta.pace} armPending={askArm} onPlan={openPlan} onCoaching={openCoaching} onJump={jumpTo} />
           : <div className="skeleton-box verdict-skel" />}
         <div className="an-grid">
           <div className="stack">
@@ -674,6 +675,7 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
               </Suspense>
             </ErrorBoundary>
             <FrameCard result={result} frame={frame} onOpen={() => setTab("frame")} onConfirm={setEvent} busy={busy} />
+            <PaceCard id={id} result={result} meta={meta} frame={frame} onSeek={(f) => { setPlaying(false); setFrame(f); }} onMeta={setMeta} flash={flash} />
           </div>
         </div>
 

@@ -1,6 +1,7 @@
 /** Data layer for a self-hosted Seamly server (the Python backend in backend/, which can run SAM 3D Body).
  *  Selected at build time with VITE_API=server; the default build analyses in the browser (api.local.ts). */
-import type { AnalysisMeta, AnalysisResult, EventKey, Insights, Player, PlayerProgress } from "./types";
+import type { Runup } from "./lib/runup";
+import type { AnalysisMeta, AnalysisResult, EventKey, Insights, Player, PlayerProgress, PaceRecord } from "./types";
 
 async function j<T>(res: Response): Promise<T> {
   if (!res.ok) {
@@ -34,9 +35,10 @@ export const api = {
     fetch(`/api/analyses/${id}/rerun`, { method: "POST", headers: JSON_HDR, body: JSON.stringify(body) }).then((r) => j<{ id: string }>(r)),
   demo: (_which?: string) => fetch("/api/demo", { method: "POST" }).then((r) => j<{ id: string }>(r)),
   analyseSample: (_which?: string) => fetch("/api/demo", { method: "POST" }).then((r) => j<{ id: string }>(r)),
-  patch: (id: string, body: { name?: string; player_id?: string | null }) =>
+  patch: (id: string, body: { name?: string; player_id?: string | null; pace?: PaceRecord | null }) =>
     fetch(`/api/analyses/${id}`, { method: "PATCH", headers: JSON_HDR, body: JSON.stringify(body) }).then((r) => j<AnalysisMeta>(r)),
   insights: (id: string) => fetch(`/api/analyses/${id}/insights`).then((r) => j<Insights>(r)),
+  runup: async (_id: string): Promise<Runup | null> => null,   // the server keeps its camera motion to itself
   players: () => fetch("/api/players").then((r) => j<Player[]>(r)),
   createPlayer: (body: Partial<Player>) =>
     fetch("/api/players", { method: "POST", headers: JSON_HDR, body: JSON.stringify(body) }).then((r) => j<Player>(r)),

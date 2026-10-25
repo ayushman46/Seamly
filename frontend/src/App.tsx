@@ -8,9 +8,10 @@ import { usePageTitle } from "./lib/title";
 const ComparePage = lazyPage(() => import("./components/ComparePage"));
 const ReportPage = lazyPage(() => import("./components/ReportPage"));
 const PlayerPage = lazyPage(() => import("./components/PlayerPage"));
+const CameraCheck = lazyPage(() => import("./components/CameraCheck"));
 
 type Route = { page: "home" } | { page: "analysis"; id: string; tab?: string } | { page: "compare"; a: string; b: string; overlay?: boolean }
-  | { page: "report"; id: string } | { page: "player"; id: string } | { page: "missing" };
+  | { page: "report"; id: string } | { page: "player"; id: string } | { page: "camera" } | { page: "missing" };
 
 function parseRoute(): Route {
   const c = window.location.hash.match(/^#\/compare\/([A-Za-z0-9_-]+)\/([A-Za-z0-9_-]+)(\/overlay)?/);
@@ -19,6 +20,7 @@ function parseRoute(): Route {
   if (rep) return { page: "report", id: rep[1] };
   const pl = window.location.hash.match(/^#\/p\/([A-Za-z0-9_-]+)/);
   if (pl) return { page: "player", id: pl[1] };
+  if (/^#\/camera\/?$/.test(window.location.hash)) return { page: "camera" };
   const m = window.location.hash.match(/^#\/a\/([A-Za-z0-9_-]+?)(?:\/(plan))?$/);
   if (m) return { page: "analysis", id: m[1], tab: m[2] };
   // "#how" etc. are section links of the home page; anything else under "#/" is a link to nothing
@@ -76,6 +78,7 @@ export default function App() {
         : route.page === "player" ? <PlayerPage key={route.id} pid={route.id} go={go} />
         : route.page === "compare" ? <ComparePage key={`${route.a}-${route.b}`} a={route.a} b={route.b} go={go} overlay={route.overlay} />
         : route.page === "report" ? <ReportPage key={route.id} id={route.id} go={go} />
+        : route.page === "camera" ? <CameraCheck go={go} />
         : route.page === "missing" ? <Missing go={go} />
         : <Home go={go} />}
       </Suspense>

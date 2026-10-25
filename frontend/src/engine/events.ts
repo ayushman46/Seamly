@@ -240,6 +240,8 @@ export function detectEvents(kp: Arr3, kc: Arr2, kpStab: Arr3, P: Arr3, side: Si
   // rise, so it never qualifies.)
   const riseWin = Math.max(3, Math.trunc(0.3 * fps));
   let bestC: [number, number, number] | null = null;   // (score, t_low, t_high); Python max() on tuples
+  const cands: [number, number, number][] = [];
+  const full = new Set<string>();   // candidates with a complete rise above the shoulder and fall into the follow-through
   for (let tl = lo; tl < hi; tl++) {
     if (lift[tl] > -0.15 || lift[tl] > lift[Math.max(0, tl - 1)] || lift[tl] > lift[Math.min(T - 1, tl + 1)]) continue;
     const segHi = Math.min(T, tl + riseWin + 1);
@@ -252,6 +254,8 @@ export function detectEvents(kp: Arr3, kc: Arr2, kpStab: Arr3, P: Arr3, side: Si
     const fall = after.length ? lift[th] - aminN(after) : 0.0;
     const prox = Math.abs(th - anchor) / fps;
     const score = amp + 0.6 * Math.min(fall, 2.0) + 0.15 * Math.min(amp / riseS, 20) - 3.0 * prox;
+    cands.push([score, tl, th]);
+    if (amp >= 1.5 && fall >= 1.5) full.add(`${tl},${th}`);
     if (!bestC || score > bestC[0] || (score === bestC[0] && (tl > bestC[1] || (tl === bestC[1] && th > bestC[2])))) {
       bestC = [score, tl, th];
     }
@@ -262,6 +266,17 @@ export function detectEvents(kp: Arr3, kc: Arr2, kpStab: Arr3, P: Arr3, side: Si
     tLow = Math.max(0, tTop - riseWin);
   } else if (bestC) {
     [, tLow, tTop] = bestC;
+    // The release is the last complete up-and-over: when a later candidate also rises well above the shoulder and
+    // falls away into the follow-through, the earlier one was the gather or the back-swing (seen from behind, the
+    // 2D speed peak that anchors the search can sit on the back-swing).
+    if (full.has(`${tLow},${tTop}`)) {
+      let pick: [number, number, number] | null = null;   // Python max(key=(t_high, score, t_low))
+      for (const c of cands) {
+        if (!full.has(`${c[1]},${c[2]}`) || c[2] - tTop < 0.1 * fps) continue;
+        if (!pick || c[2] > pick[2] || (c[2] === pick[2] && (c[0] > pick[0] || (c[0] === pick[0] && c[1] > pick[1])))) pick = c;
+      }
+      if (pick) [, tLow, tTop] = pick;
+    }
   } else {
     let tFast = lo;
     if (hi > lo) for (let t = lo + 1; t < hi; t++) if (w2[t] > w2[tFast]) tFast = t;

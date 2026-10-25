@@ -123,6 +123,17 @@ export async function renderShareCard(meta: AnalysisMeta, r: AnalysisResult, ins
     ctx.textAlign = "left";
   }
 
+  // measured ball speed, when the user timed it
+  if (meta.pace) {
+    const big = `${Math.round(meta.pace.kmh)} km/h`, small = `${Math.round(meta.pace.lo)}–${Math.round(meta.pace.hi)} est.`;
+    ctx.font = `800 34px ${FONT}`; const bw = ctx.measureText(big).width;
+    ctx.font = `500 20px ${FONT}`; const sw = ctx.measureText(small).width;
+    const px = IX + 20, py = IY + IH - 80, pw = bw + sw + 52;
+    ctx.fillStyle = "rgba(5,8,13,0.82)"; roundRect(ctx, px, py, pw, 60, 30); ctx.fill();
+    ctx.fillStyle = C.text; ctx.font = `800 34px ${FONT}`; ctx.fillText(big, px + 20, py + 42);
+    ctx.fillStyle = C.muted; ctx.font = `500 20px ${FONT}`; ctx.fillText(small, px + 32 + bw, py + 40);
+  }
+
   // verdict and the top fixes
   let y = IY + IH + 66;
   ctx.fillStyle = C.text; ctx.font = `700 36px ${FONT}`;

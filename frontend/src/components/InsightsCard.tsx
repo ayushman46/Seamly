@@ -1,4 +1,4 @@
-import type { AnalysisResult, EventKey, Insights } from "../types";
+import type { AnalysisResult, EventKey, Insights, PaceRecord } from "../types";
 import { fmt } from "../lib/format";
 import { IArrowRight, ICalendar, IEye } from "./Icons";
 
@@ -31,8 +31,9 @@ export function backHealthLine(b: NonNullable<Insights["back_health"]>): string 
  * The verdict at the top of an analysis: the score, the one-line summary, the one thing to work on (with its cue)
  * and the few facts that change how to read it (what's working, back health, camera limits).
  */
-export function Verdict({ result, ins, onJump, onPlan, onCoaching }: {
-  result: AnalysisResult; ins: Insights | null; onJump: (k: EventKey) => void; onPlan: () => void; onCoaching: () => void;
+export function Verdict({ result, ins, pace, armPending = false, onJump, onPlan, onCoaching }: {
+  result: AnalysisResult; ins: Insights | null; pace?: PaceRecord | null; armPending?: boolean;
+  onJump: (k: EventKey) => void; onPlan: () => void; onCoaching: () => void;
 }) {
   const c = result.coaching;
   const s = ins?.summary;
@@ -52,8 +53,10 @@ export function Verdict({ result, ins, onJump, onPlan, onCoaching }: {
     <section className="card verdict" aria-labelledby="verdict-title">
       <ScoreRing score={c.score} grade={c.grade} />
       <div className="verdict-main">
-        <h2 id="verdict-title" className="verdict-headline">{headline}</h2>
-        {fix ? (
+        <h2 id="verdict-title" className="verdict-headline">{armPending ? "First, confirm the bowling arm." : headline}</h2>
+        {armPending ? (
+          <div className="verdict-fix"><div className="muted">The fix depends on which arm bowls. Answer the question above and Seamly re-measures in about a second.</div></div>
+        ) : fix ? (
           <div className="verdict-fix">
             <div className="muted">{fix.what}</div>
             <div className="cue">“{fix.cue}”</div>
@@ -72,6 +75,7 @@ export function Verdict({ result, ins, onJump, onPlan, onCoaching }: {
         </div>
       </div>
       <dl className="verdict-facts">
+        {pace && <div><dt>Pace</dt><dd><b>{Math.round(pace.kmh)} km/h</b> <span className="faint">({Math.round(pace.lo)}–{Math.round(pace.hi)})</span></dd></div>}
         {working.length > 0 && <div><dt>{working.length > 1 ? "Strengths" : "Strength"}</dt><dd>{working.slice(0, 2).join(" · ")}</dd></div>}
         {b && (
           <div><dt>Back health</dt><dd><span className={`dot ${b.overall}`} aria-hidden="true" /> {backHealthLine(b)}</dd></div>

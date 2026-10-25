@@ -191,6 +191,10 @@ export function FilmingGuide() {
           <li>Whole action in frame, feet visible</li>
           <li>Slow motion if your phone has it</li>
         </ul>
+        <p className="film-check">
+          <a className="btn sm" href="#/camera">Check your camera position live</a>
+          <span className="faint">The phone's camera tells you, before you film, whether the angle, distance and framing will measure well.</span>
+        </p>
       </div>
     </section>
   );

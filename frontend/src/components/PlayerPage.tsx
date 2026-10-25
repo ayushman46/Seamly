@@ -178,6 +178,33 @@ export default function PlayerPage({ pid, go }: { pid: string; go: (to: string) 
               </div>
             </div>
 
+            {data.pace && data.pace.length > 0 && (() => {
+              const pts = data.pace!;
+              const best = pts.reduce((m, x) => (x.kmh > m.kmh ? x : m), pts[0]), last = pts[pts.length - 1];
+              // within a session: pace coaches end speed work once balls drop about 5% below the day's best
+              const today = pts.filter((x) => new Date(x.created).toDateString() === new Date(last.created).toDateString());
+              const dayBest = today.reduce((m, x) => (x.kmh > m.kmh ? x : m), today[0]);
+              const drop = today.length > 1 && dayBest !== last ? (1 - last.kmh / dayBest.kmh) * 100 : 0;
+              return (
+                <section className="card card-pad" aria-labelledby="speed-title">
+                  <div className="row wrap" style={{ gap: 8 }}>
+                    <div role="heading" aria-level={2} id="speed-title" className="card-title grow" style={{ margin: 0 }}>Ball speed</div>
+                    <span className="faint" style={{ fontSize: 12 }}>latest {Math.round(last.kmh)} km/h · best {Math.round(best.kmh)} km/h</span>
+                  </div>
+                  {pts.length > 1
+                    ? <Trend points={pts.map((x) => ({ value: x.kmh, label: `${dateOf(x.created)}: ${Math.round(x.lo)}–${Math.round(x.hi)} km/h`, id: x.id }))} height={80} format={(v) => `${Math.round(v)}`} onPick={(i) => go(`/a/${i}`)} />
+                    : <p className="faint" style={{ fontSize: 12.5, margin: "8px 0 0" }}>Measure the ball speed on another delivery to see the trend.</p>}
+                  {drop >= 5 && (
+                    <p className="speed-drop">
+                      The latest ball is {Math.round(drop)}% below the best of that session ({Math.round(dayBest.kmh)} km/h). Pace coaches usually end
+                      speed work at about 5% down: more balls then train a slower action.
+                      {last.hi >= dayBest.lo && <span className="faint"> The two ranges overlap, so part of it may be the frame timing.</span>}
+                    </p>
+                  )}
+                </section>
+              );
+            })()}
+
             {data.focus && (
               <div className="card card-pad focus-card">
                 <div role="heading" aria-level={2} className="card-title">Your focus right now</div>

@@ -53,9 +53,17 @@ export default function ReportPage({ id, go }: { id: string; go: (to: string) =>
             {fmt(r.fps_real)} fps · stature {r.skeleton.stature_m.toFixed(2)} m ({r.skeleton.height_source === "user" ? "entered" : "assumed"})
           </div>
         </div>
-        <div className="rp-score">
-          <b>{c.score ?? "–"}</b>
-          <span>{c.grade ?? "No score"}</span>
+        <div className="rp-scores">
+          {meta.pace && (
+            <div className="rp-score rp-pace" title="Estimated release speed from the marked frames">
+              <b>{Math.round(meta.pace.kmh)}</b>
+              <span>km/h · {Math.round(meta.pace.lo)}–{Math.round(meta.pace.hi)}</span>
+            </div>
+          )}
+          <div className="rp-score">
+            <b>{c.score ?? "–"}</b>
+            <span>{c.grade ?? "No score"}</span>
+          </div>
         </div>
       </header>
 

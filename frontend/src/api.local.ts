@@ -3,7 +3,7 @@
  * everything now runs in this browser: videos are analysed by the in-browser engine (src/engine) and
  * analyses/players are kept in IndexedDB. Nothing is uploaded anywhere.
  */
-import type { AnalysisMeta, AnalysisResult, BowlingLogEntry, EventKey, Insights, Player, PlayerProgress } from "./types";
+import type { AnalysisMeta, AnalysisResult, BowlingLogEntry, EventKey, Insights, Player, PlayerProgress, PaceRecord } from "./types";
 import * as db from "./engine/store";
 import { AnalysisError, backend, optionsFrom, type Options } from "./engine/common";
 import type { Overrides, StageA } from "./engine/pipeline";
@@ -19,6 +19,7 @@ import { frameObj } from "./engine/body";
 import { playerProgress, summarise } from "./engine/progress";
 import { BACKUP_VERSION, FILE_NAME, decodeBackup, encodeBackup, type BackupAnalysis } from "./lib/backup";
 import { isoDate, parseOvers } from "./lib/bowlingLog";
+import { runupSpeed, type Runup } from "./lib/runup";
 
 type Meta = AnalysisMeta & {
   overrides?: Overrides;
@@ -107,7 +108,7 @@ async function refresh(id: string): Promise<void> {
 }
 
 const PUBLIC = ["id", "name", "created", "updated", "status", "progress", "stage", "stage_label", "error", "score", "grade", "view", "arm",
-  "thumb_frame", "options", "timing_s", "elapsed", "size_mb", "notice", "suggest", "player_id", "input_type", "arm_conf"] as const;
+  "thumb_frame", "options", "timing_s", "elapsed", "size_mb", "notice", "suggest", "player_id", "input_type", "arm_conf", "pace"] as const;
 
 function pub(m: Meta): AnalysisMeta {
   const out = {} as Record<string, unknown>;
@@ -681,16 +682,36 @@ export const api = {
     submit(id);
     return { id };
   },
-  patch: async (id: string, body: { name?: string; player_id?: string | null }) => {
+  patch: async (id: string, body: { name?: string; player_id?: string | null; pace?: PaceRecord | null }) => {
     await loadAll();
     requireMeta(id);
     const f: Partial<Meta> = {};
+    if ("pace" in body) {
+      const p = body.pace;
+      const num = (x: unknown) => typeof x === "number" && Number.isFinite(x);
+      if (p && !(num(p.release) && num(p.arrival) && num(p.kmh) && num(p.lo) && num(p.hi) && (p.target === "crease" || p.target === "stumps")
+        && (p.pitch === undefined || p.pitch === null || num(p.pitch)))) {
+        throw new Error("That ball-speed measurement isn't valid.");
+      }
+      f.pace = p ? {
+        release: p.release, arrival: p.arrival, target: p.target, bounced: !!p.bounced || num(p.pitch), pitch: num(p.pitch) ? p.pitch : null,
+        kmh: p.kmh, lo: p.lo, hi: p.hi,
+      } : null;
+    }
     if (body.name !== undefined && body.name.trim()) f.name = body.name.trim().slice(0, 80);
     if ("player_id" in body) {
       if (body.player_id) await requirePlayer(body.player_id).catch(() => { throw new Error("Unknown player."); });
       f.player_id = body.player_id ?? null;
     }
     return pub((Object.keys(f).length ? await writeMeta(id, f) : undefined) ?? requireMeta(id));
+  },
+  /** Run-up speed at back-foot contact (side-on clips with the last strides in view), from the stored camera motion. */
+  runup: async (id: string): Promise<Runup | null> => {
+    await loadAll();
+    const m = requireMeta(id);
+    const r = m.status === "done" ? await loadResult(id) : undefined;
+    const A = await db.get<StageA>("stagea", id).catch(() => undefined);
+    return r ? runupSpeed(r, (A as unknown as { motions?: number[][][] } | undefined)?.motions ?? null) : null;
   },
   insights: async (id: string): Promise<Insights> => {
     await loadAll();
@@ -759,7 +780,9 @@ export const api = {
     await loadAll();
     const p = await requirePlayer(pid);
     const mine = [...metas.values()].filter((m) => m.player_id === pid);
-    return { player: playerOut(p), ...playerProgress(p, mine.map((m) => ({ meta: m, summary: m.summary }))) } as unknown as PlayerProgress;
+    const pace = mine.filter((m) => m.status === "done" && m.pace).sort((a, b) => a.created - b.created)
+      .map((m) => ({ id: m.id, created: m.created, kmh: m.pace!.kmh, lo: m.pace!.lo, hi: m.pace!.hi }));
+    return { player: playerOut(p), ...playerProgress(p, mine.map((m) => ({ meta: m, summary: m.summary }))), pace } as unknown as PlayerProgress;
   },
   upload: async (file: File, opts: { bowling_arm: string; height_cm?: number; slowmo_factor: number; player_id?: string | null }, onProgress?: (f: number) => void) => {
     await loadAll();

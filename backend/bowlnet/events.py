@@ -206,6 +206,7 @@ def detect_events(kp: np.ndarray, kc: np.ndarray, kp_stab: np.ndarray, P: np.nda
     # without a preceding rise, so it never qualifies.)
     rise_win = max(3, int(0.3 * fps))
     cands = []
+    full = set()  # candidates with a complete rise above the shoulder and fall into the follow-through
     for t_l in range(lo, hi):
         if lift[t_l] > -0.15 or lift[t_l] > lift[max(0, t_l - 1)] or lift[t_l] > lift[min(T - 1, t_l + 1)]:
             continue
@@ -220,11 +221,20 @@ def detect_events(kp: np.ndarray, kc: np.ndarray, kp_stab: np.ndarray, P: np.nda
         prox = abs(t_h - anchor) / fps
         score = amp + 0.6 * min(fall, 2.0) + 0.15 * min(amp / rise_s, 20) - 3.0 * prox
         cands.append((score, t_l, t_h))
+        if amp >= 1.5 and fall >= 1.5:
+            full.add((t_l, t_h))
     if "br" in fixed:
         t_top = fixed["br"]
         t_low = max(0, t_top - rise_win)
     elif cands:
         _, t_low, t_top = max(cands)
+        # The release is the last complete up-and-over: when a later candidate also rises well above the shoulder and
+        # falls away into the follow-through, the earlier one was the gather or the back-swing (seen from behind, the
+        # 2D speed peak that anchors the search can sit on the back-swing).
+        if (t_low, t_top) in full:
+            later = [c for c in cands if (c[1], c[2]) in full and c[2] - t_top >= 0.1 * fps]
+            if later:
+                _, t_low, t_top = max(later, key=lambda c: (c[2], c[0], c[1]))
     else:
         t_fast = lo + int(np.argmax(w2[lo:hi])) if hi > lo else lo
         t_low = t_fast
