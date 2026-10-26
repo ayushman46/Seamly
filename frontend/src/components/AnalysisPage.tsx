@@ -18,6 +18,7 @@ import FrameCard from "./FrameCard";
 import PaceCard from "./PaceCard";
 import ClipMaker from "./ClipMaker";
 import CreaseCard from "./CreaseCard";
+import OtherDeliveries from "./OtherDeliveries";
 import PlanPanel from "./PlanPanel";
 import { Verdict } from "./InsightsCard";
 import { setCurrentPlayer } from "../lib/player";
@@ -628,6 +629,7 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
             </div>
           </div>
         )}
+        {MODE === "browser" && <OtherDeliveries id={id} result={result} meta={meta} go={go} flash={flash} />}
         {ins || insErr
           ? <Verdict result={result} ins={ins} pace={meta.pace} armPending={askArm} onPlan={openPlan} onCoaching={openCoaching} onJump={jumpTo} />
           : <div className="skeleton-box verdict-skel" />}

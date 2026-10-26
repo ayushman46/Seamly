@@ -32,6 +32,10 @@ type Meta = AnalysisMeta & {
   auto_events?: Partial<Record<EventKey, number>>;   // the frames detected automatically (before any marker edits)
   owner?: string;   // tab running/queueing the analysis
 };
+
+/** Where an analysis' original video is stored: its own, or the analysis it was split from (deliveries found in one video
+ * share one stored copy). */
+const inputKey = (id: string, m: Meta | undefined = metas.get(id)) => `${m?.source_id ?? id}/input`;
 type StoredPlayer = Omit<Player, "analyses" | "latest_score" | "last_analysis">;
 
 /** How sure the bowling arm is (1 when the user set it), kept with the metadata so lists can mark a guess. */
@@ -108,7 +112,7 @@ async function refresh(id: string): Promise<void> {
 }
 
 const PUBLIC = ["id", "name", "created", "updated", "status", "progress", "stage", "stage_label", "error", "score", "grade", "view", "arm",
-  "thumb_frame", "options", "timing_s", "elapsed", "size_mb", "notice", "suggest", "player_id", "input_type", "arm_conf", "pace", "crease"] as const;
+  "thumb_frame", "options", "timing_s", "elapsed", "size_mb", "notice", "suggest", "player_id", "input_type", "arm_conf", "pace", "crease", "source_id"] as const;
 
 function pub(m: Meta): AnalysisMeta {
   const out = {} as Record<string, unknown>;
@@ -165,7 +169,7 @@ async function loadFiles(id: string, result: AnalysisResult) {
   for (const name of ["mesh_rest.bin", "pose.bin", "input"]) {
     const key = `${id}/${name}`;
     if (urls.has(key)) continue;
-    need.push(db.get<Blob>("blob", name === "input" ? `${id}/input` : mkey(id, gen, name)).then((b) => { if (b) setUrl(key, b); }));
+    need.push(db.get<Blob>("blob", name === "input" ? inputKey(id) : mkey(id, gen, name)).then((b) => { if (b) setUrl(key, b); }));
   }
   await Promise.all(need);
   setUrl(`${id}/export.json`, exportJson(id, result));
@@ -256,7 +260,7 @@ async function runJob(id: string) {
   const oldGen = meta.gen ?? "";
   try {
     await writeMeta(id, { status: "running", progress: 0, stage: "probe", stage_label: "Loading models & reading video", started: now(), notice: null, owner: TAB });
-    const file = await db.get<Blob>("blob", `${id}/input`);
+    const file = await db.get<Blob>("blob", inputKey(id, meta));
     if (!file) throw new AnalysisError("The original video is no longer stored in this browser. Analyse it again from the start.");
     const P = await engine();
     const overrides = (meta.overrides ?? {}) as Overrides;
@@ -526,11 +530,12 @@ async function backup(includeVideos: boolean, playerId?: string): Promise<{ blob
       if (b) named.push([name, b]);
     }
     if (includeVideos) {
-      const v = await db.get<Blob>("blob", `${m.id}/input`);
+      const v = await db.get<Blob>("blob", inputKey(m.id, m));
       if (v) named.push(["input", v]);
     }
-    // what only means something in this browser stays out: the running tab, the storage generation, a pending re-run
-    const { owner: _owner, gen: _gen, previous: _previous, ...meta } = m;
+    // what only means something in this browser stays out: the running tab, the storage generation, a pending re-run,
+    // the link to a shared video
+    const { owner: _owner, gen: _gen, previous: _previous, source_id: _source, ...meta } = m;
     analyses.push({ meta, result, stagea, files: named.map(([name, b]) => ({ name, size: b.size, type: b.type })) });
     files.push(named.map(([, b]) => b));
   }
@@ -574,7 +579,7 @@ async function restore(file: Blob): Promise<{ analyses: number; players: number;
       continue;
     }
     const entries = a.files.map((f, j) => [f?.name, files[i][j]] as const).filter(([name]) => typeof name === "string" && FILE_NAME.test(name));
-    const meta = { ...m, status: "done", progress: 1, stage: "done", stage_label: "Complete", error: null, gen: "", owner: undefined, previous: null,
+    const meta = { ...m, status: "done", progress: 1, stage: "done", stage_label: "Complete", error: null, gen: "", owner: undefined, previous: null, source_id: undefined,
       player_id: m.player_id && have.has(m.player_id) ? m.player_id : null, size_mb: m.size_mb ?? null, arm_conf: m.arm_conf ?? armConf(r) } as Meta;
     await db.write(["blob", "stagea", "result", "meta"], (st) => {
       for (const [name, b] of entries) st.blob.put(b, `${m.id}/${name}`);
@@ -619,9 +624,16 @@ export const api = {
     const qi = queue.indexOf(id);
     if (qi >= 0) queue.splice(qi, 1);
     metas.delete(id); results.delete(id); meshBufs.delete(id); dropUrls(id);
+    // a video other deliveries were split from stays while any of them is kept; a shared one goes with the last of them
+    const src = m.source_id ?? id;
+    const stillUsed = [...metas.values()].some((x) => (x.source_id ?? x.id) === src);
     await db.write(["meta", "result", "stagea", "blob"], (st) => {
       st.meta.delete(id); st.result.delete(id); st.stagea.delete(id);
-      st.blob.delete(IDBKeyRange.bound(`${id}/`, `${id}/\uffff`));
+      if (stillUsed && src === id) {
+        st.blob.delete(IDBKeyRange.bound(`${id}/`, `${id}/input`, false, true));
+        st.blob.delete(IDBKeyRange.bound(`${id}/input`, `${id}/\uffff`, true, false));
+      } else st.blob.delete(IDBKeyRange.bound(`${id}/`, `${id}/\uffff`));
+      if (!stillUsed && src !== id) st.blob.delete(`${src}/input`);
     });
     return { deleted: id };
   }),
@@ -663,7 +675,7 @@ export const api = {
     await refresh(id);
     const meta = requireMeta(id);
     if (meta.status === "queued" || meta.status === "running") throw new Error("Analysis is already running");
-    if (!(await db.get<Blob>("blob", `${id}/input`))) {
+    if (!(await db.get<Blob>("blob", inputKey(id, meta)))) {
       throw new Error("This analysis was restored from a backup made without its video, so it can't be re-analysed here. Marker and settings corrections still work.");
     }
     // corrections made in Settings (height, bowling arm) carry over; event markers belong to the old window
@@ -682,6 +694,37 @@ export const api = {
     submit(id);
     return { id };
   }),
+  /** The video holds several deliveries (a nets session, a montage): analyse each one not yet analysed as its own
+   * analysis, sharing this one's stored video. The deliveries are the ones the analysis listed, in the same order. */
+  analyseOthers: async (id: string): Promise<string[]> => {
+    await loadAll();
+    const m = requireMeta(id);
+    const r = m.status === "done" ? await loadResult(id) : undefined;
+    if (!r) throw new Error("This analysis isn't finished yet.");
+    if (SAMPLE_IDS.has(id)) throw new Error("The examples hold one delivery each.");
+    if (!(await db.get<Blob>("blob", inputKey(id, m)))) throw new Error("The original video isn't stored in this browser, so its other deliveries can't be analysed here.");
+    const src = m.source_id ?? id;
+    const family = [...metas.values()].filter((x) => (x.source_id ?? x.id) === src);
+    const candidateOf = (x: Meta) => (x.options as unknown as Options | null)?.candidate ?? 0;
+    const taken = new Set(family.map(candidateOf));
+    const base = (metas.get(src)?.name ?? m.name).replace(/ · ball \d+$/, "");
+    // the choices made at upload (arm, height, clip speed) apply to the whole video; corrections made on one delivery don't
+    const opts = { ...((m.options ?? {}) as unknown as Options) };
+    // numbered in the order they were bowled (the list itself is ordered by how clearly each was seen)
+    const order = r.candidates.map((c, i) => [c.first, i] as const).sort((a, b) => a[0] - b[0]).map(([, i]) => i);
+    const ids: string[] = [];
+    for (let i = 0; i < r.candidates.length; i++) {
+      if (taken.has(i)) continue;
+      const nid = db.newId();
+      const nm = { ...newMeta(nid, `${base} · ball ${order.indexOf(i) + 1}`, 0, { ...opts, candidate: i }, m.player_id ?? null, m.input_type ?? "video/mp4"),
+        source_id: src, size_mb: m.size_mb } as Meta;
+      metas.set(nid, nm);
+      await db.put("meta", nid, nm);
+      submit(nid);
+      ids.push(nid);
+    }
+    return ids;
+  },
   /** See a sample analysis right away (precomputed). */
   demo: async (which: SampleName = "club") => {
     await loadAll();

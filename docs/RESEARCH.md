@@ -256,3 +256,37 @@ On the rear-view net clip at release, the body model's shoulders sat 37 cm from 
 **What this exposed: side-bend from behind reads low on the synthetic mannequin.** The synthetic test videos are rendered with the same body fitter, so the old renderer had straightened the scripted delivery's side-bend (34.5° scripted, about 22° rendered), and the "truth" in the behind-the-bowler table above (21.7°) was the straightened render. Rendered with the corrected fitter, the mannequin bends 35.5° in 3D and 34.3° in the image from the test camera, while the 2D side-bend reads 26.7° (24.7° on the old render): about 8° low, and barely responsive to the larger bend. The metric is the image angle of the hip-to-shoulder line, so perspective is not the cause. Frame by frame, the side-bend rises about 3.5° per frame (60 fps) through release: 26.7° at frame 54, where the release was found, 29.8° at frame 55, the scripted release, and 32.4° at frame 56. So about 3° of the gap is the release placed one frame early, and the other 4–5° is where the detector puts the shoulders on the mannequin, against the body model's joint centres. At 30 fps a one-frame release error is worth about 7° of side-bend, so slow motion matters as much for this measurement as for timings. It matters for the back-health screen, whose side-bend bands are 45° and 50°. (Later the same day the accuracy benchmark, docs/ACCURACY.md, ran the browser engine that the site uses on side-bends of 20°, 36° and 54°: it read within 2.6° on average, 34.3° for this 35.5° bend, so the under-read is the Python server engine's larger pose model on the mannequin, not the method.) The broadcast clips of Bumrah and Shami read 31–35°, typical for elite seamers, which suggests real bodies fare better than the mannequin, but that is not a validation.
 
 The model's resting thorax frame is measured the same way (along the whole trunk), so a square-on resting skeleton fits back with no bend; measured from the upper spine instead it had left a constant 6° backward lean. What remains is proportion: the body model's shoulder joints are 0.39 m apart against 0.20–0.35 m for the lifted skeleton, and its trunk is 0.59 m against 0.44–0.57 m. The angles and measurements come from the skeleton, which is unchanged; only the drawn body moved.
+
+## 8. What the market is missing (2026-10-27)
+
+Two studies: cricket bowling tools (App Store reviews through Apple's public review feed, Play Store pages, news, job
+adverts, governing-body pages) and video coaching apps in golf, baseball, tennis and running. Reddit could not be read.
+
+**The market.** About ten AI cricket-coach apps launched in 2025–26 with 0–4 ratings each; only Fulltrack AI has
+traction (1M+ Android installs). Its reviews repeat the same complaints: price (300-delivery caps, features moved to
+higher tiers), sign-up (about 30 one-star reviews from India where the phone OTP never arrived) and speed reliability.
+CricMotion (India, web) is the closest free rival. Coach video tools with voice-over and drawing (Coach's Eye, Hudl
+Technique) closed; their replacements cost $30–80 a month. Squad dashboards with "selector-ready" reports cost
+₹3,499–29,999 a month (Pitchwolf).
+
+**Gaps, and what Seamly now does about them:**
+
+| Gap | Evidence | In Seamly |
+|---|---|---|
+| A no-ball check in the nets | No consumer tool; a Fulltrack reviewer asked for exactly this; India's 13 no-balls in one Test made the news (Wisden, Aug 2026) | No-ball check (front foot vs popping crease, side-on) |
+| Clips a coach or parent can watch without the app | SwingVision credits shared clips with half its new users; parent sharing is what OnForm reviewers praise | Side-by-side clip (video + 3D body, slow motion, numbers, cue), optional voice-over |
+| Coach voice-over | Paid tiers only, after the free apps closed | Voice-over on the clip |
+| Squad view and analyst export | Paid squad tiers; franchise and academy analysts work in Excel/Power BI | Squad table + CSV; Send to coach (one player's file) |
+| One video, many balls | Fulltrack users praise not having to scrub an hour of footage | Several deliveries in one video analysed one by one |
+| Sign-up and price | OTP failures, paywalls | Already free, no account, works offline |
+
+**Not built tonight:** Hindi/Hinglish interface, norms for girls and women (Felton 2019: different mechanics and
+speeds; not enough published norms to rate against yet), a growth-spurt flag, a pitch map, and spin revolutions or
+seam position (a 60 fps phone sees about three frames per revolution: not credible).
+
+**No-ball check, how it was tested.** The heel estimate was scored against the rendered body's back of the heel on
+the 10 synthetic side-on clips: on the landing frame it was 1.3 cm behind the truth on average (worst 3.1 cm), well
+inside the ±6 cm band the check reports at 720p. The frame matters: two frames early at 30 fps it was 11 cm out,
+because the foot is still travelling, which is why the check asks for the first frame the foot is down. The synthetic
+mannequin's planted foot slides with its body, so frames after landing can't be scored; none of the real test clips
+shows a crease clearly enough to mark, so the check is not yet validated on real footage.

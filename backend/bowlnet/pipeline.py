@@ -139,8 +139,12 @@ def _select(info: VideoInfo, per_shot: dict[int, list], opts: Options, stride: i
         deliveries = ([s for s in deliveries if s.shot == opts.shot]
                       or [s for s in scores if s.shot == opts.shot and s.sweep is not None])
     if not deliveries:
-        if scores and scores[0].sweep and scores[0].sweep.sweep_deg > 150:
-            deliveries = [scores[0]]
+        # a clip that starts (or ends) mid-swing measures only part of the arm's sweep (short clips cut from edited footage)
+        top = scores[0] if scores else None
+        sw = top.sweep if top else None
+        cut = sw is not None and (sw.start_frame - top.first <= stride or top.last - sw.end_frame <= stride)
+        if sw is not None and (sw.sweep_deg > 150 or (cut and sw.sweep_deg >= 120 and sw.peak_speed >= 450)):
+            deliveries = [top]
         else:
             raise AnalysisError(
                 "We couldn't find a bowling delivery in this video. Make sure the bowler's full body is visible "

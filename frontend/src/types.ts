@@ -131,6 +131,7 @@ export interface AnalysisMeta {
   player_id?: string | null;
   pace?: PaceRecord | null;   // ball speed measured on this clip (the marked frames and the result)
   crease?: CreaseRecord | null;   // front-foot no-ball check: the marked crease and the call
+  source_id?: string | null;   // split from another analysis' video (several deliveries in one clip)
 }
 
 /** Front-foot no-ball check (lib/crease.ts): the crease edge marked on the landing frame (display px) and the call. */

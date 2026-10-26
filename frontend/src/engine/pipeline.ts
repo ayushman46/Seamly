@@ -177,7 +177,10 @@ function select(info: VideoInfo, perShot: Map<number, Detection[]>, opts: Option
     deliveries = inShot.length ? inShot : scores.filter((s) => s.shot === opts.shot && s.sweep);
   }
   if (!deliveries.length) {
-    if (scores.length && scores[0].sweep && scores[0].sweep.sweep_deg > 150) deliveries = [scores[0]];
+    // a clip that starts (or ends) mid-swing measures only part of the arm's sweep (short clips cut from edited footage)
+    const top = scores[0], sw = top?.sweep;
+    const cut = !!sw && (sw.start_frame - top.first <= stride || top.last - sw.end_frame <= stride);
+    if (sw && (sw.sweep_deg > 150 || (cut && sw.sweep_deg >= 120 && sw.peak_speed >= 450))) deliveries = [top];
     else throw new AnalysisError("We couldn't find a bowling delivery in this video. Make sure the bowler's full body is visible "
       + "from run-up to follow-through, ideally filmed side-on or from behind the bowler.");
   }
