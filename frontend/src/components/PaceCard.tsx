@@ -159,7 +159,8 @@ export default function PaceCard({ id, result, meta, frame, onSeek, onMeta, flas
         </div>
         <div className="pace-bar-out" aria-live="polite">{readout}</div>
         <div className="pace-bar-act">
-          {arrival !== null && <button type="button" className="btn sm primary" disabled={!pace || busy} onClick={save}>Save</button>}
+          {arrival !== null && !example && <button type="button" className="btn sm primary" disabled={!pace || busy} onClick={save}>Save</button>}
+          {arrival !== null && example && <span className="faint" style={{ fontSize: 12 }}>Examples aren't saved: the ball doesn't arrive in them.</span>}
           <button type="button" className="btn sm ghost" onClick={stop}>Cancel</button>
         </div>
       </div>

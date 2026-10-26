@@ -11,7 +11,11 @@ export default function FrameCard({ result, frame, onOpen, onConfirm, busy }: {
 }) {
   const t = Math.max(0, Math.min(result.frames.end - result.frames.start - 1, frame - result.frames.start));
   const rel = result.events.br ? realSec(result.frames.times[t] - result.events.br.time, result.options.slowmo_factor) : null;
-  const keys = result.view.view === "side_on" ? KEYS_SIDE : KEYS_REAR;
+  // below ~90 distinct frames a second the elbow isn't measurable (as on the video overlay): show the wrist height instead
+  const elbowOk = result.fps_real * (1 - (result.quality.repeated_frames ?? 0)) >= 90;
+  const keys = result.view.view === "side_on"
+    ? (elbowOk ? KEYS_SIDE : KEYS_SIDE.map((k) => (k === "elbow_flexion_2d" ? "bowling_wrist_height_pct" : k)))
+    : KEYS_REAR;
   const atEvent = EVENTS.find((e) => result.events[e.key]?.frame === frame);
   // Foot contacts that were estimated (or are hard to see from this camera angle) can be confirmed on the frame
   // the foot really lands: offer it whenever the player is near one (~0.15 s), not only exactly on it.

@@ -19,7 +19,7 @@ export function Hero({ onAnalyse, onDemo, demoBusy, demoError, disabled }: {
         <div className="hero-copy">
           <h1 className="hero-title" id="hero-title">Analyse your bowling action from one phone video.</h1>
           <p className="hero-sub">
-            Key moments, joint angles, ball speed, a 3D body and a practice plan, from phone video.{" "}
+            Key moments, joint angles, ball speed, a 3D body and a practice plan.{" "}
             {LOCAL ? "Free, and your video never leaves your phone." : "Free, on your own Seamly server."}
           </p>
           <div className="hero-ctas">

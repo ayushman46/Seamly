@@ -457,6 +457,15 @@ export type SampleName = keyof typeof SAMPLES;
 // bump when the bundled sample analyses are regenerated, so a browser that imported an older copy gets the new one
 const SAMPLE_VERSION = 15;
 
+/** A link to one of the built-in examples opens anywhere: import it on first use (the ids are fixed). */
+const sampleImports = new Map<string, Promise<unknown>>();   // the report asks for an analysis and its insights at once
+async function ensureSample(id: string): Promise<void> {
+  const which = (Object.keys(SAMPLES) as SampleName[]).find((k) => SAMPLES[k].id === id);
+  if (!which || metas.has(id)) return;
+  if (!sampleImports.has(id)) sampleImports.set(id, importSample(which).finally(() => sampleImports.delete(id)));
+  await sampleImports.get(id);
+}
+
 /** Import a precomputed sample analysis (opens instantly: no models to download). */
 async function importSample(which: SampleName): Promise<string> {
   const s = SAMPLES[which];
@@ -586,6 +595,7 @@ export const api = {
   },
   get: async (id: string): Promise<{ meta: AnalysisMeta; result?: AnalysisResult }> => {
     await loadAll();
+    await ensureSample(id);
     await refresh(id);
     const m = requireMeta(id);
     if (m.status === "done") {
@@ -725,6 +735,7 @@ export const api = {
   },
   insights: async (id: string): Promise<Insights> => {
     await loadAll();
+    await ensureSample(id);
     const m = requireMeta(id);
     const r = m.status === "done" ? await loadResult(id) : undefined;
     if (!r) throw new Error("This analysis isn't finished yet.");

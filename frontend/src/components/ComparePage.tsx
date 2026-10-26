@@ -81,7 +81,10 @@ export default function ComparePage({ a, b, go, overlay: startOverlay }: { a: st
     );
   }
   // two different players' deliveries: differences, not progress
-  const otherBowler = !!x.meta.player_id && !!y.meta.player_id && x.meta.player_id !== y.meta.player_id;
+  // (a right-armer and a left-armer are two bowlers too, whoever the clips were filed under)
+  const sure = (d: Loaded) => d.result.bowling_arm.source === "user" || d.result.bowling_arm.confidence >= 0.5;
+  const otherBowler = (!!x.meta.player_id && !!y.meta.player_id && x.meta.player_id !== y.meta.player_id)
+    || (x.result.bowling_arm.arm !== y.result.bowling_arm.arm && sure(x) && sure(y));
   const sameView = x.result.view.view === y.result.view.view;
   const over = mode === "over" && sameView;   // a link asking for the overlay of clips from two angles shows them side by side
   const side = (d: Loaded, label: string) => {

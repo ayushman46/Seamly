@@ -259,7 +259,9 @@ def practice_plan(result: dict, player: dict | None = None) -> dict:
         return [d for d in PLAN_DRILLS.get(k, []) if not (d["adult_only"] and age in UNDER_17)]
 
     from .coaching import DRILLS
-    focus = [{"title": DRILLS[k]["title"], "cue": DRILLS[k]["cue"], "key": k} for k in keys]
+    # the cue is the priority's own: a short and a long stride share a drill key but not a cue
+    focus = [{"title": p["drill"]["title"], "cue": p["drill"]["cue"], "key": _drill_key(p)} for p in pr
+             if _drill_key(p) in PLAN_DRILLS]
     day_limit = lim["day"] * 6 if lim and lim.get("day") else None   # deliveries per match day
     spell_overs = lim["spell"] if lim else 6
     # a training session stays well under a match day: at most two spells' worth, and for juniors at most 75% of

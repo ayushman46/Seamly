@@ -311,7 +311,8 @@ export function practicePlan(result: InsightsResult, player: InsightsPlayer | nu
   const young = UNDER_17.includes(age);
   const drillsFor = (k: string) => get(PLAN_DRILLS, k, []).filter((x) => !(x.adult_only && UNDER_17.includes(age)));
 
-  const focus = keys.map((k) => ({ title: DRILLS[k].title, cue: DRILLS[k].cue, key: k }));
+  // the cue is the priority's own: a short and a long stride share a drill key but not a cue
+  const focus = pr.filter((p) => has(PLAN_DRILLS, drillKey(p))).map((p) => ({ title: p.drill.title, cue: p.drill.cue, key: drillKey(p) }));
   const dayLimit = lim && lim.day ? lim.day * 6 : null;   // deliveries per match day
   const spellOvers = lim ? lim.spell : 6;
   // a training session stays well under a match day: at most two spells' worth, and for juniors at most 75% of

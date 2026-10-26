@@ -102,19 +102,21 @@ export function BackHealth({ ins }: { ins: Insights }) {
       <div role="heading" aria-level={3} className="card-title">Back health</div>
       <div className="muted" style={{ fontSize: 13, marginBottom: 10 }}>{backHealthLine(b)}.</div>
       <div className="stack" style={{ gap: 8 }}>
-        {/* checks this view can't make share one line */}
+        {/* checks that couldn't be made share a line per reason (the view, or an estimated contact frame) */}
         {(() => {
           const out = b.checks.filter((c) => c.status === "unknown");
-          if (!out.length) return null;
-          const names = out.map((c, i) => (i ? c.label.charAt(0).toLowerCase() + c.label.slice(1) : c.label));
-          return (
-            <div className="row" style={{ gap: 8, alignItems: "flex-start" }}>
-              <span className="dot unknown" style={{ marginTop: 6 }} aria-hidden="true" />
-              <div className="faint" style={{ fontSize: 12.5 }}>
-                {names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : names[0]}: {out[0].text.charAt(0).toLowerCase() + out[0].text.slice(1)}
+          const reasons = [...new Set(out.map((c) => c.text))];
+          return reasons.map((text) => {
+            const names = out.filter((c) => c.text === text).map((c, i) => (i ? c.label.charAt(0).toLowerCase() + c.label.slice(1) : c.label));
+            return (
+              <div key={text} className="row" style={{ gap: 8, alignItems: "flex-start" }}>
+                <span className="dot unknown" style={{ marginTop: 6 }} aria-hidden="true" />
+                <div className="faint" style={{ fontSize: 12.5 }}>
+                  {names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : names[0]}: {text.charAt(0).toLowerCase() + text.slice(1)}
+                </div>
               </div>
-            </div>
-          );
+            );
+          });
         })()}
         {b.checks.filter((c) => c.status !== "unknown").map((c) => (
           <div key={c.key} className="row" style={{ gap: 8, alignItems: "flex-start" }}>

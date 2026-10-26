@@ -58,6 +58,7 @@ export default function CameraCheck({ go }: { go: (to: string) => void }) {
   const models = useRef<PoseModels | null>(null);
   const history = useRef<{ t: number; checks: Check[] }[]>([]);
   const lastBox = useRef<number[] | null>(null);
+  const fade = useRef(0);
   const good = useRef<{ on: boolean; since: number }>({ on: false, since: 0 });
   const [isGood, setIsGood] = useState(false);
   const viewRef = useRef(view);
@@ -145,6 +146,8 @@ export default function CameraCheck({ go }: { go: (to: string) => void }) {
         setChecks(shown);
         setIsGood(g.on);
         drawPose(overlayRef.current, p, w, h, g.on);
+        window.clearTimeout(fade.current);
+        fade.current = window.setTimeout(() => drawPose(overlayRef.current, null, w, h, false), 350);
       } catch (e) {
         setErr((e as Error).message);
       }
@@ -154,7 +157,8 @@ export default function CameraCheck({ go }: { go: (to: string) => void }) {
     return () => { alive = false; window.clearTimeout(timer); };
   }, [state]);
 
-  const isReady = state === "live" && checks.length > 0 && isGood;
+  // held through brief flicker, but never shown beside a failing check
+  const isReady = state === "live" && checks.length > 0 && isGood && ready(checks);
   const flip = () => { const f = facing === "environment" ? "user" : "environment"; setFacing(f); start(f); };
   const toUpload = () => {
     stop();

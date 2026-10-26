@@ -9,7 +9,7 @@ import { IPause, IPlay } from "./Icons";
 import { fmt, unitLabel } from "../lib/format";
 
 type Preset = "side_r" | "side_l" | "behind" | "front" | "top";
-const TAG_NAME: Record<string, string> = { front_knee_2d: "Knee", elbow_flexion_2d: "Elbow", trunk_angle_2d: "Trunk",
+const TAG_NAME: Record<string, string> = { front_knee_2d: "Knee", elbow_flexion_2d: "Elbow bend", trunk_angle_2d: "Trunk",
   bowling_arm_elevation: "Arm", hip_shoulder_separation: "Hips–shoulders", bowling_wrist_height_pct: "Wrist" };
 const PRESETS: { key: Preset; label: string; title: string }[] = [
   { key: "side_r", label: "Side R", title: "Side-on, from the right" },
@@ -57,12 +57,14 @@ export default function Viewer3D({ id, result, frame, playing, onTogglePlay, onS
   // 11/14 shoulders, 13/16 wrists, 0 pelvis)
   const tagSpecs = useMemo(() => {
     const fKnee = right ? 5 : 2, bElbow = bowlingIdx[1], bShoulder = bowlingIdx[0], bWrist = bowlingIdx[2];
+    // below ~90 distinct frames a second the elbow isn't measurable (as on the video overlay): no number for it
+    const elbowOk = result.fps_real * (1 - (result.quality.repeated_frames ?? 0)) >= 90;
     return result.view.view === "side_on"
-      ? [{ key: "front_knee_2d", joint: fKnee, cls: "front" }, { key: "elbow_flexion_2d", joint: bElbow, cls: "bowl" },
+      ? [{ key: "front_knee_2d", joint: fKnee, cls: "front" }, ...(elbowOk ? [{ key: "elbow_flexion_2d", joint: bElbow, cls: "bowl" }] : []),
         { key: "trunk_angle_2d", joint: 8, cls: "" }, { key: "bowling_arm_elevation", joint: bShoulder, cls: "bowl" }]
       : [{ key: "trunk_angle_2d", joint: 8, cls: "" }, { key: "bowling_arm_elevation", joint: bShoulder, cls: "bowl" },
         { key: "hip_shoulder_separation", joint: 0, cls: "" }, { key: "bowling_wrist_height_pct", joint: bWrist, cls: "bowl" }];
-  }, [result.view.view, right, bowlingIdx]);
+  }, [result.view.view, result.fps_real, result.quality.repeated_frames, right, bowlingIdx]);
 
   // ---------- init scene once ----------
   useEffect(() => {
