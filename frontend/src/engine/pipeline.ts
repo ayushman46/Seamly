@@ -15,7 +15,7 @@ import { FrameSource, repeatedFraction, segmentShots, signature, sigDistance, vi
 import { IDENTITY, MotionEstimator, appearance, detectionsByTrack, toGrey, track, type FrameDets, FLOW_SIZE } from "./tracking";
 import { isDelivery, scoreTracks, trackScoreDict, type Detection, type TrackScore, type TrackScoreDict } from "./bowler";
 import { assemble, bodyHeightPx, fixSwaps, hampel, interpolateGaps, smoothKeypoints } from "./pose2d";
-import { classifyView, decideBowlingArm, detectEvents, facingDirection, stabilise, strideAcross } from "./events";
+import { classifyView, decideBowlingArm, detectEvents, facingDirection, stabilise, strideAcross, wristLift } from "./events";
 import { estimateWorldFrame, reconstruct } from "./kinematics";
 import { compute, type Ctx } from "./metrics";
 import { coach } from "./coaching";
@@ -477,6 +477,10 @@ export interface StageBOut {
   mesh: { rest: ArrayBuffer; pose: ArrayBuffer };
 }
 
+// left/right swapped for the arms only (shoulders, elbows, wrists), in COCO and H36M order
+const COCO_ARM_FLIP = [0, 1, 2, 3, 4, 6, 5, 8, 7, 10, 9, 11, 12, 13, 14, 15, 16];
+const H36M_ARM_FLIP = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 14, 15, 16, 11, 12, 13];
+
 /** Everything after 3D lifting; fast enough to re-run on every user correction. */
 export async function stageB(A: StageA, overrides: Overrides = {}, onProgress?: ProgressCb): Promise<StageBOut> {
   const prog = new Progress(onProgress);
@@ -521,48 +525,90 @@ export async function stageB(A: StageA, overrides: Overrides = {}, onProgress?: 
       labelsSwapped = true;
     }
   }
-  const side = sideForArm(arm);
   const up0: [number, number, number] = [0, -1, 0];
   const runup: number[] = [];
   for (let t = 0; t < Math.max(0, sweepLo - Math.trunc(0.35 * realFps)); t++) runup.push(t);
   const hintReliable = runup.length >= Math.max(4, Math.trunc(0.2 * realFps));
-  let forwardHint: number[];
-  if (hintReliable) forwardHint = facingDirection(P, up0, runup);
-  else {
+  const fwdHint = (P: Arr3): number[] => {
+    if (hintReliable) return facingDirection(P, up0, runup);
     const rel: number[] = [];
     for (let t = Math.min(T - 1, sweepHi); t < Math.min(T, sweepHi + Math.trunc(0.15 * realFps) + 1); t++) rel.push(t);
-    forwardHint = facingDirection(P, up0, rel.length ? rel : [T - 1]);
-  }
+    return facingDirection(P, up0, rel.length ? rel : [T - 1]);
+  };
+  let side = sideForArm(arm);
   const ref = Math.min(T - 1, Math.max(0, sweepHi));
-  const kpStab = stabilise(kpS, mot, ref);
-  const bodyPx = bodyHeightPx(kpS, kc);
   const peak = sweep.peak - f0;
   // user-edited events (absolute frame numbers) are fixed; the others are detected around them
   const fixed: Partial<Record<EventKey, number>> = {};
   for (const [k, v] of Object.entries(overrides.events ?? {}))
     if (["bfc", "ffc", "uah", "br", "ft"].includes(k) && v !== null && v !== undefined) fixed[k as EventKey] = Math.trunc(clip(Math.trunc(v) - f0, 0, T - 1));
   const edited = (Object.keys(fixed) as EventKey[]).sort();
-  let ev = detectEvents(kpS, kc, kpStab, P, side, up0, forwardHint, realFps, bodyPx, [sweepLo, sweepHi], peak, fixed);
-  let wf = estimateWorldFrame(P, ev.ffc, ev.bfc, side.front_ankle, side.back_ankle, forwardHint, hintReliable);
-  ev = detectEvents(kpS, kc, kpStab, P, side, wf.up, wf.forward, realFps, bodyPx, [sweepLo, sweepHi], peak, fixed);
-  if (edited.length) {
-    reconcileAutoEvents(ev, edited, T);
-    checkEventOrder(ev, edited, f0, overrides.latest_events);
-    wf = estimateWorldFrame(P, ev.ffc, ev.bfc, side.front_ankle, side.back_ankle, forwardHint, hintReliable);
-  }
-  // second 3D pass with physics: while the front foot is planted (FFC -> just after release) it stays ahead of its
-  // knee and of the pelvis along the direction of travel (resolves the monocular depth-sign ambiguity)
-  if (ev.ffc !== null && ev.br > ev.ffc) {
-    const stance: number[] = [];
-    for (let t = ev.ffc; t < Math.min(T, ev.br + Math.max(2, Math.round(0.05 * realFps)) + 1); t++) stance.push(t);
-    const fwd = wf.forward;
-    skel = reconstruct(X, h2d(seq), c2d(seq), height, realFps, { depthW,
-      priors: [[stance, side.front_knee, side.front_ankle, fwd, -0.03], [stance, PELVIS, side.front_ankle, fwd, 0.05]] });
+
+  /** Events, world frame and camera view from the current labels, with the final skeleton. */
+  const locate = (P0: Arr3) => {
+    let P = P0;
+    const forwardHint = fwdHint(P);
+    const kpStab = stabilise(kpS, mot, ref);
+    const bodyPx = bodyHeightPx(kpS, kc);
+    let ev = detectEvents(kpS, kc, kpStab, P, side, up0, forwardHint, realFps, bodyPx, [sweepLo, sweepHi], peak, fixed);
+    let wf = estimateWorldFrame(P, ev.ffc, ev.bfc, side.front_ankle, side.back_ankle, forwardHint, hintReliable);
+    ev = detectEvents(kpS, kc, kpStab, P, side, wf.up, wf.forward, realFps, bodyPx, [sweepLo, sweepHi], peak, fixed);
+    if (edited.length) {
+      reconcileAutoEvents(ev, edited, T);
+      checkEventOrder(ev, edited, f0, overrides.latest_events);
+      wf = estimateWorldFrame(P, ev.ffc, ev.bfc, side.front_ankle, side.back_ankle, forwardHint, hintReliable);
+    }
+    let sk = skel;
+    // second 3D pass with physics: while the front foot is planted (FFC -> just after release) it stays ahead of its
+    // knee and of the pelvis along the direction of travel (resolves the monocular depth-sign ambiguity)
+    if (ev.ffc !== null && ev.br > ev.ffc) {
+      const stance: number[] = [];
+      for (let t = ev.ffc; t < Math.min(T, ev.br + Math.max(2, Math.round(0.05 * realFps)) + 1); t++) stance.push(t);
+      const fwd = wf.forward;
+      sk = reconstruct(X, h2d(seq), c2d(seq), height, realFps, { depthW,
+        priors: [[stance, side.front_knee, side.front_ankle, fwd, -0.03], [stance, PELVIS, side.front_ankle, fwd, 0.05]] });
+      P = sk.joints;
+      wf = estimateWorldFrame(P, ev.ffc, ev.bfc, side.front_ankle, side.back_ankle, forwardHint, hintReliable);
+    }
+    const strideX = strideAcross(kpS, sk.px_per_m, sk.bone_lengths[1] + sk.bone_lengths[2], side, ev.ffc, ev.br);
+    const view: ViewInfo = classifyView(wf.forward, kpS, kc, runup.length >= 4 ? runup : null, strideX);
+    return { ev, wf, sk, P, view };
+  };
+  let L = locate(P);
+  // The user says the camera was behind the bowler and the analysis read it as in front (or the reverse): the
+  // detector took the back for the front, so left and right are labelled as if the bowler faced the other way.
+  // Mirror the labels (undoing an arm-cue mirror if one was made) and locate everything again.
+  const opposite = overrides.view === "behind" ? "front_on" : overrides.view === "front_on" ? "behind" : null;
+  if (opposite !== null && L.view.view === opposite) {
+    kpS = kpS.map((f) => COCO_FLIP.map((j) => f[j]));
+    kc = kc.map((f) => COCO_FLIP.map((j) => f[j]));
+    X = X.map((f) => H36M_FLIP.map((j) => f[j]));
+    seq = seq.map((f) => H36M_FLIP.map((j) => f[j]));
+    skel = reconstruct(X, h2d(seq), c2d(seq), height, realFps, { depthW });
     P = skel.joints;
-    wf = estimateWorldFrame(P, ev.ffc, ev.bfc, side.front_ankle, side.back_ankle, forwardHint, hintReliable);
+    labelsSwapped = !labelsSwapped;
+    if (opts.bowling_arm === "auto") [arm, armConf, votes] = decideBowlingArm(kpS, kc, P, realFps, sweep.side, armWindow);
+    else {
+      // The arm and the view are separate facts. A bowling arm goes well above its shoulder around release: if after
+      // the mirror the user's bowling arm never does and the other arm does, the detector had labelled the arms right
+      // and only the body the wrong way round, so the arms go back.
+      const lo = Math.max(0, armWindow[0]), hi = Math.min(T, armWindow[1] + 1);
+      const top = (sd: ReturnType<typeof sideForArm>) => (hi > lo ? Math.max(...wristLift(kpS, sd.c_sh, sd.c_el, sd.c_wr).slice(lo, hi)) : 0);
+      if (top(sideForArm(arm)) < 0.3 && top(sideForArm(arm === "right" ? "left" : "right")) > 0.8) {
+        kpS = kpS.map((f) => COCO_ARM_FLIP.map((j) => f[j]));
+        kc = kc.map((f) => COCO_ARM_FLIP.map((j) => f[j]));
+        X = X.map((f) => H36M_ARM_FLIP.map((j) => f[j]));
+        seq = seq.map((f) => H36M_ARM_FLIP.map((j) => f[j]));
+        skel = reconstruct(X, h2d(seq), c2d(seq), height, realFps, { depthW });
+        P = skel.joints;
+      }
+    }
+    side = sideForArm(arm);
+    L = locate(P);
   }
-  const strideX = strideAcross(kpS, skel.px_per_m, skel.bone_lengths[1] + skel.bone_lengths[2], side, ev.ffc, ev.br);
-  let view: ViewInfo = classifyView(wf.forward, kpS, kc, runup.length >= 4 ? runup : null, strideX);
+  const { ev, wf } = L;
+  skel = L.sk; P = L.P;
+  let view = L.view;
   if (overrides.view === "side_on" || overrides.view === "behind" || overrides.view === "front_on") {
     const { oblique: _o, ...rest } = view;
     view = { ...rest, view: overrides.view, source: "user" };

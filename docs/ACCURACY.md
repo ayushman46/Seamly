@@ -116,7 +116,7 @@ the camera can't see, so the 3D is much looser; Seamly takes no rating from it. 
 | Situation | What happened | How often |
 |---|---|---|
 | Left and right limbs confused by the pose model | Wrong arm or leg measured: on one clip trunk lean read 85° off, on another the front knee 22° off | 3 of 11 side-on synthetic clips (the faceless, symmetric mannequin swapped 35–72 times per clip); 1 of 17 real clips (a front-on club clip, release still right) |
-| Faceless mannequin from behind read as front-on | Events 5–15 frames off, side-bend 26–35° off; correcting the view in Settings doesn't repair it | 2 of 5 rear-view synthetic clips; 0 of 7 real rear-view clips |
+| Faceless mannequin from behind read as front-on | Events 5–15 frames off, side-bend 26–35° off. Setting the view to "Behind" in Detection & settings now repairs it (since 2026-10-27): events within 1 frame, side-bend 6° and 0.5° off, 3D 239–244 mm | 2 of 5 rear-view synthetic clips; 0 of 7 real rear-view clips |
 | Phone quality (480p + JPEG + shake) | Side-on: errors of 8–24°. From behind: refused, "couldn't find a delivery" | 2 of 2 |
 | Resolution alone, 480p (Python engine) | Release 17 frames early, view misread, body metrics withheld | JPEG alone and shake alone were fine |
 | Tight crop with the bowler near the frame edge (real clip) | Release 2 frames later, trunk lean +21°, score 72 → 88 | 1 of 4 real-clip variants |
@@ -166,4 +166,5 @@ and release-point assumptions are themselves estimates; a radar session at the n
 - A radar-gun session for ball speed.
 - Spinners: a release rule for slower arms.
 - Left/right label consistency in the browser's pose model at 60+ fps side-on, and front/back from behind (both seen
-  mainly on the faceless mannequin, but a view correction should repair the labels, which it doesn't today).
+  mainly on the faceless mannequin). A view correction now repairs the labels (§5); the automatic reading still
+  needs the face or the direction of travel to tell front from back.

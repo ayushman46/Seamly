@@ -16,7 +16,7 @@ from . import config
 from .store import write_atomic
 from .bowler import TrackScore, is_delivery, score_tracks
 from .detect import COCO_FLIP, COCO_NAMES, detections_by_track, refine_on_crops, square_crop
-from .events import (PELVIS, Side, classify_view, decide_bowling_arm, detect_events, facing_direction, stabilise,
+from .events import (PELVIS, Side, classify_view, decide_bowling_arm, detect_events, facing_direction, stabilise, wrist_lift,
                      stride_across)
 from .kinematics import estimate_world_frame, reconstruct
 from .lifting import sam3d
@@ -24,6 +24,9 @@ from .lifting.motionbert import H36M_NAMES, H36M_PARENTS, coco_to_h36m, lift
 
 H36M_PARENTS_LIST = list(H36M_PARENTS)
 H36M_FLIP = [0, 4, 5, 6, 1, 2, 3, 7, 8, 9, 10, 14, 15, 16, 11, 12, 13]
+# left/right swapped for the arms only (shoulders, elbows, wrists), in COCO and H36M order
+COCO_ARM_FLIP = [0, 1, 2, 3, 4, 6, 5, 8, 7, 10, 9, 11, 12, 13, 14, 15, 16]
+H36M_ARM_FLIP = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 14, 15, 16, 11, 12, 13]
 from .pose2d import assemble, body_height_px, fix_swaps, hampel, interpolate_gaps, smooth_keypoints
 from .tracking import detect_frames, track
 from .video import VideoError, VideoInfo, iter_frames, probe, write_jpeg
@@ -498,45 +501,84 @@ def stage_b(out_dir: Path, overrides: dict | None = None, progress: Progress | N
             skel = reconstruct(X, seq[..., :2], seq[..., 2], height, real_fps, depth_w=depth_w)
             P = skel.joints
             labels_swapped = True
-    side = Side.for_arm(arm)
     up0 = np.array([0.0, -1.0, 0.0])
     runup = np.arange(0, max(0, sweep_lo - int(0.35 * real_fps)))
     hint_reliable = len(runup) >= max(4, int(0.2 * real_fps))
-    if hint_reliable:
-        forward_hint = facing_direction(P, up0, runup)
-    else:
+
+    def fwd_hint(P):
+        if hint_reliable:
+            return facing_direction(P, up0, runup)
         rel = np.arange(min(T - 1, sweep_hi), min(T, sweep_hi + int(0.15 * real_fps) + 1))
-        forward_hint = facing_direction(P, up0, rel if len(rel) else np.array([T - 1]))
+        return facing_direction(P, up0, rel if len(rel) else np.array([T - 1]))
+    side = Side.for_arm(arm)
     ref = min(T - 1, max(0, sweep_hi))
-    kp_stab = stabilise(kp_s, mot, ref)
-    body_px = body_height_px(kp_s, kc)
     peak = sweep["peak"] - f0
     # user-edited events (absolute frame numbers) are fixed; the others are detected around them
     fixed = {k: int(np.clip(int(v) - f0, 0, T - 1)) for k, v in (overrides.get("events") or {}).items()
              if k in ("bfc", "ffc", "uah", "br", "ft") and v is not None}
     edited = sorted(fixed)
-    ev = detect_events(kp_s, kc, kp_stab, P, side, up0, forward_hint, real_fps, body_px, (sweep_lo, sweep_hi), peak,
-                       fixed=fixed)
-    wf = estimate_world_frame(P, ev.ffc, ev.bfc, side.front_ankle, side.back_ankle, forward_hint, hint_reliable)
-    ev = detect_events(kp_s, kc, kp_stab, P, side, wf.up, wf.forward, real_fps, body_px, (sweep_lo, sweep_hi), peak,
-                       fixed=fixed)
-    if edited:
-        _reconcile_auto_events(ev, edited, T)
-        _check_event_order(ev, edited, f0, overrides.get("latest_events"))
+
+    def locate(P):
+        """Events, world frame and camera view from the current labels; returns them with the final skeleton."""
+        forward_hint = fwd_hint(P)
+        kp_stab = stabilise(kp_s, mot, ref)
+        body_px = body_height_px(kp_s, kc)
+        ev = detect_events(kp_s, kc, kp_stab, P, side, up0, forward_hint, real_fps, body_px, (sweep_lo, sweep_hi), peak,
+                           fixed=fixed)
         wf = estimate_world_frame(P, ev.ffc, ev.bfc, side.front_ankle, side.back_ankle, forward_hint, hint_reliable)
-    # Second 3D pass with physics: while the front foot is planted (FFC -> just after release) it stays ahead of
-    # its knee and of the pelvis along the direction of travel. This resolves the monocular depth-sign
-    # ambiguity that otherwise folds the front leg in behind/front-on views.
-    if ev.ffc is not None and ev.br > ev.ffc:
-        stance = range(ev.ffc, min(T, ev.br + max(2, int(round(0.05 * real_fps))) + 1))
-        fwd = wf.forward
-        priors = [(stance, side.front_knee, side.front_ankle, fwd, -0.03),
-                  (stance, PELVIS, side.front_ankle, fwd, 0.05)]
-        skel = reconstruct(X, seq[..., :2], seq[..., 2], height, real_fps, priors=priors, depth_w=depth_w)
-        P = skel.joints
-        wf = estimate_world_frame(P, ev.ffc, ev.bfc, side.front_ankle, side.back_ankle, forward_hint, hint_reliable)
-    stride_x = stride_across(kp_s, skel.px_per_m, float(skel.bone_lengths[1] + skel.bone_lengths[2]), side, ev.ffc, ev.br)
+        ev = detect_events(kp_s, kc, kp_stab, P, side, wf.up, wf.forward, real_fps, body_px, (sweep_lo, sweep_hi), peak,
+                           fixed=fixed)
+        if edited:
+            _reconcile_auto_events(ev, edited, T)
+            _check_event_order(ev, edited, f0, overrides.get("latest_events"))
+            wf = estimate_world_frame(P, ev.ffc, ev.bfc, side.front_ankle, side.back_ankle, forward_hint, hint_reliable)
+        skel_ = None
+        # Second 3D pass with physics: while the front foot is planted (FFC -> just after release) it stays ahead of
+        # its knee and of the pelvis along the direction of travel. This resolves the monocular depth-sign
+        # ambiguity that otherwise folds the front leg in behind/front-on views.
+        if ev.ffc is not None and ev.br > ev.ffc:
+            stance = range(ev.ffc, min(T, ev.br + max(2, int(round(0.05 * real_fps))) + 1))
+            fwd = wf.forward
+            priors = [(stance, side.front_knee, side.front_ankle, fwd, -0.03),
+                      (stance, PELVIS, side.front_ankle, fwd, 0.05)]
+            skel_ = reconstruct(X, seq[..., :2], seq[..., 2], height, real_fps, priors=priors, depth_w=depth_w)
+            P = skel_.joints
+            wf = estimate_world_frame(P, ev.ffc, ev.bfc, side.front_ankle, side.back_ankle, forward_hint, hint_reliable)
+        return ev, wf, skel_, P
+
+    ev, wf, skel2, P2 = locate(P)
+    sk = skel2 or skel
+    stride_x = stride_across(kp_s, sk.px_per_m, float(sk.bone_lengths[1] + sk.bone_lengths[2]), side, ev.ffc, ev.br)
     view = classify_view(wf.forward, kp_s, kc, runup if len(runup) >= 4 else None, stride_x)
+    # The user says the camera was behind the bowler and the analysis read it as in front (or the reverse): the
+    # detector took the back for the front, so left and right are labelled as if the bowler faced the other way.
+    # Mirror the labels (undoing an arm-cue mirror if one was made) and locate everything again.
+    if overrides.get("view") in ("behind", "front_on") and view["view"] == {"behind": "front_on", "front_on": "behind"}[overrides["view"]]:
+        kp_s, kc = np.ascontiguousarray(kp_s[:, COCO_FLIP]), np.ascontiguousarray(kc[:, COCO_FLIP])
+        X, seq = np.ascontiguousarray(X[:, H36M_FLIP]), np.ascontiguousarray(seq[:, H36M_FLIP])
+        skel = reconstruct(X, seq[..., :2], seq[..., 2], height, real_fps, depth_w=depth_w)
+        P = skel.joints
+        labels_swapped = not labels_swapped
+        if opts.bowling_arm == "auto":
+            arm, arm_conf, votes = decide_bowling_arm(kp_s, kc, P, real_fps, sweep["side"], arm_window)
+        else:
+            # The arm and the view are separate facts. A bowling arm goes well above its shoulder around release: if
+            # after the mirror the user's bowling arm never does and the other arm does, the detector had labelled the
+            # arms right and only the body the wrong way round, so the arms go back.
+            lo_, hi_ = max(0, arm_window[0]), min(T, arm_window[1] + 1)
+            b_, o_ = (Side.for_arm(arm), Side.for_arm("left" if arm == "right" else "right"))
+            top = lambda sd: float(np.max(wrist_lift(kp_s, sd.c_sh, sd.c_el, sd.c_wr)[lo_:hi_])) if hi_ > lo_ else 0.0
+            if top(b_) < 0.3 and top(o_) > 0.8:
+                kp_s, kc = np.ascontiguousarray(kp_s[:, COCO_ARM_FLIP]), np.ascontiguousarray(kc[:, COCO_ARM_FLIP])
+                X, seq = np.ascontiguousarray(X[:, H36M_ARM_FLIP]), np.ascontiguousarray(seq[:, H36M_ARM_FLIP])
+                skel = reconstruct(X, seq[..., :2], seq[..., 2], height, real_fps, depth_w=depth_w)
+                P = skel.joints
+        side = Side.for_arm(arm)
+        ev, wf, skel2, P2 = locate(P)
+        sk = skel2 or skel
+        stride_x = stride_across(kp_s, sk.px_per_m, float(sk.bone_lengths[1] + sk.bone_lengths[2]), side, ev.ffc, ev.br)
+        view = classify_view(wf.forward, kp_s, kc, runup if len(runup) >= 4 else None, stride_x)
+    skel, P = sk, P2
     if overrides.get("view") in ("side_on", "behind", "front_on"):
         view = {**{k: v for k, v in view.items() if k != "oblique"}, "view": overrides["view"], "source": "user"}
     oblique = bool(view.get("oblique"))

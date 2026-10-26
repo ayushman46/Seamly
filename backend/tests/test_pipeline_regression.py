@@ -143,3 +143,11 @@ def test_synthetic_behind_ground_truth(tmp_path):
     assert abs(by["trunk_lateral_br"]["value"] - gt["trunk_lateral_br"]) <= 10
     for k in ("front_knee_ffc", "front_knee_br", "stride_length_pct"):
         assert by[k]["value"] is None and by[k]["rating"] == "unrated", k
+    # confirming the view the analysis found changes nothing: labels are mirrored only when the user's view says the
+    # body travels the other way
+    from bowlnet.pipeline import stage_b
+    frames = lambda r: {k: (v or {}).get("frame") for k, v in r["events"].items()}
+    assert frames(stage_b(tmp_path / "out", {"view": "behind"})) == frames(res)
+    # the opposite view mirrors the labels and keeps the arm the user set
+    flipped = stage_b(tmp_path / "out", {"view": "front_on"})
+    assert flipped["view"]["view"] == "front_on" and flipped["bowling_arm"]["arm"] == "right"
