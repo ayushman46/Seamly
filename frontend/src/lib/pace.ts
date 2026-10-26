@@ -33,6 +33,10 @@ export interface Pace {
 }
 
 export const DISTANCE: Record<PaceTarget, number> = { crease: 17.68, stumps: 18.9 };
+// the fastest ball on record is 161.3 km/h (Shoaib Akhtar, 2003): anything well beyond it is a marking error, and a
+// range never reaches past it
+export const MAX_KMH = 165;
+export const FAST_KMH = 150;   // only the quickest international bowlers
 const RELEASE_SPREAD_M = 0.5;
 // average speed as a share of the release speed: in the air only; after pitching; and over the whole way with an
 // unmarked bounce somewhere between a short ball (~9 m from release) and a full one (~16 m)
@@ -69,8 +73,8 @@ export function paceFrom(r: AnalysisResult, m: PaceMarks): Pace | null {
     kmh = (avg / mid(k)) * 3.6;
     eK = halfWidth(k) / mid(k);
   }
-  const e = Math.hypot(eD, eT, eK), lo = kmh * (1 - e), hi = kmh * (1 + e);
-  if (kmh < 30 || kmh > 175) return null;               // not a bowled ball: the marks are on the wrong frames
+  const e = Math.hypot(eD, eT, eK), lo = kmh * (1 - e), hi = Math.min(MAX_KMH, kmh * (1 + e));
+  if (kmh < 30 || kmh > MAX_KMH) return null;           // not a bowled ball: the marks are on the wrong frames
   return { kmh, lo, hi, avgKmh: avg * 3.6, seconds: dt, metres: d, fps };
 }
 

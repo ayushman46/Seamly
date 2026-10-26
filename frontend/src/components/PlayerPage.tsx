@@ -184,7 +184,10 @@ export default function PlayerPage({ pid, go }: { pid: string; go: (to: string) 
               // within a session: pace coaches end speed work once balls drop about 5% below the day's best
               const today = pts.filter((x) => new Date(x.created * 1000).toDateString() === new Date(last.created * 1000).toDateString());
               const dayBest = today.reduce((m, x) => (x.kmh > m.kmh ? x : m), today[0]);
-              const drop = today.length > 1 && dayBest !== last ? (1 - last.kmh / dayBest.kmh) * 100 : 0;
+              // from the speeds as shown, so the note agrees with the numbers on the card
+              const drop = today.length > 1 && dayBest !== last ? (1 - Math.round(last.kmh) / Math.round(dayBest.kmh)) * 100 : 0;
+              const sameDay = new Date(pts[0].created * 1000).toDateString() === new Date(last.created * 1000).toDateString();
+              const when = (ts: number) => sameDay ? new Date(ts * 1000).toLocaleTimeString(DATE_LOCALE, { hour: "2-digit", minute: "2-digit" }) : dateOf(ts);
               return (
                 <section className="card card-pad speed-card" aria-labelledby="speed-title">
                   <div role="heading" aria-level={2} id="speed-title" className="card-title">Ball speed</div>
@@ -195,7 +198,7 @@ export default function PlayerPage({ pid, go }: { pid: string; go: (to: string) 
                     </dl>
                     {pts.length > 1
                       ? <div className="speed-chart"><Trend points={pts.map((x) => ({ value: x.kmh, range: [x.lo, x.hi] as [number, number], label: `${dateOf(x.created)}: ${Math.round(x.lo)}–${Math.round(x.hi)} km/h`, id: x.id }))} height={96} format={(v) => `${Math.round(v)}`} onPick={(i) => go(`/a/${i}`)} />
-                          <div className="faint speed-dates"><span>{dateOf(pts[0].created)}</span><span>{dateOf(last.created)}</span></div></div>
+                          <div className="faint speed-dates"><span>{when(pts[0].created)}</span><span>{when(last.created)}</span></div></div>
                       : <p className="faint" style={{ fontSize: 12.5, margin: 0 }}>Measure the ball speed on another delivery to see the trend.</p>}
                   </div>
                   {drop >= 5 && (

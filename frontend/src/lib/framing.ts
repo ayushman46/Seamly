@@ -21,22 +21,29 @@ const iou = (a: number[], b: number[]) => {
 };
 
 /**
- * The bowler: the person followed so far (the box overlapping the last one), else the biggest confident box. Staying
- * on the same person stops the check jumping to the non-striker or an umpire for a frame.
+ * The bowler: the person followed so far (the box overlapping the last one), else the most prominent one, by size and
+ * nearness to the middle of the picture (where the bowler is framed; a non-striker or umpire stands off to a side).
+ * Staying on the same person stops the check jumping between people for a frame; a much more prominent person (the
+ * bowler walking up to the crease) takes over.
  */
-export function mainPerson(det: { boxes: number[][]; confs: number[]; kps: number[][][]; kcs: number[][] }, prev?: number[] | null): Person | null {
-  let best: Person | null = null, area = 0, overlap = 0.3;
+export function mainPerson(det: { boxes: number[][]; confs: number[]; kps: number[][][]; kcs: number[][] }, prev?: number[] | null,
+  width?: number): Person | null {
+  const score = (b: number[]) => {
+    const a = (b[2] - b[0]) * (b[3] - b[1]);
+    if (!width) return a;
+    const off = Math.abs((b[0] + b[2]) / 2 - width / 2) / (width / 2);   // 0 in the middle, 1 at an edge
+    return a * (1 - 0.5 * off);
+  };
+  let best: Person | null = null, top = 0, overlap = 0.3;
   let kept: Person | null = null;
   det.boxes.forEach((b, i) => {
     if (det.confs[i] < 0.4) return;
     const p = { box: b, kps: det.kps[i], kcs: det.kcs[i], conf: det.confs[i] };
-    const a = (b[2] - b[0]) * (b[3] - b[1]);
-    if (a > area) { area = a; best = p; }
+    if (score(b) > top) { top = score(b); best = p; }
     if (prev) { const o = iou(b, prev); if (o >= overlap) { overlap = o; kept = p; } }
   });
-  // a much bigger person than the one followed is the bowler walking up to the crease: switch to them
-  const size = (p: Person | null) => (p ? (p.box[2] - p.box[0]) * (p.box[3] - p.box[1]) : 0);
-  return kept && size(best) <= 1.6 * size(kept) ? kept : best;
+  const sc = (p: Person | null) => (p ? score(p.box) : 0);
+  return kept && sc(best) <= 1.6 * sc(kept) ? kept : best;
 }
 
 const dist = (a: number[], b: number[]) => Math.hypot(a[0] - b[0], a[1] - b[1]);

@@ -1144,7 +1144,8 @@ button:focus:not(:focus-visible) { outline: none; }
 .pace-facts > div { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 10px; font-size: 13px; line-height: 1.45; }
 .pace-facts dt { color: var(--c-text-3); font-size: 12px; padding-top: 1px; }
 .pace-facts dd { margin: 0; color: var(--c-text-2); }
-.pace-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); background: rgba(11, 11, 12, 0.94); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); border-top: 1px solid var(--c-line); }
+.pace-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); background: var(--c-bg); border-top: 1px solid var(--c-line); box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.35); }
+.pace-warn { display: block; color: var(--c-watch); font-size: 12px; margin-top: 2px; }
 .pace-bar-in { max-width: 1240px; margin: 0 auto; display: flex; align-items: center; gap: 8px 16px; flex-wrap: wrap; }
 .pace-bar-step, .pace-bar-marks, .pace-bar-act { display: flex; align-items: center; gap: 6px; }
 .pace-bar-f { font-size: 12.5px; min-width: 128px; text-align: center; color: var(--c-text-2); }
@@ -1156,7 +1157,18 @@ body.pace-measuring { padding-bottom: 150px; }
   .pace-bar-out { flex-basis: 100%; order: -1; }
   .pace-bar-in { gap: 8px 10px; }
 }
-.speed-grid { display: grid; grid-template-columns: auto minmax(0, 420px); gap: 16px 32px; align-items: center; justify-content: space-between; margin-top: 10px; }
+/* a phone held sideways: one compact row, so the bar covers as little of the picture as possible */
+@media (orientation: landscape) and (max-height: 540px) {
+  .pace-bar { padding: 6px 12px calc(6px + env(safe-area-inset-bottom)); }
+  .pace-bar-in { flex-wrap: nowrap; gap: 8px; overflow-x: auto; }
+  .pace-bar-out { flex: 1 1 auto; order: 0; font-size: 12px; }
+  .pace-bar-out .pace-big.sm { font-size: 18px; }
+  .pace-bar-f { min-width: 0; }
+  body.pace-measuring { padding-bottom: 70px; }
+  .cam-page .an-title { font-size: 18px; margin: 0; }
+  .cam-stage { max-height: calc(100vh - 150px); }
+}
+.speed-grid { display: grid; grid-template-columns: auto minmax(0, 420px); gap: 16px 56px; align-items: center; justify-content: start; margin-top: 10px; }
 .speed-stats { display: flex; gap: 28px; margin: 0; }
 .speed-stats dt { color: var(--c-text-3); font-size: 12px; margin-bottom: 4px; }
 .speed-stats dd { margin: 0; display: flex; flex-direction: column; gap: 2px; font-size: 12px; }

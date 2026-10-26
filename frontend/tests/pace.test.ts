@@ -43,6 +43,13 @@ describe("ball speed from two frames", () => {
     expect(marked.hi - marked.lo).toBeLessThan(unmarked.hi - unmarked.lo);
     expect(paceFrom(clip(240), { ...marks, pitch: marks.arrival + 1 })).toBeNull();   // pitched after it arrived
   });
+  it("never reads or ranges past the fastest ball on record", () => {
+    // 0.40 s over the pitch with a bounce would be ~190 km/h: a marking error
+    expect(paceFrom(clip(25), { release: 0, arrival: 10, target: "crease", bounced: true })).toBeNull();
+    const quick = paceFrom(clip(25), { release: 0, arrival: 12, target: "crease", bounced: true })!;   // ~155 km/h at 25 fps
+    expect(quick.kmh).toBeGreaterThan(150);
+    expect(quick.hi).toBeLessThanOrEqual(165);
+  });
   it("refuses marks that can't be a bowled ball", () => {
     expect(paceFrom(clip(30), { release: 20, arrival: 10, target: "crease", bounced: true })).toBeNull();
     expect(paceFrom(clip(30), { release: 0, arrival: 300, target: "crease", bounced: true })).toBeNull();

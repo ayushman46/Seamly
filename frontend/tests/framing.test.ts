@@ -55,6 +55,11 @@ describe("camera check", () => {
     const near = person(300, 600, 260, false);   // a little smaller than b
     const det = { boxes: [near.box, b.box], confs: [0.9, 0.9], kps: [near.kps, b.kps], kcs: [near.kcs, b.kcs] };
     expect(mainPerson(det, near.box)!.box).toEqual(near.box);
+    // with the picture's width, a person in the middle beats a slightly bigger one at the edge
+    const mid = person(640, 600, 250, false), edge = person(1200, 600, 270, false);
+    const two = { boxes: [edge.box, mid.box], confs: [0.9, 0.9], kps: [edge.kps, mid.kps], kcs: [edge.kcs, mid.kcs] };
+    expect(mainPerson(two, null, 1280)!.box).toEqual(mid.box);
+    expect(mainPerson(two)!.box).toEqual(edge.box);
     const big = person(900, 650, 420, false);
     expect(mainPerson({ ...det, boxes: [near.box, big.box], kps: [near.kps, big.kps] }, near.box)!.box).toEqual(big.box);
     expect(bodyWidth(person(0, 600, 260, false))!).toBeLessThan(0.45);

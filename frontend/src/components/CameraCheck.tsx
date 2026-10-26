@@ -83,7 +83,7 @@ export default function CameraCheck({ go }: { go: (to: string) => void }) {
     setErr(null);
     setState("starting");
     try {
-      if (!navigator.mediaDevices?.getUserMedia) throw new Error("This browser can't open the camera here. Use a recent Chrome or Safari.");
+      if (!navigator.mediaDevices?.getUserMedia) throw Object.assign(new Error("no camera API"), { name: "NotSupportedError" });
       stop();
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: false,
@@ -108,7 +108,7 @@ export default function CameraCheck({ go }: { go: (to: string) => void }) {
         : name === "NotFoundError" || name === "OverconstrainedError" ? "No camera was found on this device."
         : name === "NotReadableError" || name === "AbortError" ? "The camera is busy: another app or tab may be using it. Close it and try again."
         : name === "SecurityError" ? "The camera only opens on a secure (https) page."
-        : `The camera couldn't be opened here (${(e as Error).message || name}). A recent Chrome or Safari on a phone works best.`);
+        : "This browser can't open the camera here (apps' built-in browsers often can't). Open this page in Safari or Chrome.");
       setState("error");
       stop();
     }
@@ -125,7 +125,7 @@ export default function CameraCheck({ go }: { go: (to: string) => void }) {
       if (!v || !m || v.readyState < 2 || !v.videoWidth) { timer = window.setTimeout(tick, 200); return; }
       try {
         const w = v.videoWidth, h = v.videoHeight;
-        const p = mainPerson(await m.detect(v, w, h, 0.35), lastBox.current);
+        const p = mainPerson(await m.detect(v, w, h, 0.35), lastBox.current, w);
         lastBox.current = p ? p.box : null;
         const fps = streamRef.current?.getVideoTracks()[0]?.getSettings().frameRate ?? null;
         const t = performance.now();

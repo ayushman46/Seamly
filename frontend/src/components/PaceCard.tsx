@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api } from "../api";
 import type { AnalysisMeta, AnalysisResult } from "../types";
-import { paceFrom, rangeText, realSeconds, type Pace, type PaceTarget } from "../lib/pace";
+import { FAST_KMH, paceFrom, rangeText, realSeconds, type Pace, type PaceTarget } from "../lib/pace";
 import type { Runup } from "../lib/runup";
 import { fmt } from "../lib/format";
 import { IBolt, INext, IPrev } from "./Icons";
@@ -40,13 +40,23 @@ export default function PaceCard({ id, result, meta, frame, onSeek, onMeta, flas
   const [target, setTarget] = useState<PaceTarget>("crease");
   const [bounced, setBounced] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [removed, setRemoved] = useState<AnalysisMeta["pace"] | null>(null);   // for Undo
   const barRef = useRef<HTMLDivElement>(null);
   const saved = meta.pace ?? null;
 
   const since = (f: number) => realSeconds(result, release, f) ?? 0;
-  const pace: Pace | null = arrival !== null && arrival > release && (pitch === null || pitch < arrival)
-    ? paceFrom(result, { release, arrival, target, bounced: bounced || pitch !== null, pitch }) : null;
+  const paceAt = (a: number | null) => a !== null && a > release && (pitch === null || pitch < a)
+    ? paceFrom(result, { release, arrival: a, target, bounced: bounced || pitch !== null, pitch }) : null;
+  const pace: Pace | null = paceAt(arrival);
   const tooSoon = arrival !== null && !pace && since(arrival) < 0.6;   // faster than any bowled ball
+  // how much one frame either way moves the answer: the honest size of a marking slip at this frame rate
+  const perFrame = (() => {
+    if (!pace || arrival === null) return null;
+    const a = paceAt(arrival - 1), b = paceAt(arrival + 1);
+    const d = [a, b].filter((x): x is Pace => !!x).map((x) => Math.abs(x.kmh - pace.kmh));
+    return d.length ? Math.max(...d) : null;
+  })();
+  const example = (meta.name ?? "").startsWith("Example:");
   const coarse = result.fps_real < 50;
   const room = since(fEnd);   // the analysed part of the clip can end before the ball arrives (0.45–0.7 s)
   const canPitch = since(frame) >= EARLIEST_PITCH_S && (arrival === null || frame < arrival);
@@ -59,6 +69,7 @@ export default function PaceCard({ id, result, meta, frame, onSeek, onMeta, flas
   const ffcBr = factor("ffc_to_br_ms"), kneeBr = factor("front_knee_br");
 
   const start = () => {
+    setRemoved(null);
     setRelease(br); setPitch(null); setArrival(null); setMeasuring(true); onSeek(br);
     document.querySelector(".card.player")?.scrollIntoView({ behavior: "smooth", block: "start" });
     window.setTimeout(() => barRef.current?.querySelector<HTMLElement>("[data-next]")?.focus({ preventScroll: true }), 60);
@@ -97,27 +108,42 @@ export default function PaceCard({ id, result, meta, frame, onSeek, onMeta, flas
     }
   };
   const remove = async () => {
-    try { onMeta(await api.patch(id, { pace: null })); } catch (e) { flash((e as Error).message, true); }
+    const was = saved;
+    try { onMeta(await api.patch(id, { pace: null })); setRemoved(was); } catch (e) { flash((e as Error).message, true); }
+  };
+  const undo = async () => {
+    if (!removed) return;
+    try { onMeta(await api.patch(id, { pace: removed })); setRemoved(null); } catch (e) { flash((e as Error).message, true); }
+  };
+  const skip = () => {
+    onSeek(skipTo);
+    barRef.current?.querySelector<HTMLElement>("[data-next]")?.focus({ preventScroll: true });   // the Skip button goes away
   };
 
   const readout = pace
-    ? <><span className="pace-big sm">{Math.round(pace.kmh)}<small> km/h</small></span> <span className="faint">est. {rangeText(pace)}</span></>
+    ? <>
+        <span className="pace-big sm">{Math.round(pace.kmh)}<small> km/h</small></span> <span className="faint">est. {rangeText(pace)}</span>
+        {perFrame !== null && perFrame >= 1 && <span className="faint"> · one frame either way ≈ ±{Math.round(perFrame)}</span>}
+        {pace.kmh > FAST_KMH && <span className="pace-warn"> Faster than all but the quickest international bowlers: check the release and arrival frames.</span>}
+      </>
     : <span className="faint">{arrival !== null
-      ? (tooSoon ? "Too soon for a bowled ball to reach the batter: check the arrival frame." : "Longer than a bowled ball takes: check the frames.")
-      : frame <= release ? "Step forward from the release." : `+${Math.round(since(frame) * 1000)} ms: step on until the ball reaches the batter.`}</span>;
+      ? (tooSoon ? "Faster than any ball ever bowled: check the arrival frame." : "Longer than a bowled ball takes: check the frames.")
+      : frame <= release ? "Step forward from the release."
+      : frame >= fEnd ? "End of the analysed clip: the ball doesn't reach the batter within it."
+      : `+${Math.round(since(frame) * 1000)} ms: step on until the ball reaches the batter.`}</span>;
 
   const bar = measuring && createPortal(
     <div className="pace-bar" ref={barRef} role="region" aria-label="Ball speed marks">
       <div className="pace-bar-in">
         <div className="pace-bar-step">
-          <button type="button" className="btn sm ghost icon" aria-label="Previous frame" onClick={() => onSeek(Math.max(f0, frame - 1))}><IPrev size={16} /></button>
+          <button type="button" className="btn sm ghost icon" aria-label="Step back one frame" disabled={frame <= f0} onClick={() => onSeek(Math.max(f0, frame - 1))}><IPrev size={16} /></button>
           <span className="mono pace-bar-f">f {frame}{frame > release ? ` · +${Math.round(since(frame) * 1000)} ms` : ""}</span>
-          <button type="button" className="btn sm ghost icon" data-next aria-label="Next frame" onClick={() => onSeek(Math.min(fEnd, frame + 1))}><INext size={16} /></button>
-          {frame < skipTo && <button type="button" className="btn sm ghost" onClick={() => onSeek(skipTo)} title="No bowled ball reaches the batter sooner than this">Skip to +{Math.round(EARLIEST_ARRIVAL_S * 1000)} ms</button>}
+          <button type="button" className="btn sm ghost icon" data-next aria-label="Step forward one frame" disabled={frame >= fEnd} onClick={() => onSeek(Math.min(fEnd, frame + 1))}><INext size={16} /></button>
+          {frame < skipTo && <button type="button" className="btn sm ghost" onClick={skip} title="No bowled ball reaches the batter sooner than this">Skip to +{Math.round(EARLIEST_ARRIVAL_S * 1000)} ms</button>}
         </div>
         <div className="pace-bar-marks">
           <button type="button" className={`btn sm ${pitch !== null ? "on" : ""}`} disabled={pitch === null && !canPitch} onClick={() => canPitch && setPitch(frame)}
-            title={canPitch ? "Mark the frame where the ball lands (optional)" : "Too soon after the release for the ball to have pitched"}>
+            title={canPitch ? "Mark the frame where the ball lands (optional)" : arrival !== null && frame >= arrival ? "The ball pitches before it arrives: step back before the arrival" : "Too soon after the release for the ball to have pitched"}>
             {pitch !== null ? `Pitched: f ${pitch}` : "Pitched here"}
           </button>
           <button type="button" className={`btn sm ${arrival !== null ? "on" : "primary"}`} disabled={arrival === null && !canArrive} onClick={() => canArrive && setArrival(frame)}
@@ -127,7 +153,7 @@ export default function PaceCard({ id, result, meta, frame, onSeek, onMeta, flas
         </div>
         <div className="pace-bar-out" aria-live="polite">{readout}</div>
         <div className="pace-bar-act">
-          <button type="button" className="btn sm primary" disabled={!pace || busy} onClick={save}>Save</button>
+          {arrival !== null && <button type="button" className="btn sm primary" disabled={!pace || busy} onClick={save}>Save</button>}
           <button type="button" className="btn sm ghost" onClick={stop}>Cancel</button>
         </div>
       </div>
@@ -156,10 +182,13 @@ export default function PaceCard({ id, result, meta, frame, onSeek, onMeta, flas
           <p className="muted" style={{ margin: "0 0 10px", fontSize: 13 }}>
             Ball speed from this clip, timed over the pitch. It needs the ball reaching the batter in the picture: film from behind the
             bowler's stumps, in slow motion if you can.
-            {sideOn && " Side-on clips rarely show it."}
+            {example ? " The examples don't show the ball arriving, so any speed measured on them is only a demonstration." : sideOn && " Side-on clips rarely show it."}
             {room < 0.42 && ` This clip's analysed part ends ${room.toFixed(2)} s after the release, before most balls arrive.`}
           </p>
-          <button type="button" className="btn sm primary" onClick={start}>Measure ball speed</button>
+          <div className="row" style={{ gap: 10 }}>
+            <button type="button" className="btn sm primary" onClick={start}>Measure ball speed</button>
+            {removed && <span className="faint" style={{ fontSize: 12.5 }}>Ball speed removed. <button type="button" className="link-btn" onClick={undo}>Undo</button></span>}
+          </div>
         </div>
       ) : (
         <div className="pace-steps">
