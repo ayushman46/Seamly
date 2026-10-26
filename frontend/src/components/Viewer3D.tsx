@@ -199,14 +199,17 @@ export default function Viewer3D({ id, result, frame, playing, onTogglePlay, onS
   // a side-by-side clip draws this view into its own canvas: the same scene and camera, rendered at the clip's size by a
   // second renderer (the page's view stays as it is), with the angle tags drawn where they sit
   useEffect(() => {
+    // one renderer for every clip made here (a new one per clip would leave listeners on the shared geometries)
     let cap: THREE.WebGLRenderer | null = null;
+    let failed = false;
     const v = new THREE.Vector3();
     register3D({
       draw: (ctx, x, y, w, h) => {
         const s = st.current;
-        if (!s) return;
+        if (!s || failed) return;
         if (!cap) {
-          cap = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+          try { cap = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true }); }
+          catch { failed = true; return; }   // no second WebGL context here: the clip shows the panel without the body
           cap.outputColorSpace = THREE.SRGBColorSpace;
           cap.setPixelRatio(1);
           cap.setClearColor(0x0e0e10, 1);
@@ -236,7 +239,7 @@ export default function Viewer3D({ id, result, frame, playing, onTogglePlay, onS
           ctx.fillStyle = "#f4f4f5"; ctx.fillText(text, tx + 7, ty);
         }
       },
-      end: () => { cap?.dispose(); cap?.forceContextLoss(); cap = null; },
+      end: () => undefined,
     });
     return () => { register3D(null); cap?.dispose(); cap?.forceContextLoss(); cap = null; };
   }, []);

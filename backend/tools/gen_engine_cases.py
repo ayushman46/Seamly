@@ -146,7 +146,9 @@ for n in NAMES:
     for fwd, ru, sx in [(a["forward_cam"], a["runup"], a["stride_x"]), (a["forward_cam"], runup, None),
                         (a["forward_cam"], None, None), (a["forward_cam"], runup, 0.55),
                         ([0.2, 0.1, -0.9], runup, 0.1), ([0.2, 0.1, -0.9], None, None), ([0.9, 0.0, 0.3], None, 0.5),
-                        ([0.6, 0.05, -0.6], runup, 0.5), ([0.6, 0.05, 0.6], None, 0.5)]:
+                        ([0.6, 0.05, -0.6], runup, 0.5), ([0.6, 0.05, 0.6], None, 0.5),
+                        # no run-up: a lone stride cue along the pitch against a 3D direction across it is angled
+                        ([0.9, 0.0, 0.3], None, 0.1), ([0.9, 0.0, -0.3], None, 0.2), ([0.2, 0.1, 0.9], None, 0.1)]:
         r = E.classify_view(A(fwd), kp, A(a["kc"]), None if ru is None else np.asarray(ru), sx)
         ev.append({"fn": "classify_view", "ref": {"call": "classify_view", "index": 0},
                    "args": {"forward_cam": fwd, "runup": ru, "stride_x": sx}, "out": oenc(r)})

@@ -386,7 +386,11 @@ def classify_view(forward_cam: np.ndarray, kp: np.ndarray | None = None, kc: np.
     s_dec = stride_x is not None and (stride_x > 0.7 or stride_x < 0.4)
     r_dec = ratio is not None and (ratio < 0.28 or ratio > 0.42)
     clash = s_dec and r_dec and ((stride_x > 0.7) != (ratio < 0.28))
-    oblique = clash or (not s_dec and not r_dec and (stride_x is not None or ratio is not None))
+    # With no run-up in the clip the stride is the only 2D cue. When it says the camera looks along the pitch but the
+    # body's 3D direction of travel runs well across the picture, the camera is behind (or in front) and off to one
+    # side: short clips cut from edited footage show this (real IPL net clips, 2026-10-27).
+    lone = s_dec and ratio is None and stride_x < 0.4 and ang > 60
+    oblique = clash or lone or (not s_dec and not r_dec and (stride_x is not None or ratio is not None))
     if oblique:
         extra["oblique"] = True
     return {"view": view, "angle_to_optical_axis_deg": round(ang, 1),

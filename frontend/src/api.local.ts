@@ -18,6 +18,7 @@ import { insights as buildInsights } from "./engine/insights";
 import { frameObj } from "./engine/body";
 import { playerProgress, summarise } from "./engine/progress";
 import { BACKUP_VERSION, FILE_NAME, decodeBackup, encodeBackup, type BackupAnalysis } from "./lib/backup";
+import { creaseCall } from "./lib/crease";
 import { isoDate, parseOvers } from "./lib/bowlingLog";
 import { runupSpeed, type Runup } from "./lib/runup";
 
@@ -356,7 +357,7 @@ async function applyEdit(id: string, overrides: Overrides, latest?: EventKey[]) 
   const cur = metas.get(id);
   if (!cur) throw new Error("This analysis was deleted.");
   const m = { ...cur, overrides, score: c.score, grade: c.grade, notice: null, summary: summarise(result), arm: result.bowling_arm.arm, arm_conf: armConf(result),
-    view: result.view.view, thumb_frame: result.events.br.frame, updated: now() } as Meta;
+    view: result.view.view, thumb_frame: result.events.br.frame, updated: now(), crease: recheckCrease(cur.crease, result) } as Meta;
   // result, mesh and metadata commit together, so they can never disagree
   await db.write(["result", "blob", "meta"], (st) => {
     st.result.put(result, id);
@@ -425,6 +426,29 @@ async function requirePlayer(pid: string): Promise<StoredPlayer> {
   const p = await db.get<StoredPlayer>("player", pid);
   if (!p) throw new Error("This player isn't in this browser. Player profiles are kept on the device where they were created.");
   return p;
+}
+
+const isNum = (x: unknown): x is number => typeof x === "number" && Number.isFinite(x);
+/** A ball-speed record as stored, or null if it isn't a valid one (from the page or a restored file). */
+function cleanPace(p: unknown): PaceRecord | null {
+  const q = p as PaceRecord | null;
+  if (!q || !(isNum(q.release) && isNum(q.arrival) && isNum(q.kmh) && isNum(q.lo) && isNum(q.hi) && (q.target === "crease" || q.target === "stumps")
+    && (q.pitch === undefined || q.pitch === null || isNum(q.pitch)))) return null;
+  return { release: q.release, arrival: q.arrival, target: q.target, bounced: !!q.bounced || isNum(q.pitch), pitch: isNum(q.pitch) ? q.pitch : null,
+    kmh: q.kmh, lo: q.lo, hi: q.hi };
+}
+/** A no-ball check as stored, or null if it isn't a valid one. */
+function cleanCrease(c: unknown): CreaseRecord | null {
+  const q = c as CreaseRecord | null;
+  const pt = (v: unknown) => Array.isArray(v) && v.length === 2 && isNum(v[0]) && isNum(v[1]);
+  if (!q || !(pt(q.line?.a) && pt(q.line?.b) && isNum(q.frame) && isNum(q.behind_cm) && isNum(q.band_cm) && ["legal", "no_ball", "close"].includes(q.verdict))) return null;
+  return { line: { a: [q.line.a[0], q.line.a[1]], b: [q.line.b[0], q.line.b[1]] }, frame: Math.round(q.frame), behind_cm: q.behind_cm, band_cm: q.band_cm, verdict: q.verdict };
+}
+/** The no-ball check made again on a recomputed analysis (height, markers, view): gone if it no longer applies. */
+function recheckCrease(c: CreaseRecord | null | undefined, r: AnalysisResult): CreaseRecord | null {
+  if (!c || r.view.view !== "side_on" || r.view.oblique) return null;
+  const call = creaseCall(r, c.frame, c.line);
+  return call ? { ...c, behind_cm: Math.round(call.behindCm * 10) / 10, band_cm: Math.round(call.bandCm * 10) / 10, verdict: call.verdict } : null;
 }
 
 function newMeta(id: string, name: string, size: number, opts: Partial<Options>, playerId: string | null, type: string): Meta {
@@ -580,6 +604,7 @@ async function restore(file: Blob): Promise<{ analyses: number; players: number;
     }
     const entries = a.files.map((f, j) => [f?.name, files[i][j]] as const).filter(([name]) => typeof name === "string" && FILE_NAME.test(name));
     const meta = { ...m, status: "done", progress: 1, stage: "done", stage_label: "Complete", error: null, gen: "", owner: undefined, previous: null, source_id: undefined,
+      pace: cleanPace(m.pace), crease: cleanCrease(m.crease),
       player_id: m.player_id && have.has(m.player_id) ? m.player_id : null, size_mb: m.size_mb ?? null, arm_conf: m.arm_conf ?? armConf(r) } as Meta;
     await db.write(["blob", "stagea", "result", "meta"], (st) => {
       for (const [name, b] of entries) st.blob.put(b, `${m.id}/${name}`);
@@ -750,26 +775,12 @@ export const api = {
     requireMeta(id);
     const f: Partial<Meta> = {};
     if ("crease" in body) {
-      const c = body.crease;
-      const num = (x: unknown) => typeof x === "number" && Number.isFinite(x);
-      const pt = (q: unknown) => Array.isArray(q) && q.length === 2 && num(q[0]) && num(q[1]);
-      if (c && !(pt(c.line?.a) && pt(c.line?.b) && num(c.frame) && num(c.behind_cm) && num(c.band_cm) && ["legal", "no_ball", "close"].includes(c.verdict))) {
-        throw new Error("That crease check isn't valid.");
-      }
-      f.crease = c ? { line: { a: [c.line.a[0], c.line.a[1]], b: [c.line.b[0], c.line.b[1]] }, frame: Math.round(c.frame),
-        behind_cm: c.behind_cm, band_cm: c.band_cm, verdict: c.verdict } : null;
+      f.crease = body.crease ? cleanCrease(body.crease) : null;
+      if (body.crease && !f.crease) throw new Error("That crease check isn't valid.");
     }
     if ("pace" in body) {
-      const p = body.pace;
-      const num = (x: unknown) => typeof x === "number" && Number.isFinite(x);
-      if (p && !(num(p.release) && num(p.arrival) && num(p.kmh) && num(p.lo) && num(p.hi) && (p.target === "crease" || p.target === "stumps")
-        && (p.pitch === undefined || p.pitch === null || num(p.pitch)))) {
-        throw new Error("That ball-speed measurement isn't valid.");
-      }
-      f.pace = p ? {
-        release: p.release, arrival: p.arrival, target: p.target, bounced: !!p.bounced || num(p.pitch), pitch: num(p.pitch) ? p.pitch : null,
-        kmh: p.kmh, lo: p.lo, hi: p.hi,
-      } : null;
+      f.pace = body.pace ? cleanPace(body.pace) : null;
+      if (body.pace && !f.pace) throw new Error("That ball-speed measurement isn't valid.");
     }
     if (body.name !== undefined && body.name.trim()) f.name = body.name.trim().slice(0, 80);
     if ("player_id" in body) {

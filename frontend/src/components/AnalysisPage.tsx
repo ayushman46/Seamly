@@ -459,6 +459,7 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;            // browser / OS shortcuts
+      if (document.querySelector("[aria-modal=true]")) return;   // a dialog over the page (clip, summary image) has the keys
       const el = e.target as HTMLElement | null;
       // single-key shortcuts only while nothing else has focus or focus is in the video player, so they never
       // clash with screen-reader keys or typing elsewhere on the page
@@ -682,7 +683,7 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
             </ErrorBoundary>
             <FrameCard result={result} frame={frame} onOpen={() => setTab("frame")} onConfirm={setEvent} busy={busy} />
             <PaceCard id={id} result={result} meta={meta} frame={frame} onSeek={(f) => { setPlaying(false); setFrame(f); }} onMeta={setMeta} flash={flash} />
-            <CreaseCard id={id} result={result} meta={meta} onSeek={(f) => { setPlaying(false); setFrame(f); }} onMeta={setMeta} flash={flash} />
+            {MODE === "browser" && <CreaseCard id={id} result={result} meta={meta} onSeek={(f) => { setPlaying(false); setFrame(f); }} onMeta={setMeta} flash={flash} />}
           </div>
         </div>
 

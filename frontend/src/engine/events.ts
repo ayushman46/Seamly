@@ -446,6 +446,10 @@ export function classifyView(forwardCam: number[], kp?: Arr3 | null, _kc?: Arr2 
   const sDec = strideX != null && (strideX > 0.7 || strideX < 0.4);
   const rDec = ratio !== null && (ratio < 0.28 || ratio > 0.42);
   const clash = sDec && rDec && ((strideX! > 0.7) !== (ratio! < 0.28));
-  if (clash || (!sDec && !rDec && (strideX != null || ratio !== null))) out.oblique = true;
+  // With no run-up in the clip the stride is the only 2D cue. When it says the camera looks along the pitch but the
+  // body's 3D direction of travel runs well across the picture, the camera is behind (or in front) and off to one
+  // side: short clips cut from edited footage show this (real IPL net clips, 2026-10-27).
+  const lone = sDec && ratio === null && strideX! < 0.4 && ang > 60;
+  if (clash || lone || (!sDec && !rDec && (strideX != null || ratio !== null))) out.oblique = true;
   return out;
 }

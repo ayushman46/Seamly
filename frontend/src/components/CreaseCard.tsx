@@ -20,7 +20,7 @@ export default function CreaseCard({ id, result, meta, onSeek, onMeta, flash }: 
   const ffc = result.events.ffc?.frame ?? null;
   const dir = useMemo(() => travel(result), [result]);
   const sideOn = result.view.view === "side_on" && !result.view.oblique;
-  const usable = sideOn && ffc !== null && dir !== null;
+  const located = sideOn && ffc !== null && dir !== null;
   const [marking, setMarking] = useState(false);
   const [frame, setFrame] = useState(saved?.frame ?? ffc ?? result.frames.start);
   const [line, setLine] = useState<CreaseLine | null>(saved ? { a: saved.line.a, b: saved.line.b } : null);
@@ -31,15 +31,20 @@ export default function CreaseCard({ id, result, meta, onSeek, onMeta, flash }: 
 
   // the zoomed region: around where the front foot lands, wide enough for the foot and the crease either side of it
   const region = useMemo(() => {
-    if (!usable) return null;
+    if (!located) return null;
     const at = saved?.frame ?? ffc!;
     const a = frontAnkle(result, at, dir!), H = staturePx(result, at);
     if (!a || !H) return null;
     const W = result.video.width * result.display_scale, Hh = result.video.height * result.display_scale;
-    const w = Math.min(W, 1.0 * H), h = Math.min(Hh, w * CH / CW);
+    // the view keeps the picture's proportions (CW:CH), whatever fits inside the frame
+    let w = Math.min(W, 1.0 * H), h = w * CH / CW;
+    if (h > Hh) { h = Hh; w = h * CW / CH; }
     const x = Math.max(0, Math.min(W - w, a[0] - w / 2)), y = Math.max(0, Math.min(Hh - h, a[1] + 0.04 * H - h * 0.6));
     return { x, y, w, h };
-  }, [usable, result, dir, ffc, saved?.frame]);
+  }, [located, result, dir, ffc, saved?.frame]);
+  // the front foot (and the bowler's size) must be found on the landing frame to place the view at all
+  const usable = located && region !== null;
+  const footSeen = usable && !!frontAnkle(result, marking ? frame : saved?.frame ?? frame, dir!) && !!staturePx(result, marking ? frame : saved?.frame ?? frame);
 
   const call: CreaseCall | null = useMemo(() => (line && usable ? creaseCall(result, frame, line) : null), [line, usable, result, frame]);
   const live = marking ? call : saved && line ? creaseCall(result, saved.frame, line) : null;
@@ -154,7 +159,9 @@ export default function CreaseCard({ id, result, meta, onSeek, onMeta, flash }: 
         <p className="muted" style={{ margin: 0, fontSize: 13 }}>
           {!sideOn
             ? "Checks the front foot against the popping crease. It needs a side-on clip, filmed square to the crease, with the front foot and the crease line in the picture."
-            : "The front-foot landing or the direction of travel couldn't be found on this clip, so the foot can't be checked."}
+            : located
+              ? "The front foot isn't clear enough on the landing frame to place the heel, so this clip can't be checked."
+              : "The front-foot landing or the direction of travel couldn't be found on this clip, so the foot can't be checked."}
         </p>
       ) : !marking && !saved ? (
         <>
@@ -198,6 +205,8 @@ export default function CreaseCard({ id, result, meta, onSeek, onMeta, flash }: 
           <div className="crease-out" aria-live="polite">
             {live ? (
               <><span className={`chip ${VERDICT_CLS[live.verdict]}`}>{VERDICT_TEXT[live.verdict]}</span> <span className="muted">{gap(live)}</span></>
+            ) : line && !footSeen ? (
+              <span className="faint">The front foot isn't clear on this frame: step to a frame where it is.</span>
             ) : line ? (
               <span className="faint">The line needs to cross the bowler's path (a crease seen side-on): mark it again.</span>
             ) : marking ? (

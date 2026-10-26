@@ -3,7 +3,11 @@ import type { AnalysisMeta, AnalysisResult, Insights } from "../types";
 import { capture3D, clipExt, clipLayout, clipMime, clipPlan, drawClipFrame, type ClipStep } from "../lib/clip";
 import { IAlert, IDownload, IFilm, IUpload, IX } from "./Icons";
 
-const nextPaint = () => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+// two paints, or 120 ms at most: a hidden tab fires no animation frames and must not hang the recording
+const nextPaint = () => new Promise<void>((r) => {
+  const t = window.setTimeout(r, 120);
+  requestAnimationFrame(() => requestAnimationFrame(() => { window.clearTimeout(t); r(); }));
+});
 const sleep = (ms: number) => new Promise<void>((r) => window.setTimeout(r, Math.max(0, ms)));
 
 /**
@@ -25,6 +29,14 @@ export default function ClipMaker({ meta, result, ins, fileBase, frame, onFrame,
   const [err, setErr] = useState<string | null>(null);
   const cancel = useRef(false);
   const outRef = useRef<HTMLCanvasElement | null>(null);   // the clip as it records, shown in the dialog
+  const micRef = useRef<MediaStream | null>(null);
+  const alive = useRef(true);
+  // leaving the page mid-recording stops it and lets go of the microphone
+  useEffect(() => () => {
+    alive.current = false;
+    cancel.current = true;
+    micRef.current?.getTracks().forEach((t) => t.stop());
+  }, []);
   const openRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const firstRef = useRef<HTMLButtonElement>(null);
@@ -76,7 +88,7 @@ export default function ClipMaker({ meta, result, ins, fileBase, frame, onFrame,
     setClip((c) => { if (c) URL.revokeObjectURL(c.url); return null; });
     let mic: MediaStream | null = null;
     if (voice) {
-      try { mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }); }
+      try { mic = micRef.current = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }); }
       catch (e) { setErr(`Couldn't use the microphone (${(e as Error).message || (e as Error).name}). Untick “Record my voice” to make the clip without it.`); return; }
     }
     const start = frame;
@@ -97,7 +109,7 @@ export default function ClipMaker({ meta, result, ins, fileBase, frame, onFrame,
     try {
       // every frame is in memory before recording starts, so the clip never shows a frame still loading
       const t0 = performance.now();
-      while (document.querySelector(".player-hud")?.textContent?.includes("Loading frames") && performance.now() - t0 < 30000) await sleep(150);
+      while (!cancel.current && document.querySelector(".player-hud")?.textContent?.includes("Loading frames") && performance.now() - t0 < 30000) await sleep(150);
       await showFrame(plan[0].frame);
       draw(plan[0]);
       const stream = out.captureStream(30);
@@ -106,28 +118,39 @@ export default function ClipMaker({ meta, result, ins, fileBase, frame, onFrame,
       rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 6_000_000 });
       rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
       const stopped = new Promise<void>((r) => { rec!.onstop = () => r(); });
+      // a hidden tab draws nothing: the recording pauses while the tab is hidden rather than record a frozen picture
+      const r0 = rec;
+      const onVis = () => {
+        if (document.hidden && r0.state === "recording") r0.pause();
+        else if (!document.hidden && r0.state === "paused") r0.resume();
+      };
+      document.addEventListener("visibilitychange", onVis);
       rec.start(250);
-      for (let i = 0; i < plan.length && !cancel.current; i++) {
-        const s = plan[i];
-        // a hidden tab stops drawing: pause the recording rather than record a frozen picture
-        if (document.hidden && rec.state === "recording") {
-          rec.pause();
-          while (document.hidden && !cancel.current) await sleep(200);
-          rec.resume();
+      try {
+        // each step ends at its own deadline, so the time spent showing a frame doesn't slow the clip down
+        let due = performance.now();
+        for (let i = 0; i < plan.length && !cancel.current; i++) {
+          const s = plan[i];
+          if (document.hidden) {
+            while (document.hidden && !cancel.current) await sleep(200);
+            due = performance.now();
+          }
+          if (i === 0 || plan[i - 1].frame !== s.frame) await showFrame(s.frame);
+          draw(s);
+          due += s.ms;
+          // held frames are drawn again every ~66 ms so every encoder keeps a steady picture
+          while (performance.now() < due - 4 && !cancel.current) {
+            await sleep(Math.min(66, due - performance.now()));
+            if (performance.now() < due) draw(s);
+          }
+          setProgress((i + 1) / plan.length);
         }
-        if (i === 0 || plan[i - 1].frame !== s.frame) await showFrame(s.frame);
-        const t = performance.now();
-        draw(s);
-        // held frames are drawn again every ~66 ms so every encoder keeps a steady picture
-        while (performance.now() - t < s.ms - 4 && !cancel.current) {
-          await sleep(Math.min(66, s.ms - (performance.now() - t)));
-          if (performance.now() - t < s.ms) draw(s);
-        }
-        setProgress((i + 1) / plan.length);
+      } finally {
+        document.removeEventListener("visibilitychange", onVis);
       }
       rec.stop();
       await stopped;
-      if (!cancel.current) {
+      if (!cancel.current && alive.current) {
         const type = mime.split(";")[0];
         const blob = new Blob(chunks, { type });
         if (!blob.size) throw new Error("The recording came out empty.");
@@ -138,9 +161,12 @@ export default function ClipMaker({ meta, result, ins, fileBase, frame, onFrame,
       setErr(`Couldn't make the clip: ${(e as Error).message}`);
     } finally {
       mic?.getTracks().forEach((t) => t.stop());
+      micRef.current = null;
       capture3D()?.end();
-      setProgress(null);
-      onFrame(start);
+      if (alive.current) {
+        setProgress(null);
+        onFrame(start);
+      }
     }
   };
 

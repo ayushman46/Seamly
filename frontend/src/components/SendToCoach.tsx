@@ -27,7 +27,7 @@ export default function SendToCoach({ player }: { player: Player }) {
         const a = document.createElement("a");
         a.href = url; a.download = name;
         document.body.appendChild(a); a.click(); a.remove();
-        window.setTimeout(() => URL.revokeObjectURL(url), 2000);
+        window.setTimeout(() => URL.revokeObjectURL(url), 60000);   // a phone's save prompt can take a while
       }
       const what = `${analyses} ${analyses === 1 ? "analysis" : "analyses"}${blob.size < 1e6 ? ", under 1 MB" : `, ${Math.round(blob.size / 1e6)} MB`}`;
       setNote({ ok: true, text: `${shared ? "Shared" : "Saved"} ${name} (${what}). Your coach opens Seamly and chooses “Restore a backup” to add it.` });

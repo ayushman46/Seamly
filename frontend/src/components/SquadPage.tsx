@@ -32,6 +32,13 @@ const BACK_ORDER: Record<Back, number> = { flag: 3, watch: 2, ok: 1, unknown: 0 
 const BACK_TEXT: Record<Back, string> = { ok: "No red flags", watch: "Watch", flag: "Flag", unknown: "Not checked" };
 const DOT: Record<string, string> = { good: "ok", watch: "watch", risk: "flag" };
 
+/** Balls bowled in the last 7 days, today included (from the bowling log). */
+function ballsLast7(log: { date: string; balls: number }[]): number {
+  const d = new Date(); d.setDate(d.getDate() - 6);
+  const from = isoDate(d);
+  return log.filter((e) => e.date >= from).reduce((n, e) => n + e.balls, 0);
+}
+
 /** The latest measured value of a metric across a player's sessions (newest first). */
 function latest(p: PlayerProgress, key: string): { value: number; rating: string } | null {
   const ss = [...p.sessions].sort((a, b) => (b.created ?? 0) - (a.created ?? 0));
@@ -73,7 +80,7 @@ export default function SquadPage({ go }: { go: (to: string) => void }) {
           speed: speeds.length ? Math.max(...speeds.map((x) => x.kmh)) : null, speeds: speeds.length,
           knee: latest(prog, "front_knee_br"), trunk: fwd ?? lat, trunkKey: fwd ? "trunk_forward_br" : lat ? "trunk_lateral_br" : null,
           height: latest(prog, "release_height_pct"), back,
-          week: wl ? wl.acute : (pl.log?.length ? 0 : null), ratio: wl?.ratio ?? null, zone: wl?.zone ?? null, checks,
+          week: pl.log?.length ? ballsLast7(pl.log) : null, ratio: wl?.ratio ?? null, zone: wl?.zone ?? null, checks,
         });
       }
       if (live) setRows(out);
@@ -122,7 +129,12 @@ export default function SquadPage({ go }: { go: (to: string) => void }) {
 
   const csv = () => {
     if (!sorted) return;
-    const q = (v: unknown) => { const s = v === null || v === undefined ? "" : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+    // a cell a spreadsheet would read as a formula (=, +, -, @) is kept as text
+    const q = (v: unknown) => {
+      let s = v === null || v === undefined ? "" : String(v);
+      if (typeof v === "string" && /^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+      return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
     const lines = [["player", "age_group", "style", "arm", "height_cm", "deliveries", "last_filmed", "latest_score", "best_ball_speed_kmh",
       "speeds_measured", "front_knee_release_deg", "trunk_metric", "trunk_deg", "release_height_pct", "back_health", "balls_last_7_days",
       "workload_ratio", "noball_checks_legal", "noball_checks_noball", "noball_checks_close"].join(",")];
@@ -136,7 +148,7 @@ export default function SquadPage({ go }: { go: (to: string) => void }) {
     const a = document.createElement("a");
     a.href = url; a.download = `seamly-squad-${isoDate(new Date())}.csv`;
     document.body.appendChild(a); a.click(); a.remove();
-    window.setTimeout(() => URL.revokeObjectURL(url), 2000);
+    window.setTimeout(() => URL.revokeObjectURL(url), 60000);   // a phone's save prompt can take a while
   };
 
   const cell = (m: { value: number; rating: string } | null, unit: string) =>
