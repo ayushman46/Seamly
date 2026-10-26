@@ -30,7 +30,7 @@ export default function Settings({ result, busy, onRecompute, onRerun, playerId,
           </select>
         </div>
         <div className="field">
-          <label id="set-arm">Bowling arm ({result.bowling_arm.source === "user" ? "set by you" : `detected: ${result.bowling_arm.arm}, ${armAgreement(result.bowling_arm)}`})</label>
+          <label id="set-arm">Bowling arm ({result.bowling_arm.source === "user" ? "set by hand" : `detected: ${result.bowling_arm.arm}, ${armAgreement(result.bowling_arm)}`})</label>
           <div className="seg" role="group" aria-labelledby="set-arm">
             {["right", "left"].map((a) => (
               <button key={a} className={result.bowling_arm.arm === a ? "on" : ""} aria-pressed={result.bowling_arm.arm === a} disabled={busy} onClick={() => onRecompute({ bowling_arm: a }, `Bowling arm set to ${a}`)}>{a === "right" ? "Right-arm" : "Left-arm"}</button>

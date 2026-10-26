@@ -106,6 +106,7 @@ export default function ReportPage({ id, go }: { id: string; go: (to: string) =>
 
       <section>
         <h2>Measured metrics</h2>
+        <p className="rp-scroll-hint no-print">Swipe the table sideways for each measurement's reference.</p>
         <div className="table-scroll"><table className="rp-table">
           <thead><tr><th>Metric</th><th>Value</th><th>Rating</th><th>Reference</th></tr></thead>
           <tbody>

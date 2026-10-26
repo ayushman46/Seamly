@@ -802,6 +802,8 @@ html:has(.report), body:has(.report), body:has(.report) #root { background: #e7e
 .rp-sub { color: #4b5563; font-size: 12.5px; }
 .rp-player { font-weight: 650; font-size: 14.5px; color: #111827; margin: -2px 0 4px; }
 .rp-scores { display: flex; gap: 10px; align-items: stretch; }
+.rp-scroll-hint { display: none; margin: 0 0 6px; font-size: 12px; color: #6b7280; }
+@media (max-width: 640px) { .rp-scroll-hint { display: block; } }
 .rp-score { text-align: center; border: 3px solid #1fbf7f; border-radius: 16px; padding: 10px 18px; min-width: 104px; }
 .rp-score.rp-pace { border-color: #d1d5db; }
 .rp-score.rp-pace span { color: #374151; text-transform: none; letter-spacing: 0; }
