@@ -274,14 +274,15 @@ export function bodyInstance(m: BodyModel, statureM: number, gender = 0): BodyIn
 
 // ---------------- fit.py ----------------
 // H36M indices
-const PELVIS = 0, R_HIP = 1, R_KNEE = 2, R_ANK = 3, L_HIP = 4, L_KNEE = 5, L_ANK = 6, SPINE = 7, THORAX = 8, HEAD = 10;
+const PELVIS = 0, R_HIP = 1, R_KNEE = 2, R_ANK = 3, L_HIP = 4, L_KNEE = 5, L_ANK = 6, THORAX = 8, HEAD = 10;
 const L_SH = 11, L_EL = 12, L_WR = 13, R_SH = 14, R_EL = 15, R_WR = 16;
 
-/** Orthonormal frame with columns (forward, left, up) built from left + up. */
-function frame(left: number[], up: number[]): M3 {
-  const l = unit3(left);
-  const d = dot3(up, l);
-  const u = unit3([up[0] - l[0] * d, up[1] - l[1] * d, up[2] - l[2] * d]);
+/** Frame with columns (forward, left, up) that keeps `up` exact and squares `left` to it: for the trunk, whose direction
+ * matters more than the hip or shoulder line's (a side-bent trunk is far from square to the hips). */
+function frameUp(left: number[], up: number[]): M3 {
+  const u = unit3(up);
+  const d = dot3(left, u);
+  const l = unit3([left[0] - u[0] * d, left[1] - u[1] * d, left[2] - u[2] * d]);
   return cols(cross3(l, u), l, u);
 }
 
@@ -362,8 +363,8 @@ export class Fitter {
       return [n, m.idx[n]];
     }));
     const h = (n: string) => this.rh(this.b[n]);
-    this.restPelvis = frame(sub3(h("upperleg01.L"), h("upperleg01.R")), sub3(h("neck01"), h("root")));
-    this.restThorax = frame(sub3(h("upperarm01.L"), h("upperarm01.R")), sub3(h("neck01"), h("spine02")));
+    this.restPelvis = frameUp(sub3(h("upperleg01.L"), h("upperleg01.R")), sub3(h("neck01"), h("root")));
+    this.restThorax = frameUp(sub3(h("upperarm01.L"), h("upperarm01.R")), sub3(h("neck01"), h("spine02")));
     let top = -Infinity;
     const rv = inst.restVertices;
     for (let k = 2; k < rv.length; k += 3) top = Math.max(top, rv[k]);
@@ -387,10 +388,12 @@ export class Fitter {
     const diff = (a: number, c: number) => J.map((f) => sub3(f[a], f[c]));
 
     // ---- pelvis & thorax ----
-    const Lh = diff(L_HIP, R_HIP), Tp = diff(THORAX, PELVIS), Ls = diff(L_SH, R_SH), Ts = diff(THORAX, SPINE);
+    const Lh = diff(L_HIP, R_HIP), Tp = diff(THORAX, PELVIS), Ls = diff(L_SH, R_SH);
     const pT = mT(this.restPelvis), tT = mT(this.restThorax);
-    const Rp = J.map((_, t) => mmul(frame(Lh[t], Tp[t]), pT));
-    const Rt = J.map((_, t) => mmul(frame(Ls[t], Ts[t]), tT));
+    // both frames share the whole trunk's direction (pelvis to thorax) exactly, so the body's spine twists between the
+    // hip and shoulder lines but its trunk lies along the skeleton's, however far it bends to the side
+    const Rp = J.map((_, t) => mmul(frameUp(Lh[t], Tp[t]), pT));
+    const Rt = J.map((_, t) => mmul(frameUp(Ls[t], Tp[t]), tT));
     setD(b.root, Rp);
     const rel = Rp.map((R, t) => matToRotvec(mmul(mT(R), Rt[t])));
     let Dth: M3[] = [];

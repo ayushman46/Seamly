@@ -27,10 +27,12 @@ def _unit(v):
     return v / np.maximum(np.linalg.norm(v, axis=-1, keepdims=True), 1e-9)
 
 
-def _frame(fwd_hint, left, up):
-    """Orthonormal frame matrices with columns (forward, left, up) built from left + up."""
-    left = _unit(left)
-    up = _unit(up - left * (up * left).sum(-1, keepdims=True))
+def _frame_up(left, up):
+    """Orthonormal frame matrices with columns (forward, left, up) that keep `up` exact and square `left` to it: for the
+    trunk, whose direction matters more than the hip or shoulder line's (a side-bent trunk is far from square to the
+    hips)."""
+    up = _unit(up)
+    left = _unit(left - up * (left * up).sum(-1, keepdims=True))
     fwd = np.cross(left, up)
     return np.stack([fwd, left, up], axis=-1)
 
@@ -80,8 +82,8 @@ class Fitter:
         h = inst.rest_head
         b = self.b
         self.rest = {
-            "pelvis": _frame(None, h[b["upperleg01.L"]] - h[b["upperleg01.R"]], h[b["neck01"]] - h[b["root"]]),
-            "thorax": _frame(None, h[b["upperarm01.L"]] - h[b["upperarm01.R"]], h[b["neck01"]] - h[b["spine02"]]),
+            "pelvis": _frame_up(h[b["upperleg01.L"]] - h[b["upperleg01.R"]], h[b["neck01"]] - h[b["root"]]),
+            "thorax": _frame_up(h[b["upperarm01.L"]] - h[b["upperarm01.R"]], h[b["neck01"]] - h[b["spine02"]]),
         }
         top = inst.rest_vertices[:, 2].max()
         head_top = h[b["head"]].copy(); head_top[2] = top
@@ -97,8 +99,10 @@ class Fitter:
         rh = inst.rest_head
 
         # ---- pelvis & thorax ----
-        Fp = _frame(None, J[:, L_HIP] - J[:, R_HIP], J[:, THORAX] - J[:, PELVIS])
-        Ft = _frame(None, J[:, L_SH] - J[:, R_SH], J[:, THORAX] - J[:, SPINE])
+        # both frames share the whole trunk's direction (pelvis to thorax) exactly, so the body's spine twists between
+        # the hip and shoulder lines but its trunk lies along the skeleton's, however far it bends to the side
+        Fp = _frame_up(J[:, L_HIP] - J[:, R_HIP], J[:, THORAX] - J[:, PELVIS])
+        Ft = _frame_up(J[:, L_SH] - J[:, R_SH], J[:, THORAX] - J[:, PELVIS])
         Rp = Fp @ self.rest["pelvis"].T
         Rt = Ft @ self.rest["thorax"].T
         D[:, b["root"]] = Rp

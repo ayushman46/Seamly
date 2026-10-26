@@ -241,3 +241,16 @@ No openly licensed footage of IPL or other professional bowlers in the nets exis
 **Filmed from behind the batter.** With the bowler about 15% of the picture's height behind the net and the batter large in the foreground, the bowler was never tracked as a candidate and the batter's bat swing was analysed. Film from behind the bowler's stumps, not the batter's. The followed "arm" turned at 5,934°/s on video, against at most about 3,400°/s for real bowling arms across the other 19 clips (slow-motion and rear views included), so both engines now add a capture tip above 4,500°/s asking the user to check that the skeleton is on the bowler.
 
 **Ball speed on real footage.** None of the four clips shows the ball clearly reaching the batter (the bowler's body hides it in the first clip, the cameras move in the next two, and the last one's timing doesn't fit real time), so the ball-speed method is validated by the physics tests above and the browser flow, not yet against a radar.
+
+### The 3D body follows the skeleton's trunk (2026-10-26)
+
+On the rear-view net clip at release, the body model's shoulders sat 37 cm from the measured skeleton's, so the joint-angle tags and the bones floated off the body. The body is posed by matching directions, and its pelvis and thorax frames kept the hip and shoulder lines exact and squared the trunk axis to them; a trunk bent 45° to the side is far from square to the hips, so the body's trunk was straightened by up to 32°. Both frames now keep the whole trunk's direction (pelvis to thorax) exact and square the hip and shoulder lines to it, in both engines:
+
+| Clip | Trunk direction, body vs skeleton, at release | Neck offset at release (worst frame) | Bowling shoulder at release |
+|---|---|---|---|
+| Net clip, behind, 240 fps | 32° → 4° | 31 → 11 cm (40 → 18) | 37 → 23 cm |
+| Club example, side-on | 16° → 4° | 18 → 9 cm (18 → 14) | 11 → 5 cm |
+| Bumrah, broadcast, behind | 22° → 4° | 22 → 16 cm (25 → 17) | 31 → 16 cm |
+| Net clip, handheld, behind | 6° → 4° | 5 → 5 cm (16 → 5) | 3 → 5 cm |
+
+What remains is proportion: the body model's shoulder joints are 0.39 m apart against 0.20–0.35 m for the lifted skeleton, and its trunk is 0.59 m against 0.44–0.57 m. The angles and measurements come from the skeleton, which is unchanged; only the drawn body moved.
