@@ -16,6 +16,13 @@ const ORDER: Record<Rating, number> = { good: 0, watch: 1, risk: 2, info: 3, unr
 
 type Loaded = { meta: AnalysisMeta; result: AnalysisResult };
 
+/** Two players' deliveries, or a right-armer and a left-armer whoever they were filed under: differences, not progress. */
+function differentBowlers(x: Loaded, y: Loaded): boolean {
+  const sure = (d: Loaded) => d.result.bowling_arm.source === "user" || d.result.bowling_arm.confidence >= 0.5;
+  return (!!x.meta.player_id && !!y.meta.player_id && x.meta.player_id !== y.meta.player_id)
+    || (x.result.bowling_arm.arm !== y.result.bowling_arm.arm && sure(x) && sure(y));
+}
+
 export default function ComparePage({ a, b, go, overlay: startOverlay }: { a: string; b: string; go: (to: string) => void; overlay?: boolean }) {
   const [data, setData] = useState<[Loaded | null, Loaded | null]>([null, null]);
   const [error, setError] = useState<string | null>(null);
@@ -25,12 +32,14 @@ export default function ComparePage({ a, b, go, overlay: startOverlay }: { a: st
   usePageTitle(data[0] && data[1] ? `Compare: ${data[0].meta.name} vs ${data[1].meta.name}` : "Compare");
 
   useEffect(() => {
+    if (a === b) { setError("That's the same delivery twice: pick two different ones to compare."); return; }
     Promise.all([api.get(a), api.get(b)])
       .then(([x, y]) => {
         if (!x.result || !y.result) throw new Error("Both analyses must be finished before they can be compared.");
-        // A is always the earlier delivery, so "Improved" / "Worse" read as progress whichever was picked first
+        // A is the earlier delivery, so "Improved" / "Worse" read as progress whichever was picked first; two
+        // different bowlers keep the order they were picked in (there's no progress to read)
         const pair: [Loaded, Loaded] = [{ meta: x.meta, result: x.result }, { meta: y.meta, result: y.result }];
-        if ((pair[0].meta.created ?? 0) > (pair[1].meta.created ?? 0)) pair.reverse();
+        if (!differentBowlers(pair[0], pair[1]) && (pair[0].meta.created ?? 0) > (pair[1].meta.created ?? 0)) pair.reverse();
         setData(pair);
       })
       .catch((e) => setError((e as Error).message));
@@ -81,10 +90,7 @@ export default function ComparePage({ a, b, go, overlay: startOverlay }: { a: st
     );
   }
   // two different players' deliveries: differences, not progress
-  // (a right-armer and a left-armer are two bowlers too, whoever the clips were filed under)
-  const sure = (d: Loaded) => d.result.bowling_arm.source === "user" || d.result.bowling_arm.confidence >= 0.5;
-  const otherBowler = (!!x.meta.player_id && !!y.meta.player_id && x.meta.player_id !== y.meta.player_id)
-    || (x.result.bowling_arm.arm !== y.result.bowling_arm.arm && sure(x) && sure(y));
+  const otherBowler = differentBowlers(x, y);
   const sameView = x.result.view.view === y.result.view.view;
   const over = mode === "over" && sameView;   // a link asking for the overlay of clips from two angles shows them side by side
   const side = (d: Loaded, label: string) => {
@@ -171,7 +177,7 @@ export default function ComparePage({ a, b, go, overlay: startOverlay }: { a: st
           <div className="table-scroll">
             <table className="cmp">
               <thead>
-                <tr><th>Metric</th><th>A (earlier)</th><th>B (later)</th><th>Change (B − A)</th><th>Verdict</th></tr>
+                <tr><th>Metric</th><th>{otherBowler ? "A" : "A (earlier)"}</th><th>{otherBowler ? "B" : "B (later)"}</th><th>Change (B − A)</th><th>Verdict</th></tr>
               </thead>
               <tbody>
                 {shownRows.map(({ key, a: ma, b: mb }) => <Row key={key} a={ma} b={mb} fps={Math.min(data[0]!.result.fps_real, data[1]!.result.fps_real)} judge={!otherBowler} />)}
@@ -207,7 +213,7 @@ function Row({ a, b, fps, judge = true }: { a?: Metric; b?: Metric; fps: number;
   const cell = (x: Metric | undefined, side: "A" | "B") => (
     <td className={!x || x.reliability === "estimate" ? "faint" : ""} data-label={side}>
       {x && x.value !== null ? `${fmt(x.value, 0)}${unitLabel(x.unit)}` : "–"}
-      {x && x.rating !== "unrated" && x.rating !== "info" && <span className={`chip ${x.rating}`} style={{ marginLeft: 8, height: 20, fontSize: 11 }}>{RATING_LABEL[x.rating]}</span>}
+      {x && x.rating !== "unrated" && x.rating !== "info" && <span className={`chip ${x.rating}`} style={{ marginLeft: 8, height: 20, fontSize: 11, display: "inline-flex", verticalAlign: "middle" }}>{RATING_LABEL[x.rating]}</span>}
     </td>
   );
   return (

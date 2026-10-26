@@ -45,6 +45,9 @@ export default function Viewer3D({ id, result, frame, playing, onTogglePlay, onS
       return;
     }
     wasBig.current = true;
+    // the page behind doesn't scroll while the enlarged view is open
+    const before = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") { e.preventDefault(); setBig(false); setActive(false); return; }
       // a dialog: Tab cycles through its own controls
@@ -56,7 +59,7 @@ export default function Viewer3D({ id, result, frame, playing, onTogglePlay, onS
       items[at < 0 ? 0 : (at + (e.shiftKey ? -1 : 1) + items.length) % items.length].focus();
     };
     document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    return () => { document.removeEventListener("keydown", onKey); document.body.style.overflow = before; };
   }, [big]);
   const [mode, setMode] = useState<"mesh" | "both" | "skeleton">("both");
   const [preset, setPreset] = useState<Preset>(result.view.view === "side_on" ? "side_r" : "behind");
@@ -350,7 +353,11 @@ export default function Viewer3D({ id, result, frame, playing, onTogglePlay, onS
     s.renderer.domElement.style.touchAction = active ? "none" : "pan-y";
     if (!active) return;
     doneRef.current?.focus({ preventScroll: true });
-    const out = (e: PointerEvent) => { if (host.current && !host.current.contains(e.target as Node)) setActive(false); };
+    // a click outside the 3D picture ends exploring, except inside the enlarged view (its own controls)
+    const out = (e: PointerEvent) => {
+      const box = bigRef.current ? cardRef.current : host.current;
+      if (box && !box.contains(e.target as Node)) setActive(false);
+    };
     const esc = (e: KeyboardEvent) => { if (e.key === "Escape" && !bigRef.current) release(); };   // enlarged: Esc closes it
     document.addEventListener("pointerdown", out);
     document.addEventListener("keydown", esc);

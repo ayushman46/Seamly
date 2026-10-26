@@ -145,7 +145,7 @@ export default function CameraCheck({ go }: { go: (to: string) => void }) {
         if (!alive) return;
         setChecks(shown);
         setIsGood(g.on);
-        drawPose(overlayRef.current, p, w, h, g.on);
+        drawPose(overlayRef.current, p, w, h, g.on && ok);
         window.clearTimeout(fade.current);
         fade.current = window.setTimeout(() => drawPose(overlayRef.current, null, w, h, false), 350);
       } catch (e) {

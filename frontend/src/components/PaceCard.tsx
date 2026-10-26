@@ -145,7 +145,7 @@ export default function PaceCard({ id, result, meta, frame, onSeek, onMeta, flas
           <button type="button" className="btn sm ghost icon" aria-label="Step back one frame" disabled={frame <= f0} onClick={() => onSeek(Math.max(f0, frame - 1))}><IPrev size={16} /></button>
           <span className="mono pace-bar-f">f {frame}{frame > release ? ` · +${Math.round(since(frame) * 1000)} ms` : ""}</span>
           <button type="button" className="btn sm ghost icon" data-next aria-label="Step forward one frame" disabled={frame >= fEnd} onClick={() => onSeek(Math.min(fEnd, frame + 1))}><INext size={16} /></button>
-          {skipTo !== null && frame < skipTo && <button type="button" className="btn sm ghost" onClick={skip} title="No bowled ball reaches the batter sooner than this">Skip to +{Math.round(EARLIEST_ARRIVAL_S * 1000)} ms</button>}
+          {skipTo !== null && arrival === null && frame < skipTo && <button type="button" className="btn sm ghost" onClick={skip} title="No bowled ball reaches the batter sooner than this">Skip to +{Math.round(EARLIEST_ARRIVAL_S * 1000)} ms</button>}
         </div>
         <div className="pace-bar-marks">
           <button type="button" className={`btn sm ${pitch !== null ? "on" : ""}`} disabled={pitch === null && !canPitch} onClick={() => canPitch && setPitch(frame)}
