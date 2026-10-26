@@ -108,7 +108,8 @@ export default function CameraCheck({ go }: { go: (to: string) => void }) {
         : name === "NotFoundError" || name === "OverconstrainedError" ? "No camera was found on this device."
         : name === "NotReadableError" || name === "AbortError" ? "The camera is busy: another app or tab may be using it. Close it and try again."
         : name === "SecurityError" ? "The camera only opens on a secure (https) page."
-        : "This browser can't open the camera here (apps' built-in browsers often can't). Open this page in Safari or Chrome.");
+        : name === "NotSupportedError" ? "This browser can't open the camera here (apps' built-in browsers often can't). Open this page in Safari or Chrome."
+        : `Couldn't start the camera check: ${(e as Error).message || name}`);
       setState("error");
       stop();
     }

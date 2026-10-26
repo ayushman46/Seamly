@@ -56,12 +56,12 @@ export default function PaceCard({ id, result, meta, frame, onSeek, onMeta, flas
     const d = [a, b].filter((x): x is Pace => !!x).map((x) => Math.abs(x.kmh - pace.kmh));
     return d.length ? Math.max(...d) : null;
   })();
-  const example = (meta.name ?? "").startsWith("Example:");
+  const example = /^Example( clip)?:/.test(meta.name ?? "");
   const coarse = result.fps_real < 50;
   const room = since(fEnd);   // the analysed part of the clip can end before the ball arrives (0.45–0.7 s)
   const canPitch = since(frame) >= EARLIEST_PITCH_S && (arrival === null || frame < arrival);
   const canArrive = frame > release && (pitch === null || frame > pitch);
-  const skipTo = (() => { for (let f = release + 1; f <= fEnd; f++) if (since(f) >= EARLIEST_ARRIVAL_S) return f; return fEnd; })();
+  const skipTo = (() => { for (let f = release + 1; f <= fEnd; f++) if (since(f) >= EARLIEST_ARRIVAL_S) return f; return null; })();
 
   // the technique factors most linked to ball speed that this clip measured (Keily 2021: front-foot contact to release
   // r = -0.60; Ramachandran 2021: front knee at release r = 0.40)
@@ -81,7 +81,12 @@ export default function PaceCard({ id, result, meta, frame, onSeek, onMeta, flas
   // Esc leaves measuring; the page gets room at the bottom so the bar covers nothing
   useEffect(() => {
     if (!measuring) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") stop(); };
+    const onKey = (e: KeyboardEvent) => {
+      // Esc that closes a menu, a dialog or the enlarged 3D view is theirs, not a cancel
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      if (document.querySelector("[role=dialog], .menu, .card.viewer.big") || (e.target as HTMLElement | null)?.closest?.("[role=menu]")) return;
+      stop();
+    };
     document.addEventListener("keydown", onKey);
     document.body.classList.add("pace-measuring");
     return () => { document.removeEventListener("keydown", onKey); document.body.classList.remove("pace-measuring"); };
@@ -116,6 +121,7 @@ export default function PaceCard({ id, result, meta, frame, onSeek, onMeta, flas
     try { onMeta(await api.patch(id, { pace: removed })); setRemoved(null); } catch (e) { flash((e as Error).message, true); }
   };
   const skip = () => {
+    if (skipTo === null) return;
     onSeek(skipTo);
     barRef.current?.querySelector<HTMLElement>("[data-next]")?.focus({ preventScroll: true });   // the Skip button goes away
   };
@@ -129,7 +135,7 @@ export default function PaceCard({ id, result, meta, frame, onSeek, onMeta, flas
     : <span className="faint">{arrival !== null
       ? (tooSoon ? "Faster than any ball ever bowled: check the arrival frame." : "Longer than a bowled ball takes: check the frames.")
       : frame <= release ? "Step forward from the release."
-      : frame >= fEnd ? "End of the analysed clip: the ball doesn't reach the batter within it."
+      : frame >= fEnd ? "Last frame of the analysed clip: if the ball hasn't reached the batter yet, this clip can't time it."
       : `+${Math.round(since(frame) * 1000)} ms: step on until the ball reaches the batter.`}</span>;
 
   const bar = measuring && createPortal(
@@ -139,7 +145,7 @@ export default function PaceCard({ id, result, meta, frame, onSeek, onMeta, flas
           <button type="button" className="btn sm ghost icon" aria-label="Step back one frame" disabled={frame <= f0} onClick={() => onSeek(Math.max(f0, frame - 1))}><IPrev size={16} /></button>
           <span className="mono pace-bar-f">f {frame}{frame > release ? ` · +${Math.round(since(frame) * 1000)} ms` : ""}</span>
           <button type="button" className="btn sm ghost icon" data-next aria-label="Step forward one frame" disabled={frame >= fEnd} onClick={() => onSeek(Math.min(fEnd, frame + 1))}><INext size={16} /></button>
-          {frame < skipTo && <button type="button" className="btn sm ghost" onClick={skip} title="No bowled ball reaches the batter sooner than this">Skip to +{Math.round(EARLIEST_ARRIVAL_S * 1000)} ms</button>}
+          {skipTo !== null && frame < skipTo && <button type="button" className="btn sm ghost" onClick={skip} title="No bowled ball reaches the batter sooner than this">Skip to +{Math.round(EARLIEST_ARRIVAL_S * 1000)} ms</button>}
         </div>
         <div className="pace-bar-marks">
           <button type="button" className={`btn sm ${pitch !== null ? "on" : ""}`} disabled={pitch === null && !canPitch} onClick={() => canPitch && setPitch(frame)}

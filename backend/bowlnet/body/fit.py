@@ -83,7 +83,8 @@ class Fitter:
         b = self.b
         self.rest = {
             "pelvis": _frame_up(h[b["upperleg01.L"]] - h[b["upperleg01.R"]], h[b["neck01"]] - h[b["root"]]),
-            "thorax": _frame_up(h[b["upperarm01.L"]] - h[b["upperarm01.R"]], h[b["neck01"]] - h[b["spine02"]]),
+            # measured like the live thorax frame (along the whole trunk), so a square-on rest pose fits back with no bend
+            "thorax": _frame_up(h[b["upperarm01.L"]] - h[b["upperarm01.R"]], h[b["neck01"]] - h[b["root"]]),
         }
         top = inst.rest_vertices[:, 2].max()
         head_top = h[b["head"]].copy(); head_top[2] = top

@@ -248,9 +248,9 @@ On the rear-view net clip at release, the body model's shoulders sat 37 cm from 
 
 | Clip | Trunk direction, body vs skeleton, at release | Neck offset at release (worst frame) | Bowling shoulder at release |
 |---|---|---|---|
-| Net clip, behind, 240 fps | 32° → 4° | 31 → 11 cm (40 → 18) | 37 → 23 cm |
-| Club example, side-on | 16° → 4° | 18 → 9 cm (18 → 14) | 11 → 5 cm |
-| Bumrah, broadcast, behind | 22° → 4° | 22 → 16 cm (25 → 17) | 31 → 16 cm |
-| Net clip, handheld, behind | 6° → 4° | 5 → 5 cm (16 → 5) | 3 → 5 cm |
+| Net clip, behind, 240 fps | 32° → 2° | 31 → 10 cm (40 → 17) | 37 → 24 cm |
+| Club example, side-on | 16° → 1° | 18 → 8 cm (18 → 13) | 11 → 9 cm |
+| Bumrah, broadcast, behind | 22° → 2° | 22 → 15 cm (25 → 17) | 31 → 18 cm |
+| Net clip, handheld, behind | 6° → 2° | 5 → 2 cm (16 → 5) | 3 → 4 cm |
 
-What remains is proportion: the body model's shoulder joints are 0.39 m apart against 0.20–0.35 m for the lifted skeleton, and its trunk is 0.59 m against 0.44–0.57 m. The angles and measurements come from the skeleton, which is unchanged; only the drawn body moved.
+The model's resting thorax frame is measured the same way (along the whole trunk), so a square-on resting skeleton fits back with no bend; measured from the upper spine instead it had left a constant 6° backward lean. What remains is proportion: the body model's shoulder joints are 0.39 m apart against 0.20–0.35 m for the lifted skeleton, and its trunk is 0.59 m against 0.44–0.57 m. The angles and measurements come from the skeleton, which is unchanged; only the drawn body moved.

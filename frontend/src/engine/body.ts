@@ -364,7 +364,8 @@ export class Fitter {
     }));
     const h = (n: string) => this.rh(this.b[n]);
     this.restPelvis = frameUp(sub3(h("upperleg01.L"), h("upperleg01.R")), sub3(h("neck01"), h("root")));
-    this.restThorax = frameUp(sub3(h("upperarm01.L"), h("upperarm01.R")), sub3(h("neck01"), h("spine02")));
+    // measured like the live thorax frame (along the whole trunk), so a square-on rest pose fits back with no bend
+    this.restThorax = frameUp(sub3(h("upperarm01.L"), h("upperarm01.R")), sub3(h("neck01"), h("root")));
     let top = -Infinity;
     const rv = inst.restVertices;
     for (let k = 2; k < rv.length; k += 3) top = Math.max(top, rv[k]);
