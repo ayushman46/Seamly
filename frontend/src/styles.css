@@ -1128,7 +1128,7 @@ button:focus:not(:focus-visible) { outline: none; }
 .viewer-tag.front { border-color: rgba(52, 211, 153, 0.7); }
 
 /* the 3D view enlarged over the page */
-.card.viewer.big { position: fixed; inset: 12px; z-index: 60; display: flex; flex-direction: column; box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6); }
+.card.viewer.big { position: fixed; inset: 12px; z-index: 60; display: flex; flex-direction: column; box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.78), 0 30px 80px rgba(0, 0, 0, 0.6); }
 .card.viewer.big .viewer-stage { flex: 1; height: auto; min-height: 0; aspect-ratio: auto; }
 .viewer-play { display: flex; align-items: center; gap: 12px; padding: 10px 14px 0; }
 .viewer-play input[type=range] { flex: 1; accent-color: var(--c-text); }

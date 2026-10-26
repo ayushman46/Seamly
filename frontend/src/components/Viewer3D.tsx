@@ -33,9 +33,28 @@ export default function Viewer3D({ id, result, frame, playing, onTogglePlay, onS
   const tagHost = useRef<HTMLDivElement>(null);
   const [showTags, setShowTags] = useState(true);
   const [big, setBig] = useState(false);   // the 3D view enlarged over the page
+  const bigRef = useRef(false);
+  bigRef.current = big;
+  const cardRef = useRef<HTMLDivElement>(null);
+  const expandRef = useRef<HTMLButtonElement>(null);
+  const wasBig = useRef(false);
   useEffect(() => {
-    if (!big) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setBig(false); };
+    if (!big) {
+      // back to the page: focus returns to the Expand button
+      if (wasBig.current) { wasBig.current = false; expandRef.current?.focus({ preventScroll: true }); }
+      return;
+    }
+    wasBig.current = true;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { e.preventDefault(); setBig(false); setActive(false); return; }
+      // a dialog: Tab cycles through its own controls
+      if (e.key !== "Tab" || !cardRef.current) return;
+      const items = [...cardRef.current.querySelectorAll<HTMLElement>("button:not([disabled]), input:not([disabled])")];
+      if (!items.length) return;
+      e.preventDefault();
+      const at = items.indexOf(document.activeElement as HTMLElement);
+      items[at < 0 ? 0 : (at + (e.shiftKey ? -1 : 1) + items.length) % items.length].focus();
+    };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [big]);
@@ -332,7 +351,7 @@ export default function Viewer3D({ id, result, frame, playing, onTogglePlay, onS
     if (!active) return;
     doneRef.current?.focus({ preventScroll: true });
     const out = (e: PointerEvent) => { if (host.current && !host.current.contains(e.target as Node)) setActive(false); };
-    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") release(); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape" && !bigRef.current) release(); };   // enlarged: Esc closes it
     document.addEventListener("pointerdown", out);
     document.addEventListener("keydown", esc);
     return () => { document.removeEventListener("pointerdown", out); document.removeEventListener("keydown", esc); };
@@ -348,7 +367,7 @@ export default function Viewer3D({ id, result, frame, playing, onTogglePlay, onS
   }, [active]);
 
   return (
-    <div className={`card viewer ${big ? "big" : ""}`} role={big ? "dialog" : undefined} aria-label={big ? "3D view, enlarged" : undefined}>
+    <div ref={cardRef} className={`card viewer ${big ? "big" : ""}`} role={big ? "dialog" : undefined} aria-modal={big || undefined} aria-label={big ? "3D view, enlarged" : undefined}>
       <div className="viewer-stage" ref={host}>
         <div className="viewer-tags" ref={tagHost} aria-hidden="true" />
         {!active && status === "ready" && (
@@ -356,7 +375,7 @@ export default function Viewer3D({ id, result, frame, playing, onTogglePlay, onS
             <span className="mouse">Click to rotate and zoom</span><span className="touch">Tap to rotate and zoom</span>
           </button>
         )}
-        {active && <button type="button" ref={doneRef} className="btn sm viewer-done" onClick={release} aria-label="Done exploring the 3D body (Esc)">Done</button>}
+        {active && !big && <button type="button" ref={doneRef} className="btn sm viewer-done" onClick={release} aria-label="Done exploring the 3D body (Esc)">Done</button>}
         {status === "loading" && <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center" }}><div className="spinner" /></div>}
         {status === "error" && <div className="notice warn" style={{ position: "absolute", left: 12, right: 12, top: 12 }}>3D body model unavailable for this analysis.</div>}
         {active && <div className="viewer-legend"><span className="mouse">Drag to orbit · scroll to zoom · right-drag to pan</span><span className="touch">Drag to orbit · pinch to zoom · two-finger drag to pan</span></div>}
@@ -388,7 +407,7 @@ export default function Viewer3D({ id, result, frame, playing, onTogglePlay, onS
         <button className={`btn sm ${ghost ? "active" : ""}`} aria-pressed={ghost} onClick={() => setGhost((g) => !g)} title="Overlay the body at BFC, FFC and release">Ghosts</button>
         <button className={`btn sm ${follow ? "active" : ""}`} aria-pressed={follow} onClick={() => setFollow((f) => !f)} title="Camera follows the bowler">Follow</button>
         <button className={`btn sm ${showTags ? "active" : ""}`} aria-pressed={showTags} onClick={() => setShowTags((x) => !x)} title="Live joint angles on the body">Angles</button>
-        <button className={`btn sm ${big ? "active" : ""}`} aria-pressed={big} onClick={() => { if (!big) setActive(true); setBig((x) => !x); }} title={big ? "Back to the page (Esc)" : "Enlarge the 3D view"}>{big ? "Close" : "Expand"}</button>
+        <button ref={expandRef} className={`btn sm ${big ? "active" : ""}`} aria-pressed={big} onClick={() => { if (!big) setActive(true); else setActive(false); setBig((x) => !x); }} title={big ? "Back to the page (Esc)" : "Enlarge the 3D view"}>{big ? "Close" : "Expand"}</button>
       </div>
     </div>
   );
