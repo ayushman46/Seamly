@@ -29,3 +29,29 @@ describe("metrics.compute parity with the Python pipeline", () => {
     });
   }
 });
+
+describe("the body leaving the picture", () => {
+  const frames = (n: number, wristY: number, ankleY: number, ankleConf = 0.9) => {
+    const kp = Array.from({ length: n }, () => Array.from({ length: 17 }, () => [100, 300]));
+    const kc = Array.from({ length: n }, () => Array(17).fill(0.9));
+    for (const f of kp) { f[10] = [100, wristY]; f[15] = [90, ankleY]; f[16] = [120, ankleY]; }
+    for (const c of kc) { c[15] = ankleConf; c[16] = ankleConf; }
+    return { kp, kc };
+  };
+  it("tells a bowling hand above the top edge at release", async () => {
+    const { handOutOfFrame } = await import("../src/engine/metrics");
+    expect(handOutOfFrame(frames(20, -6, 600).kp, 10, 10, 720)).toBe(true);
+    expect(handOutOfFrame(frames(20, 57, 600).kp, 10, 10, 720)).toBe(false);
+    expect(handOutOfFrame(frames(20, -6, 600).kp, 10, 10, null)).toBe(false);
+  });
+  it("tells feet below the bottom edge or unseen around landing and release", async () => {
+    const { feetOutOfFrame } = await import("../src/engine/metrics");
+    const below = frames(30, 100, 749);
+    expect(feetOutOfFrame(below.kp, below.kc, 15, 18, 25, 720)).toBe(true);
+    const unseen = frames(30, 100, 500, 0.05);
+    expect(feetOutOfFrame(unseen.kp, unseen.kc, 15, 18, 25, 720)).toBe(true);
+    const fine = frames(30, 100, 690);
+    expect(feetOutOfFrame(fine.kp, fine.kc, 15, 18, 25, 720)).toBe(false);
+    expect(feetOutOfFrame(fine.kp, fine.kc, null, 18, 25, 720)).toBe(false);
+  });
+});

@@ -226,6 +226,36 @@ export interface Ctx {
   bone_lengths: Arr1;
   fps_unique?: number | null;   // distinct frames per real second (repeated frames add no information)
   oblique?: boolean;            // camera well off the pitch line: no plane-specific measurement is rated
+  frame_h?: number | null;      // picture height in keypoint pixels (to tell a hand above the frame)
+}
+
+export const HAND_OUT_NOTE = "The bowling hand goes above the top of the picture at release, so its height can't be measured. "
+  + "Leave room above the bowler's head.";
+export const HAND_OUT_TIP = "The bowling hand goes above the top of the picture at release, so release height isn't measured: leave "
+  + "room above the bowler's head.";
+export const FEET_OUT_TIP = "The bowler's feet are out of the picture around front-foot contact, so the foot contacts are estimated "
+  + "and the knees, stride and timings can't be measured. Keep the whole body in the frame, feet included.";
+
+/** metrics.hand_out_of_frame: the bowling wrist at or above the top edge of the picture around release (br-1..br+1). */
+export function handOutOfFrame(kp: Arr3, wr: number, br: number, frameH: number | null | undefined): boolean {
+  if (!frameH) return false;
+  const lo = Math.max(0, br - 1), hi = Math.min(kp.length, br + 2);
+  if (hi <= lo) return false;
+  let m = Infinity;
+  for (let t = lo; t < hi; t++) m = Math.min(m, kp[t][wr][1]);
+  return m < 0.01 * frameH;
+}
+
+/** metrics.feet_out_of_frame: both ankles below the bottom edge (or not seen) on at least half the frames from just
+ * before front-foot contact to just after release. */
+export function feetOutOfFrame(kp: Arr3, kc: Arr2, ffc: number | null, br: number, fps: number, frameH: number | null | undefined): boolean {
+  if (!frameH) return false;
+  const start = ffc !== null ? ffc : br - Math.trunc(0.15 * fps);
+  const lo = Math.max(0, start - 2), hi = Math.min(kp.length, br + 3);
+  if (hi <= lo) return false;
+  let n = 0;
+  for (let t = lo; t < hi; t++) if ([15, 16].every((j) => kc[t][j] < 0.3 || kp[t][j][1] > 0.985 * frameH)) n++;
+  return n >= 0.5 * (hi - lo);
 }
 
 /** Signed angle (deg) of image vector v (x right, y down) from image-up; + = towards image right. */
@@ -678,12 +708,17 @@ export function compute(c: Ctx): { metrics: MetricDict[]; series: Series } {
     const handH = W[br][s.wrist][2] + HAND_OFFSET_M * pyMax(armDir[2], 0.3);
     [relH, rhSrc, rhConf] = [(100 * (handH - ground)) / H, "3d", 0.35];
   }
+  const rhExtra: Record<string, unknown> = { metres: pyRound((relH * H) / 100, 2) };
+  if (handOutOfFrame(c.kp, s.c_wr, br, c.frame_h)) {
+    // the hand's keypoint is extrapolated past the edge of the picture: its height is a guess
+    Object.assign(rhExtra, { rating: "unrated", reliability: "estimate", confidence: 0.2, note: HAND_OUT_NOTE });
+  }
   metrics.push(metric("release_height_pct", "Release height", relH, {
     event: "br", source: rhSrc as string, confidence: (rhConf as number) * conf2d(c, br, [s.c_wr, s.c_fan]),
     explain: "Height of the ball at release as a percentage of your height "
       + `(~${pyFormat((relH * H) / 100, 2)} m for a stature of ${pyFormat(H, 2)} m). Single-camera `
       + "precision is about ± 8 points.",
-    extra: { metres: pyRound((relH * H) / 100, 2) }, needs: SQUARE, view: gate }));
+    extra: rhExtra, needs: SQUARE, view: gate }));
   // arm slot: angle of shoulder->wrist from vertical in the frontal plane
   let slot: number, ssrc: string, sconf: number;
   if (rearView) {

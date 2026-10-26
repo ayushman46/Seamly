@@ -104,6 +104,36 @@ class Ctx:
     bone_lengths: np.ndarray
     fps_unique: float | None = None   # distinct frames per real second (repeated frames add no information)
     oblique: bool = False             # camera well off the pitch line: no plane-specific measurement is rated
+    frame_h: float | None = None      # picture height in keypoint pixels (to tell a hand above the frame)
+
+
+HAND_OUT_NOTE = ("The bowling hand goes above the top of the picture at release, so its height can't be measured. "
+                 "Leave room above the bowler's head.")
+HAND_OUT_TIP = ("The bowling hand goes above the top of the picture at release, so release height isn't measured: leave "
+                "room above the bowler's head.")
+FEET_OUT_TIP = ("The bowler's feet are out of the picture around front-foot contact, so the foot contacts are estimated "
+                "and the knees, stride and timings can't be measured. Keep the whole body in the frame, feet included.")
+
+
+def hand_out_of_frame(kp: np.ndarray, wr: int, br: int, frame_h: float | None) -> bool:
+    """The bowling wrist at or above the top edge of the picture around release (frames br-1..br+1)."""
+    if not frame_h:
+        return False
+    lo, hi = max(0, br - 1), min(len(kp), br + 2)
+    return hi > lo and float(np.min(kp[lo:hi, wr, 1])) < 0.01 * frame_h
+
+
+def feet_out_of_frame(kp: np.ndarray, kc: np.ndarray, ffc: int | None, br: int, fps: float, frame_h: float | None) -> bool:
+    """Both ankles below the bottom edge of the picture (or not seen) on at least half the frames from just before
+    front-foot contact to just after release."""
+    if not frame_h:
+        return False
+    start = ffc if ffc is not None else br - int(0.15 * fps)
+    lo, hi = max(0, start - 2), min(len(kp), br + 3)
+    if hi <= lo:
+        return False
+    out = [all(kc[t, j] < 0.3 or kp[t, j, 1] > 0.985 * frame_h for j in (15, 16)) for t in range(lo, hi)]
+    return sum(out) >= 0.5 * len(out)
 
 
 def _img_angle_from_vertical(v: np.ndarray) -> np.ndarray:
@@ -537,12 +567,16 @@ def compute(c: Ctx) -> dict:
         arm_dir = unit(W[br, s.wrist] - W[br, s.elbow])
         hand_h = W[br, s.wrist, 2] + HAND_OFFSET_M * max(arm_dir[2], 0.3)
         rel_h, rh_src, rh_conf = 100 * (hand_h - ground) / H, "3d", 0.35
+    rh_extra = {"metres": round(float(rel_h * H / 100), 2)}
+    if hand_out_of_frame(c.kp, s.c_wr, br, c.frame_h):
+        # the hand's keypoint is extrapolated past the edge of the picture: its height is a guess
+        rh_extra.update({"rating": "unrated", "reliability": "estimate", "confidence": 0.2, "note": HAND_OUT_NOTE})
     metrics.append(_metric("release_height_pct", "Release height", rel_h, event="br", source=rh_src,
                            confidence=rh_conf * _conf2d(c, br, [s.c_wr, s.c_fan]),
                            explain=f"Height of the ball at release as a percentage of your height "
                                    f"(~{rel_h * H / 100:.2f} m for a stature of {H:.2f} m). Single-camera "
                                    "precision is about ± 8 points.",
-                           extra={"metres": round(float(rel_h * H / 100), 2)}, needs=SQUARE, view=gate))
+                           extra=rh_extra, needs=SQUARE, view=gate))
     # arm slot: angle of shoulder->wrist from vertical in the frontal plane
     if rear_view:
         v = c.kp[br, s.c_wr] - c.kp[br, s.c_sh]

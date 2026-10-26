@@ -98,3 +98,23 @@ def test_classify_view_flags_oblique_cameras():
     one_cue = classify_view(fwd_behind, kp_ratio(0.33), None, run, 0.2)         # stride decides, ratio unsure
     assert one_cue.get("oblique") is None
     assert classify_view(fwd_behind).get("oblique") is None                     # no 2D cue at all: unchanged
+
+
+def test_body_leaving_the_picture():
+    from bowlnet.metrics import feet_out_of_frame, hand_out_of_frame
+
+    def frames(n, wrist_y, ankle_y, ankle_conf=0.9):
+        kp = np.tile(np.array([100.0, 300.0]), (n, 17, 1))
+        kc = np.full((n, 17), 0.9)
+        kp[:, 10] = [100, wrist_y]
+        kp[:, 15] = [90, ankle_y]
+        kp[:, 16] = [120, ankle_y]
+        kc[:, 15] = kc[:, 16] = ankle_conf
+        return kp, kc
+    assert hand_out_of_frame(frames(20, -6, 600)[0], 10, 10, 720)
+    assert not hand_out_of_frame(frames(20, 57, 600)[0], 10, 10, 720)
+    assert not hand_out_of_frame(frames(20, -6, 600)[0], 10, 10, None)
+    assert feet_out_of_frame(*frames(30, 100, 749), 15, 18, 25, 720)
+    assert feet_out_of_frame(*frames(30, 100, 500, 0.05), 15, 18, 25, 720)
+    assert not feet_out_of_frame(*frames(30, 100, 690), 15, 18, 25, 720)
+    assert not feet_out_of_frame(*frames(30, 100, 690), None, 18, 25, 720)

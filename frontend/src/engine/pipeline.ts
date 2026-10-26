@@ -17,7 +17,7 @@ import { isDelivery, scoreTracks, trackScoreDict, type Detection, type TrackScor
 import { assemble, bodyHeightPx, fixSwaps, hampel, interpolateGaps, smoothKeypoints } from "./pose2d";
 import { classifyView, decideBowlingArm, detectEvents, facingDirection, stabilise, strideAcross, wristLift } from "./events";
 import { estimateWorldFrame, reconstruct } from "./kinematics";
-import { compute, type Ctx } from "./metrics";
+import { FEET_OUT_TIP, HAND_OUT_TIP, compute, feetOutOfFrame, handOutOfFrame, type Ctx } from "./metrics";
 import { coach } from "./coaching";
 import { exportMesh, worldToThree } from "./body";
 import { COCO_FLIP, COCO_NAMES, H36M_FLIP, H36M_NAMES, H36M_PARENTS, PELVIS, eventsAsDict, sideForArm, toWorld,
@@ -621,8 +621,9 @@ export async function stageB(A: StageA, overrides: Overrides = {}, onProgress?: 
   const Wd = toWorld(wf, P);
   const rep = meta.quality.repeated_frames || 0;
   const fpsUnique = realFps * (1 - rep);
+  const frameH = meta.video.height;
   const ctx: Ctx = { P, W: Wd, kp: kpS, kc, side, wf, view: view.view, fps: realFps, stature: height, k: skel.px_per_m, ev,
-    bone_lengths: skel.bone_lengths, fps_unique: fpsUnique, oblique };
+    bone_lengths: skel.bone_lengths, fps_unique: fpsUnique, oblique, frame_h: frameH };
   const mres = compute(ctx);
   const coaching = coach(mres.metrics, oblique ? "oblique" : view.view, rep >= 0.4 ? fpsUnique : realFps);
   // a real delivery's arm turns at >~700°/s; much slower suggests a slowed-down (replay) clip
@@ -645,6 +646,9 @@ export async function stageB(A: StageA, overrides: Overrides = {}, onProgress?: 
     // camera can
     coaching.capture_tips.unshift("The arm movement Seamly followed is faster than a bowling arm turns, so it may have followed the wrong person (for example a batter close to the camera). Check the skeleton is on the bowler, and film from behind the bowler's stumps.");
   }
+  // the whole body in the picture: feet around landing and release, the bowling hand at release
+  if (feetOutOfFrame(kpS, kc, ev.ffc, ev.br, realFps, frameH)) coaching.capture_tips.unshift(FEET_OUT_TIP);
+  if (handOutOfFrame(kpS, side.c_wr, ev.br, frameH)) coaching.capture_tips.unshift(HAND_OUT_TIP);
   prog.stage("mesh", 0.1);
   const mesh = await exportMesh(Wd, height, overrides.gender ?? meta.options.gender ?? 0, arm);
   prog.stage("save", 0.2);

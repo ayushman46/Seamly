@@ -464,7 +464,7 @@ def stage_b(out_dir: Path, overrides: dict | None = None, progress: Progress | N
     Fast (< 1-2 s) so the UI can re-run it when the user edits events, height or bowling arm."""
     from .body.export import export_mesh, world_to_three
     from .coaching import coach
-    from .metrics import Ctx, compute
+    from .metrics import FEET_OUT_TIP, HAND_OUT_TIP, Ctx, compute, feet_out_of_frame, hand_out_of_frame
 
     overrides = overrides or {}
     prog = progress or Progress(None)
@@ -591,8 +591,10 @@ def stage_b(out_dir: Path, overrides: dict | None = None, progress: Progress | N
     W = wf.to_world(P)
     rep = float(meta["quality"].get("repeated_frames") or 0.0)
     fps_unique = real_fps * (1.0 - rep)   # frame-repeat slow motion / frame-rate conversion add no information
+    frame_h = float(meta["video"]["height"])
     ctx = Ctx(P=P, W=W, kp=kp_s, kc=kc, side=side, wf=wf, view=view["view"], fps=real_fps, stature=height,
-              k=skel.px_per_m, ev=ev, bone_lengths=skel.bone_lengths, fps_unique=fps_unique, oblique=oblique)
+              k=skel.px_per_m, ev=ev, bone_lengths=skel.bone_lengths, fps_unique=fps_unique, oblique=oblique,
+              frame_h=frame_h)
     mres = compute(ctx)
     coaching = coach(mres["metrics"], "oblique" if oblique else view["view"], fps_unique if rep >= 0.4 else real_fps)
     # a real delivery's arm turns at >~700°/s; much slower suggests a slowed-down (replay) clip
@@ -623,6 +625,11 @@ def stage_b(out_dir: Path, overrides: dict | None = None, progress: Progress | N
         coaching["capture_tips"].insert(0, "The arm movement Seamly followed is faster than a bowling arm turns, so it may "
                                            "have followed the wrong person (for example a batter close to the camera). "
                                            "Check the skeleton is on the bowler, and film from behind the bowler's stumps.")
+    # the whole body in the picture: feet around landing and release, the bowling hand at release
+    if feet_out_of_frame(kp_s, kc, ev.ffc, ev.br, real_fps, frame_h):
+        coaching["capture_tips"].insert(0, FEET_OUT_TIP)
+    if hand_out_of_frame(kp_s, side.c_wr, ev.br, frame_h):
+        coaching["capture_tips"].insert(0, HAND_OUT_TIP)
     prog.stage("mesh", 0.1)
     mesh_info = export_mesh(out_dir, W, height, gender=float(overrides.get("gender", meta["options"].get("gender", 0.0)) or 0.0),
                             bowling_arm=arm)
