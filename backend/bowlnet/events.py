@@ -354,6 +354,24 @@ def stride_across(kp: np.ndarray, k: np.ndarray, leg_m: float, side: Side, ffc: 
     return float(np.median(dx))
 
 
+def arm_peak_speed(kp: np.ndarray, kc: np.ndarray, sh: int, wr: int, br: int, fps: float) -> float | None:
+    """Peak angular speed (deg/s) of the bowling arm's shoulder-to-wrist line from 0.25 s before release to 0.1 s after,
+    on the refined 2D keypoints: the second-fastest frame step, so one keypoint glitch doesn't count, and steps over
+    110 deg (a swap or a misdetection) are left out. None with fewer than two usable steps."""
+    lo, hi = max(0, br - int(round(0.25 * fps))), min(len(kp) - 1, br + int(round(0.1 * fps)))
+    steps = []
+    for t in range(lo, hi):
+        if min(kc[t, sh], kc[t, wr], kc[t + 1, sh], kc[t + 1, wr]) < 0.3:
+            continue
+        v0, v1 = kp[t, wr] - kp[t, sh], kp[t + 1, wr] - kp[t + 1, sh]
+        d = (np.arctan2(v1[1], v1[0]) - np.arctan2(v0[1], v0[0]) + np.pi) % (2 * np.pi) - np.pi
+        if abs(d) <= np.radians(110):
+            steps.append(abs(float(d)))
+    if len(steps) < 2:
+        return None
+    return float(np.degrees(sorted(steps)[-2]) * fps)
+
+
 def classify_view(forward_cam: np.ndarray, kp: np.ndarray | None = None, kc: np.ndarray | None = None,
                   runup: np.ndarray | None = None, stride_x: float | None = None) -> dict:
     """Side-on / behind / front-on from the direction of travel in camera axes (z = optical axis).
@@ -390,7 +408,8 @@ def classify_view(forward_cam: np.ndarray, kp: np.ndarray | None = None, kc: np.
     # body's 3D direction of travel runs well across the picture, the camera is behind (or in front) and off to one
     # side: short clips cut from edited footage show this (real IPL net clips, 2026-10-27).
     lone = s_dec and ratio is None and stride_x < 0.4 and ang > 60
-    oblique = clash or lone or (not s_dec and not r_dec and (stride_x is not None or ratio is not None))
+    # neither 2D cue decided (in-between values, or none at all): only the weak 3D direction chose the view
+    oblique = clash or lone or (not s_dec and not r_dec)
     if oblique:
         extra["oblique"] = True
     return {"view": view, "angle_to_optical_axis_deg": round(ang, 1),

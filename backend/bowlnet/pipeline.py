@@ -16,7 +16,7 @@ from . import config
 from .store import write_atomic
 from .bowler import TrackScore, is_delivery, score_tracks
 from .detect import COCO_FLIP, COCO_NAMES, detections_by_track, refine_on_crops, square_crop
-from .events import (PELVIS, Side, classify_view, decide_bowling_arm, detect_events, facing_direction, stabilise, wrist_lift,
+from .events import (PELVIS, Side, arm_peak_speed, classify_view, decide_bowling_arm, detect_events, facing_direction, stabilise, wrist_lift,
                      stride_across)
 from .kinematics import estimate_world_frame, reconstruct
 from .lifting import sam3d
@@ -550,9 +550,17 @@ def stage_b(out_dir: Path, overrides: dict | None = None, progress: Progress | N
             wf = estimate_world_frame(P, ev.ffc, ev.bfc, side.front_ankle, side.back_ankle, forward_hint, hint_reliable)
         return ev, wf, skel_, P
 
+    frame_h = float(meta["video"]["height"])
+
+    def stride_of(ev, sk):
+        # with the feet out of the picture the ankles are extrapolated: the stride can't tell the camera's view
+        if feet_out_of_frame(kp_s, kc, ev.ffc, ev.br, real_fps, frame_h):
+            return None
+        return stride_across(kp_s, sk.px_per_m, float(sk.bone_lengths[1] + sk.bone_lengths[2]), side, ev.ffc, ev.br)
+
     ev, wf, skel2, P2 = locate(P)
     sk = skel2 or skel
-    stride_x = stride_across(kp_s, sk.px_per_m, float(sk.bone_lengths[1] + sk.bone_lengths[2]), side, ev.ffc, ev.br)
+    stride_x = stride_of(ev, sk)
     view = classify_view(wf.forward, kp_s, kc, runup if len(runup) >= 4 else None, stride_x)
     # The user says the camera was behind the bowler and the analysis read it as in front (or the reverse): the
     # detector took the back for the front, so left and right are labelled as if the bowler faced the other way.
@@ -580,7 +588,7 @@ def stage_b(out_dir: Path, overrides: dict | None = None, progress: Progress | N
         side = Side.for_arm(arm)
         ev, wf, skel2, P2 = locate(P)
         sk = skel2 or skel
-        stride_x = stride_across(kp_s, sk.px_per_m, float(sk.bone_lengths[1] + sk.bone_lengths[2]), side, ev.ffc, ev.br)
+        stride_x = stride_of(ev, sk)
         view = classify_view(wf.forward, kp_s, kc, runup if len(runup) >= 4 else None, stride_x)
     skel, P = sk, P2
     if overrides.get("view") in ("side_on", "behind", "front_on"):
@@ -591,7 +599,6 @@ def stage_b(out_dir: Path, overrides: dict | None = None, progress: Progress | N
     W = wf.to_world(P)
     rep = float(meta["quality"].get("repeated_frames") or 0.0)
     fps_unique = real_fps * (1.0 - rep)   # frame-repeat slow motion / frame-rate conversion add no information
-    frame_h = float(meta["video"]["height"])
     ctx = Ctx(P=P, W=W, kp=kp_s, kc=kc, side=side, wf=wf, view=view["view"], fps=real_fps, stature=height,
               k=skel.px_per_m, ev=ev, bone_lengths=skel.bone_lengths, fps_unique=fps_unique, oblique=oblique,
               frame_h=frame_h)
@@ -615,7 +622,8 @@ def stage_b(out_dir: Path, overrides: dict | None = None, progress: Progress | N
             coaching["capture_tips"].insert(0, f"Each frame of this clip is repeated ~{n_txt}x, so only ~{fps_unique:.0f} "
                                                "distinct frames were captured per real second; precision follows that "
                                                "rate, not the slowed-down frame count.")
-    elif 0 < peak_real < 650:
+    elif 0 < peak_real < 650 and (arm_peak_speed(kp_s, kc, side.c_sh, side.c_wr, ev.br, real_fps) or 0) < 650:
+        # the scan's arm speed reads low on blurred, fast arms; the refined keypoints around release must agree
         coaching["capture_tips"].insert(0, f"The bowling arm peaks at only ~{peak_real:.0f}°/s, which is unusually slow "
                                            "for a real delivery. If this clip is a slowed-down replay, set its clip speed "
                                            "in Detection & settings so timings are correct.")

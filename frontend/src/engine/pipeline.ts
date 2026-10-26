@@ -15,7 +15,7 @@ import { FrameSource, repeatedFraction, segmentShots, signature, sigDistance, vi
 import { IDENTITY, MotionEstimator, appearance, detectionsByTrack, toGrey, track, type FrameDets, FLOW_SIZE } from "./tracking";
 import { isDelivery, scoreTracks, trackScoreDict, type Detection, type TrackScore, type TrackScoreDict } from "./bowler";
 import { assemble, bodyHeightPx, fixSwaps, hampel, interpolateGaps, smoothKeypoints } from "./pose2d";
-import { classifyView, decideBowlingArm, detectEvents, facingDirection, stabilise, strideAcross, wristLift } from "./events";
+import { armPeakSpeed, classifyView, decideBowlingArm, detectEvents, facingDirection, stabilise, strideAcross, wristLift } from "./events";
 import { estimateWorldFrame, reconstruct } from "./kinematics";
 import { FEET_OUT_TIP, HAND_OUT_TIP, compute, feetOutOfFrame, handOutOfFrame, type Ctx } from "./metrics";
 import { coach } from "./coaching";
@@ -573,7 +573,9 @@ export async function stageB(A: StageA, overrides: Overrides = {}, onProgress?: 
       P = sk.joints;
       wf = estimateWorldFrame(P, ev.ffc, ev.bfc, side.front_ankle, side.back_ankle, forwardHint, hintReliable);
     }
-    const strideX = strideAcross(kpS, sk.px_per_m, sk.bone_lengths[1] + sk.bone_lengths[2], side, ev.ffc, ev.br);
+    // with the feet out of the picture the ankles are extrapolated: the stride can't tell the camera's view
+    const strideX = feetOutOfFrame(kpS, kc, ev.ffc, ev.br, realFps, meta.video.height) ? null
+      : strideAcross(kpS, sk.px_per_m, sk.bone_lengths[1] + sk.bone_lengths[2], side, ev.ffc, ev.br);
     const view: ViewInfo = classifyView(wf.forward, kpS, kc, runup.length >= 4 ? runup : null, strideX);
     return { ev, wf, sk, P, view };
   };
@@ -638,7 +640,8 @@ export async function stageB(A: StageA, overrides: Overrides = {}, onProgress?: 
     } else {
       coaching.capture_tips.unshift(`Each frame of this clip is repeated ~${nTxt}x, so only ~${fpsUnique.toFixed(0)} distinct frames were captured per real second; precision follows that rate, not the slowed-down frame count.`);
     }
-  } else if (peakReal > 0 && peakReal < 650) {
+  } else if (peakReal > 0 && peakReal < 650 && (armPeakSpeed(kpS, kc, side.c_sh, side.c_wr, ev.br, realFps) ?? 0) < 650) {
+    // the scan's arm speed reads low on blurred, fast arms; the refined keypoints around release must agree
     coaching.capture_tips.unshift(`The bowling arm peaks at only ~${peakReal.toFixed(0)}°/s, which is unusually slow for a real delivery. If this clip is a slowed-down replay, set its clip speed in Detection & settings so timings are correct.`);
   }
   if (peakReal > 4500) {

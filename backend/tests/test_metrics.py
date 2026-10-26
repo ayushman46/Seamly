@@ -97,7 +97,12 @@ def test_classify_view_flags_oblique_cameras():
     assert undecided["oblique"] is True
     one_cue = classify_view(fwd_behind, kp_ratio(0.33), None, run, 0.2)         # stride decides, ratio unsure
     assert one_cue.get("oblique") is None
-    assert classify_view(fwd_behind).get("oblique") is None                     # no 2D cue at all: unchanged
+    # no 2D cue at all (no run-up, feet out of the picture): only the weak 3D direction chose the view, so it is
+    # marked uncertain and nothing plane-specific is rated (since 2026-10-27, from real IPL net close-ups)
+    assert classify_view(fwd_behind)["oblique"] is True
+    # no run-up and a stride along the pitch, but the 3D direction runs across it: behind and off to one side
+    assert classify_view(np.array([0.9, 0.0, 0.3]), None, None, None, 0.1)["oblique"] is True
+    assert classify_view(fwd_behind, None, None, None, 0.1).get("oblique") is None
 
 
 def test_body_leaving_the_picture():
@@ -118,3 +123,15 @@ def test_body_leaving_the_picture():
     assert feet_out_of_frame(*frames(30, 100, 500, 0.05), 15, 18, 25, 720)
     assert not feet_out_of_frame(*frames(30, 100, 690), 15, 18, 25, 720)
     assert not feet_out_of_frame(*frames(30, 100, 690), None, 18, 25, 720)
+
+
+def test_arm_peak_speed_skips_glitches():
+    from bowlnet.events import arm_peak_speed
+    deg = [0, 20, 40, 60, 210, 230, 250, 290, 310, 330, 350, 10, 30]
+    kp = np.zeros((len(deg), 17, 2))
+    kp[:, 10] = np.stack([np.cos(np.radians(deg)) * 100, np.sin(np.radians(deg)) * 100], 1)
+    kc = np.full((len(deg), 17), 0.9)
+    assert abs(arm_peak_speed(kp, kc, 6, 10, 8, 25) - 20 * 25) < 1e-6
+    kc[7, 10] = 0.1
+    assert abs(arm_peak_speed(kp, kc, 6, 10, 8, 25) - 20 * 25) < 1e-6
+    assert arm_peak_speed(kp[:2], kc[:2], 6, 10, 1, 25) is None

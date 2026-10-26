@@ -119,3 +119,17 @@ describe.each(FIXTURES)("events generated cases: %s", (name) => {
     }
   });
 });
+
+describe("arm speed around release from the refined keypoints", () => {
+  it("takes the second-fastest step and leaves out glitches", async () => {
+    const { armPeakSpeed } = await import("../src/engine/events");
+    // the shoulder at (0, 0); the wrist turns 20 deg a frame, one step of 150 deg (a swap) and one of 40 deg
+    const deg = [0, 20, 40, 60, 210, 230, 250, 290, 310, 330, 350, 10, 30];
+    const kp = deg.map((a) => Array.from({ length: 17 }, (_, j) => (j === 10 ? [Math.cos((a * Math.PI) / 180) * 100, Math.sin((a * Math.PI) / 180) * 100] : [0, 0])));
+    const kc = deg.map(() => Array(17).fill(0.9));
+    expect(armPeakSpeed(kp, kc, 6, 10, 8, 25)).toBeCloseTo(20 * 25, 6);   // 40-deg step is the fastest, 20 the second
+    kc[7][10] = 0.1;   // the 40-deg step's frame unseen: second-fastest of the rest is still 20
+    expect(armPeakSpeed(kp, kc, 6, 10, 8, 25)).toBeCloseTo(20 * 25, 6);
+    expect(armPeakSpeed(kp.slice(0, 2), kc.slice(0, 2), 6, 10, 1, 25)).toBeNull();
+  });
+});

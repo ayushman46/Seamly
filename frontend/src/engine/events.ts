@@ -412,6 +412,25 @@ export function strideAcross(kp: Arr3, k: Arr1, legM: number, side: Side, ffc: n
 /** Side-on / behind / front-on from the direction of travel in camera axes (z = optical axis).
  * The planted stride's foreshortening (strideAcross) decides when it is clear; otherwise the apparent hip width /
  * torso length ratio during the run-up (side-on -> narrow), then the 3D direction. */
+/** events.arm_peak_speed: peak angular speed (deg/s) of the bowling arm's shoulder-to-wrist line from 0.25 s before
+ * release to 0.1 s after, on the refined 2D keypoints: the second-fastest frame step, so one keypoint glitch doesn't
+ * count, and steps over 110 deg (a swap or a misdetection) are left out. null with fewer than two usable steps. */
+export function armPeakSpeed(kp: Arr3, kc: Arr2, sh: number, wr: number, br: number, fps: number): number | null {
+  const lo = Math.max(0, br - round(0.25 * fps)), hi = Math.min(kp.length - 1, br + round(0.1 * fps));
+  const steps: number[] = [];
+  for (let t = lo; t < hi; t++) {
+    if (Math.min(kc[t][sh], kc[t][wr], kc[t + 1][sh], kc[t + 1][wr]) < 0.3) continue;
+    const a0 = Math.atan2(kp[t][wr][1] - kp[t][sh][1], kp[t][wr][0] - kp[t][sh][0]);
+    const a1 = Math.atan2(kp[t + 1][wr][1] - kp[t + 1][sh][1], kp[t + 1][wr][0] - kp[t + 1][sh][0]);
+    const twoPi = 2 * Math.PI;
+    const d = ((((a1 - a0 + Math.PI) % twoPi) + twoPi) % twoPi) - Math.PI;   // Python's % (always >= 0)
+    if (Math.abs(d) <= (110 * Math.PI) / 180) steps.push(Math.abs(d));
+  }
+  if (steps.length < 2) return null;
+  steps.sort((x, y) => x - y);
+  return ((steps[steps.length - 2] * 180) / Math.PI) * fps;
+}
+
 export function classifyView(forwardCam: number[], kp?: Arr3 | null, _kc?: Arr2 | null, runup?: number[] | null,
   strideX?: number | null): ViewInfo {
   const f = unitK(forwardCam);
@@ -450,6 +469,7 @@ export function classifyView(forwardCam: number[], kp?: Arr3 | null, _kc?: Arr2 
   // body's 3D direction of travel runs well across the picture, the camera is behind (or in front) and off to one
   // side: short clips cut from edited footage show this (real IPL net clips, 2026-10-27).
   const lone = sDec && ratio === null && strideX! < 0.4 && ang > 60;
-  if (clash || lone || (!sDec && !rDec && (strideX != null || ratio !== null))) out.oblique = true;
+  // neither 2D cue decided (in-between values, or none at all): only the weak 3D direction chose the view
+  if (clash || lone || (!sDec && !rDec)) out.oblique = true;
   return out;
 }
