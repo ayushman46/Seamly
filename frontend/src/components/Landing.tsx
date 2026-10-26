@@ -19,7 +19,7 @@ export function Hero({ onAnalyse, onDemo, demoBusy, demoError, disabled }: {
         <div className="hero-copy">
           <h1 className="hero-title" id="hero-title">Analyse your bowling action from one phone video.</h1>
           <p className="hero-sub">
-            Key moments, joint angles, a 3D body and a practice plan in about a minute.{" "}
+            Key moments, joint angles, ball speed, a 3D body and a practice plan, from phone video.{" "}
             {LOCAL ? "Free, and your video never leaves your phone." : "Free, on your own Seamly server."}
           </p>
           <div className="hero-ctas">
@@ -90,8 +90,8 @@ export function WhatYouGet() {
   const items: { title: string; text: string }[] = [
     { title: "The moments that matter", text: "Back-foot contact, front-foot contact, release and follow-through, marked on your own clip." },
     { title: "Angles, measured honestly", text: "Front knee, trunk, stride and release height against published ranges. Only what your camera can really see." },
-    { title: "One thing to fix", text: "A clear verdict, a cue for the nets and a two-week plan that keeps junior bowling loads safe." },
-    { title: "Progress you can see", text: "A 3D body, two deliveries laid over each other, player progress and a bowling log that watches the workload." },
+    { title: "Pace from the same clip", text: "Ball speed timed over the pitch, shown with its range, beside the run-up speed and the parts of the action that drive it. No radar gun." },
+    { title: "One thing to fix", text: "A clear verdict and a cue for the nets, a two-week plan that keeps junior loads safe, a 3D body and progress over time." },
   ];
   return (
     <section className="section" id="features" aria-labelledby="features-title">
@@ -152,10 +152,10 @@ function SideOnDiagram() {
 
 function BehindDiagram() {
   return (
-    <svg viewBox="4 58 344 162" role="img" aria-label="Top-down diagram: the camera stands behind the bowler's stumps, in line with the pitch, pointing down it towards the batter.">
+    <svg viewBox="4 58 344 162" role="img" aria-label="Top-down diagram: the camera stands behind the bowler's stumps, in line with the pitch, looking down it with the batter in the picture.">
       <PitchBase />
-      <path d="M44 110 L214 54 L214 166 Z" fill="#3ddc97" opacity="0.1" />
-      <path d="M44 110 L214 54 M44 110 L214 166" stroke="#3ddc97" strokeWidth="1.4" strokeDasharray="4 4" opacity="0.7" />
+      <path d="M44 110 L330 84 L330 136 Z" fill="#3ddc97" opacity="0.1" />
+      <path d="M44 110 L330 84 M44 110 L330 136" stroke="#3ddc97" strokeWidth="1.4" strokeDasharray="4 4" opacity="0.7" />
       <circle cx="98" cy="110" r="8" fill="#f43f5e" stroke="#fff" strokeWidth="2" />
       <text x="98" y="76" textAnchor="middle" fontSize="11" fontWeight="600" fill="#fecdd3">Bowler</text>
       <CameraIcon x={40} y={110} rot={90} />
