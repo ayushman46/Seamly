@@ -571,6 +571,12 @@ def stage_b(out_dir: Path, overrides: dict | None = None, progress: Progress | N
         coaching["capture_tips"].insert(0, f"The bowling arm peaks at only ~{peak_real:.0f}°/s, which is unusually slow "
                                            "for a real delivery. If this clip is a slowed-down replay, set its clip speed "
                                            "in Detection & settings so timings are correct.")
+    if peak_real > 4500:
+        # no bowling arm turns this fast on video (at most ~3400°/s across the test clips); a bat swing close to the
+        # camera can
+        coaching["capture_tips"].insert(0, "The arm movement Seamly followed is faster than a bowling arm turns, so it may "
+                                           "have followed the wrong person (for example a batter close to the camera). "
+                                           "Check the skeleton is on the bowler, and film from behind the bowler's stumps.")
     prog.stage("mesh", 0.1)
     mesh_info = export_mesh(out_dir, W, height, gender=float(overrides.get("gender", meta["options"].get("gender", 0.0)) or 0.0),
                             bowling_arm=arm)

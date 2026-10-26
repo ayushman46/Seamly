@@ -168,9 +168,15 @@ async function loadFiles(id: string, result: AnalysisResult) {
     need.push(db.get<Blob>("blob", name === "input" ? `${id}/input` : mkey(id, gen, name)).then((b) => { if (b) setUrl(key, b); }));
   }
   await Promise.all(need);
-  setUrl(`${id}/export.json`, new Blob([JSON.stringify(result)], { type: "application/json" }));
+  setUrl(`${id}/export.json`, exportJson(id, result));
   setUrl(`${id}/export.csv`, new Blob([seriesCsv(result)], { type: "text/csv" }));
   urls.delete(`${id}/obj`);
+}
+
+/** The "Full analysis" export: the analysis, plus the ball speed when one was measured on this clip. */
+function exportJson(id: string, r: AnalysisResult): Blob {
+  const pace = metas.get(id)?.pace ?? null;
+  return new Blob([JSON.stringify(pace ? { ...r, pace } : r)], { type: "application/json" });
 }
 
 function seriesCsv(r: AnalysisResult): string {
@@ -360,7 +366,7 @@ async function applyEdit(id: string, overrides: Overrides, latest?: EventKey[]) 
   for (const k of [...objCache.keys()]) if (k.startsWith(`${id}/`)) objCache.delete(k);
   setUrl(`${id}/mesh_rest.bin`, new Blob([mesh.rest]));
   setUrl(`${id}/pose.bin`, new Blob([mesh.pose]));
-  setUrl(`${id}/export.json`, new Blob([JSON.stringify(result)], { type: "application/json" }));
+  setUrl(`${id}/export.json`, exportJson(id, result));
   setUrl(`${id}/export.csv`, new Blob([seriesCsv(result)], { type: "text/csv" }));
   return { meta: pub(m), result: result as AnalysisResult };
 }
@@ -704,7 +710,10 @@ export const api = {
       if (body.player_id) await requirePlayer(body.player_id).catch(() => { throw new Error("Unknown player."); });
       f.player_id = body.player_id ?? null;
     }
-    return pub((Object.keys(f).length ? await writeMeta(id, f) : undefined) ?? requireMeta(id));
+    const out = pub((Object.keys(f).length ? await writeMeta(id, f) : undefined) ?? requireMeta(id));
+    const r = results.get(id);
+    if ("pace" in body && r) setUrl(`${id}/export.json`, exportJson(id, r));
+    return out;
   },
   /** Run-up speed at back-foot contact (side-on clips with the last strides in view), from the stored camera motion. */
   runup: async (id: string): Promise<Runup | null> => {
