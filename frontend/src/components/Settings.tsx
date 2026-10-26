@@ -3,6 +3,7 @@ import type { AnalysisResult, Player } from "../types";
 import { api } from "../api";
 import { SLOWMO_OPTIONS, VIEW_LABEL } from "../lib/constants";
 import { fmt } from "../lib/format";
+import PlayerForm from "./PlayerForm";
 
 export default function Settings({ result, busy, onRecompute, onRerun, playerId, onAssign }: {
   id: string; result: AnalysisResult; busy: boolean; playerId: string | null; onAssign: (pid: string | null) => Promise<void>;
@@ -10,6 +11,7 @@ export default function Settings({ result, busy, onRecompute, onRerun, playerId,
   onRerun: (body: { candidate?: number; slowmo_factor?: number }) => Promise<void>;
 }) {
   const [players, setPlayers] = useState<Player[]>([]);
+  const [creating, setCreating] = useState(false);
   useEffect(() => { api.players().then(setPlayers).catch(() => undefined); }, []);
   const stature = Math.round(result.skeleton.stature_m * 100);
   const entered = result.skeleton.height_source === "user";
@@ -23,11 +25,23 @@ export default function Settings({ result, busy, onRecompute, onRerun, playerId,
         <div role="heading" aria-level={3} className="card-title">Corrections</div>
         <div className="field">
           <label htmlFor="set-player">Player (groups this delivery into their progress)</label>
-          <select id="set-player" className="input" style={{ width: 260, maxWidth: "100%" }} value={playerId ?? ""} disabled={busy}
-            onChange={(e) => onAssign(e.target.value || null)}>
-            <option value="">No player</option>
-            {players.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
+          {creating ? (
+            <div className="card card-pad sunken" style={{ maxWidth: 520 }}>
+              <PlayerForm submitLabel="Create & add this delivery" onCancel={() => setCreating(false)} onSave={async (p) => {
+                const made = await api.createPlayer(p);
+                setPlayers((ps) => [...ps, made]);
+                setCreating(false);
+                await onAssign(made.id);
+              }} />
+            </div>
+          ) : (
+            <select id="set-player" className="input" style={{ width: 260, maxWidth: "100%" }} value={playerId ?? ""} disabled={busy}
+              onChange={(e) => (e.target.value === "__new" ? setCreating(true) : onAssign(e.target.value || null))}>
+              <option value="">No player</option>
+              {players.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              <option value="__new">+ New player…</option>
+            </select>
+          )}
         </div>
         <div className="field">
           <label id="set-arm">Bowling arm ({result.bowling_arm.source === "user" ? "set by hand" : `detected: ${result.bowling_arm.arm}, ${armAgreement(result.bowling_arm)}`})</label>
