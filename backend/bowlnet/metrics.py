@@ -111,6 +111,10 @@ HAND_OUT_NOTE = ("The bowling hand goes above the top of the picture at release,
                  "Leave room above the bowler's head.")
 HAND_OUT_TIP = ("The bowling hand goes above the top of the picture at release, so release height isn't measured: leave "
                 "room above the bowler's head.")
+FEET_OUT_NOTE = "The bowler's feet are out of the picture here, so this can't be measured. Keep the whole body in the frame."
+# measured from the ankles' positions (the knees' angles, the stride, the ground under the release, the front foot)
+FEET_METRICS = ("front_knee_ffc", "front_knee_br", "front_knee_flexion", "back_knee_bfc", "stride_length_pct",
+                "release_height_pct", "head_offset_br")
 FEET_OUT_TIP = ("The bowler's feet are out of the picture around front-foot contact, so the foot contacts are estimated "
                 "and the knees, stride and timings can't be measured. Keep the whole body in the frame, feet included.")
 
@@ -618,4 +622,10 @@ def compute(c: Ctx) -> dict:
         if guessed & set((m.get("event") or "").split("-")) and m["rating"] != "unrated":
             m.update(rating="unrated", reliability="estimate", confidence=min(m["confidence"], 0.25),
                      note=m.get("note") or prior_note)
+    # with the feet out of the picture their keypoints are extrapolated: nothing measured from them is rated
+    if feet_out_of_frame(c.kp, c.kc, ffc, br, c.fps, c.frame_h):
+        for m in metrics:
+            if m["key"] in FEET_METRICS and m["rating"] != "unrated":
+                m.update(rating="unrated", reliability="estimate", confidence=min(m["confidence"], 0.2),
+                         note=m.get("note") or FEET_OUT_NOTE)
     return {"metrics": metrics, "series": ts}

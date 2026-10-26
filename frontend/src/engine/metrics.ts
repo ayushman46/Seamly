@@ -233,6 +233,10 @@ export const HAND_OUT_NOTE = "The bowling hand goes above the top of the picture
   + "Leave room above the bowler's head.";
 export const HAND_OUT_TIP = "The bowling hand goes above the top of the picture at release, so release height isn't measured: leave "
   + "room above the bowler's head.";
+export const FEET_OUT_NOTE = "The bowler's feet are out of the picture here, so this can't be measured. Keep the whole body in the frame.";
+// measured from the ankles' positions (the knees' angles, the stride, the ground under the release, the front foot)
+const FEET_METRICS = ["front_knee_ffc", "front_knee_br", "front_knee_flexion", "back_knee_bfc", "stride_length_pct",
+  "release_height_pct", "head_offset_br"];
 export const FEET_OUT_TIP = "The bowler's feet are out of the picture around front-foot contact, so the foot contacts are estimated "
   + "and the knees, stride and timings can't be measured. Keep the whole body in the frame, feet included.";
 
@@ -765,6 +769,14 @@ export function compute(c: Ctx): { metrics: MetricDict[]; series: Series } {
     if ((m.event || "").split("-").some((e) => guessed.has(e)) && m.rating !== "unrated") {
       Object.assign(m, { rating: "unrated", reliability: "estimate", confidence: pyMin(m.confidence, 0.25),
         note: m.note || priorNote });
+    }
+  }
+  // with the feet out of the picture their keypoints are extrapolated: nothing measured from them is rated
+  if (feetOutOfFrame(c.kp, c.kc, ffc, br, c.fps, c.frame_h)) {
+    for (const m of metrics) {
+      if (FEET_METRICS.includes(m.key) && m.rating !== "unrated") {
+        Object.assign(m, { rating: "unrated", reliability: "estimate", confidence: pyMin(m.confidence, 0.2), note: m.note || FEET_OUT_NOTE });
+      }
     }
   }
   return { metrics, series: ts };

@@ -159,7 +159,24 @@ and release-point assumptions are themselves estimates; a radar session at the n
 - **Filming matters most:** 720p or better, the whole body well inside the frame, side-on or straight behind the
   stumps. When the app asks which arm bowls or says the camera is angled, its numbers for that clip are not reliable.
 
-## 8. Still to do
+## 8. Real IPL net clips (2026-10-27)
+
+Eleven short cuts of IPL players bowling in the nets, from features on the official site (iplt20.com, streamed to any
+visitor; kept on the laptop, never published). Each is one camera shot from an edited video: 0.6–1.9 s at 24–25 fps,
+starting at the bound or later, so there is no run-up. Release frames were checked by eye on zoomed frames around
+each release.
+
+| | Result |
+|---|---|
+| Release frame | within one frame on 8 of 9 cuts that show the release (ipl01, 02, 05, 07, 09, 10, 12, 13); two frames early on a spinner (Varun Chakaravarthy, close-up) |
+| Delivery found | 10 of 11 at first; the eleventh starts mid-swing, so the arm's sweep measured 140° (the bar was 150°). A sweep cut short by the start or end of the clip now counts from 120° at 450°/s or more (both engines) |
+| Camera view | 7 of 11 read as the cut's camera position; with no run-up, a lone stride cue now defers to the 3D direction when they disagree by more than 60° (the camera is then marked angled) |
+| Too little body in the picture | close-ups put the feet below the frame and the bowling hand above it at release; a capture tip now says so, and release height is not rated when the hand is past the top edge |
+
+What this footage can't show: none of the cuts has a run-up or a ball reaching the batter, so run-up speed and ball
+speed couldn't be checked; at 24 fps one frame is 42 ms.
+
+## 9. Still to do
 
 - Lab validation against marker-based motion capture (real bodies, real knees): the synthetic body can't say whether
   the detector's knee placement on a bent knee differs on people.
