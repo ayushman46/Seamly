@@ -33,9 +33,10 @@ export interface Pace {
 }
 
 export const DISTANCE: Record<PaceTarget, number> = { crease: 17.68, stumps: 18.9 };
-// the fastest ball on record is 161.3 km/h (Shoaib Akhtar, 2003): anything well beyond it is a marking error, and a
-// range never reaches past it
+// the fastest ball on record is 161.3 km/h (Shoaib Akhtar, 2003): a range never reaches past 165, and a reading past
+// 175 (more than a frame's slip at 30 fps above any bowler) is a marking error
 export const MAX_KMH = 165;
+const REFUSE_KMH = 175;
 export const FAST_KMH = 150;   // only the quickest international bowlers
 const RELEASE_SPREAD_M = 0.5;
 // average speed as a share of the release speed: in the air only; after pitching; and over the whole way with an
@@ -58,9 +59,11 @@ export function paceFrom(r: AnalysisResult, m: PaceMarks): Pace | null {
   const fps = r.fps_real;
   const d = DISTANCE[m.target];
   const avg = d / dt;                                   // m/s
-  // independent doubts, each a relative half-width, combined in quadrature: the release point (± 0.5 m), one frame of
-  // timing in all, and how much the ball slowed on the way
-  const eD = RELEASE_SPREAD_M / d, eT = 1 / fps / dt;
+  // independent doubts, each a relative half-width, combined in quadrature: the release point (± 0.5 m), two frames of
+  // timing (the release and the arrival can each be a frame off), and how much the ball slowed on the way. In a
+  // simulation of 20,000 deliveries (drag, bounce, release point and marking slips varied) the range held the true
+  // speed 93-100% of the time (docs/RESEARCH.md)
+  const eD = RELEASE_SPREAD_M / d, eT = 2 / fps / dt;
   let kmh: number, eK: number;
   if (m.pitch !== undefined && m.pitch !== null) {
     const t1 = realSeconds(r, m.release, m.pitch);
@@ -73,8 +76,8 @@ export function paceFrom(r: AnalysisResult, m: PaceMarks): Pace | null {
     kmh = (avg / mid(k)) * 3.6;
     eK = halfWidth(k) / mid(k);
   }
-  const e = Math.hypot(eD, eT, eK), lo = kmh * (1 - e), hi = Math.min(MAX_KMH, kmh * (1 + e));
-  if (kmh < 30 || kmh > MAX_KMH) return null;           // not a bowled ball: the marks are on the wrong frames
+  const e = Math.hypot(eD, eT, eK), lo = Math.min(kmh * (1 - e), MAX_KMH - 5), hi = Math.max(lo + 1, Math.min(MAX_KMH, kmh * (1 + e)));
+  if (kmh < 30 || kmh > REFUSE_KMH) return null;        // not a bowled ball: the marks are on the wrong frames
   return { kmh, lo, hi, avgKmh: avg * 3.6, seconds: dt, metres: d, fps };
 }
 

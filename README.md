@@ -122,6 +122,14 @@ SAM 3D Body is gated. Accept Meta's licence at https://huggingface.co/facebook/s
 
 Server tests: `cd backend && ../.venv/bin/python -m pytest -q` (the full suite takes about 7 minutes, including real-clip and synthetic ground-truth runs).
 
+## How accurate is it?
+
+Tested against synthetic deliveries with exactly known answers and against hand-marked real clips: release within
+one frame on 7 of 8 real clips, front knee within about 4°, trunk lean within about 2°, side-bend from behind within
+about 3°, ball speed within a few km/h with a range that holds the true speed 92–100% of the time in simulation. The
+3D body is for seeing the action (about 10 cm off side-on), not for measuring it. Full numbers, method and failure
+cases: [docs/ACCURACY.md](docs/ACCURACY.md).
+
 ## Known limitations
 
 These are surfaced in the app rather than hidden:
@@ -130,8 +138,9 @@ These are surfaced in the app rather than hidden:
 - **Angled cameras.** When the camera is well off the line of the pitch (high in the stands, or far to one side), the view cues contradict each other. Seamly then marks the view as angled, rates none of the body measurements (knee, trunk, stride, side-bend, alignment, release height, head position) and asks for a clip filmed square on.
 - **Foot contacts from behind** are often placed from typical timing. Their timings stay unrated until you confirm the markers: drag them, or use "Set this frame as" in the Frame tab.
 - **25–30 fps** limits release and timing precision to ±1 frame (33–40 ms). Elbow extension needs side-on video at 100 fps or more, and it is shown for reference only, never rated: on a rendered straight-armed delivery at 120 fps one camera read 12°.
-- **Side-bend from behind may read low.** On a synthetic mannequin bending 34° at release, the 2D reading was 27°. Real broadcast clips of elite seamers read a typical 31–35°, but until side-bend is checked against a lab reference, treat values near the 45° and 50° back-health bands as possibly higher.
-- **Ball speed is an estimate, not a radar reading.** It is timed between two frames you mark, so its precision follows the frame rate and how much the ball slowed: a 240 fps clip with the pitching frame marked is within about ±5%, a 30 fps clip without it about ±12%. The range is always shown. The ball is too small and blurred at normal frame rates to be tracked automatically.
+- **Left and right can get confused.** The browser's pose model occasionally swaps a bowler's left and right limbs (1 of 17 real test clips; more often on a faceless test mannequin), which can put a measurement on the wrong leg. When the app asks which arm bowls, check the skeleton on the video before trusting the numbers.
+- **Side-bend from behind is reliable in the live (browser) engine, less so in the Python server engine.** On synthetic bends of 20°, 36° and 54° the browser read within about 3°; the server engine, with its larger pose model, read a 34° bend as 27°. Side-bend changes fast around release, so at 30 fps a release one frame off moves it several degrees: slow motion helps.
+- **Ball speed is an estimate, not a radar reading.** It is timed between frames you mark, so its precision follows the frame rate and how much the ball slowed: in simulation the median error is about 3 km/h at 240 fps with the pitching frame marked and about 6 km/h at 30 fps without it. The range is always shown. The ball is too small and blurred at normal frame rates to be tracked automatically.
 - **Analysis pauses while its tab is in the background.** Browsers throttle hidden tabs and can hand back stale video frames, so Seamly waits and carries on when you come back, rather than measuring the wrong frames. Keep the tab open on screen until it finishes.
 - **Analyses live in the browser that made them** (IndexedDB). Nothing is uploaded, so a link only opens on that device. Clearing site data deletes them, so use **Download backup** in your workspace to keep a copy or move players and analyses to another device (Restore a backup), and the PDF report to share one.
 - **The bowling arm is hard to tell from behind or front-on.** On rear-view broadcast clips the detector is often unsure, and a low-confidence call can differ between devices. Below 50% agreement Seamly asks "Is this a left-arm bowler?" with one-tap Yes/No (and marks the arm with a "?" up to 70%), and saves the answer to the player's profile so later clips don't have to guess. Setting the arm in the profile skips detection entirely.

@@ -45,8 +45,27 @@ FARM = key([0, .55, .75, .9, 1.05, 1.45], [-20, 140, 160, 70, -10, -25])
 SPEED = key([0, .6, .8, .92, 1.2, 1.45], [5.5, 5.0, 3.5, 2.5, 1.5, 1.2])
 
 
-def skeleton(t: float) -> np.ndarray:
-    """H36M-17 joints in world axes (x forward, y left, z up), pelvis at origin."""
+def variant(front_knee_bend: tuple[float, float] | None = None, side_bend: float | None = None,
+            trunk_forward: float | None = None) -> dict:
+    """Keyframe overrides for a different delivery: the front knee's bend (degrees from straight) at front-foot
+    contact and at release, and the trunk's side-bend and forward lean at release."""
+    k = {}
+    if front_knee_bend is not None:
+        ffc, br = front_knee_bend
+        k["L_KN"] = key([0, .15, .3, .45, .6, .72, .8, .86, .92, 1.05, 1.22, 1.45],
+                        [60, 20, 60, 20, 75, 40, ffc, (ffc + br) / 2 + 10, br, br + 5, 30, 10])
+    if side_bend is not None:
+        k["TRUNK_L"] = key([0, .6, .8, .92, 1.1, 1.45], [0, -5, 5, side_bend, side_bend * 0.55, 5])
+    if trunk_forward is not None:
+        k["TRUNK_F"] = key([0, .6, .8, .92, 1.1, 1.45], [8, 2, 8, trunk_forward, trunk_forward + 15, 30])
+    return k
+
+
+def skeleton(t: float, keys: dict | None = None) -> np.ndarray:
+    """H36M-17 joints in world axes (x forward, y left, z up), pelvis at origin. `keys` overrides keyframe curves
+    (see variant())."""
+    k = keys or {}
+    L_KN_, TRUNK_F_, TRUNK_L_ = k.get("L_KN", L_KN), k.get("TRUNK_F", TRUNK_F), k.get("TRUNK_L", TRUNK_L)
     th, sh_, tr = 0.44, 0.43, 0.50
     J = np.zeros((17, 3))
     hipL, hipR = np.array([0, 0.11, -0.02]), np.array([0, -0.11, -0.02])
@@ -56,9 +75,9 @@ def skeleton(t: float) -> np.ndarray:
         knee = hip + th * np.array([np.sin(a), 0, -np.cos(a)])
         ank = knee + sh_ * np.array([np.sin(a - k), 0, -np.cos(a - k)])
         return knee, ank
-    kL, aL = leg(hipL, L_TH(t), L_KN(t))
+    kL, aL = leg(hipL, L_TH(t), L_KN_(t))
     kR, aR = leg(hipR, R_TH(t), R_KN(t))
-    f, l = np.radians(TRUNK_F(t)), np.radians(TRUNK_L(t))
+    f, l = np.radians(TRUNK_F_(t)), np.radians(TRUNK_L_(t))
     up = np.array([np.sin(f) * np.cos(l), np.sin(l), np.cos(f) * np.cos(l)])
     thorax = up * tr
     lat = np.array([0, 1.0, 0]) - up * up[1]
@@ -82,21 +101,20 @@ def skeleton(t: float) -> np.ndarray:
     return J
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("out")
-    ap.add_argument("--view", default="side", choices=["side", "behind"])
-    ap.add_argument("--fps", type=float, default=60.0)
-    ap.add_argument("--height", type=float, default=1.80)
-    a = ap.parse_args()
-    fps, H = a.fps, a.height
+def render(out: str | Path, view: str = "side", fps: float = 60.0, H: float = 1.80, keys: dict | None = None,
+           scale: float = 1.0, size: tuple[int, int] | None = None, jpeg: int | None = None, shake: float = 0.0,
+           fourcc: str = "mp4v", seed: int = 0) -> tuple[dict, dict]:
+    """Render the delivery to `out` and return (ground truth metrics, truth arrays). Options for testing: `scale`
+    shrinks the bowler (a camera further away), `size` resizes the video, `jpeg` passes every frame through JPEG at
+    that quality (compression artefacts), `shake` moves the camera by a smooth random walk of up to that many pixels
+    (handheld), `fourcc` "avc1" writes H.264 (browser-playable)."""
     ts = np.arange(0, DUR, 1 / fps)
-    J = np.stack([skeleton(t) for t in ts])
+    J = np.stack([skeleton(t, keys) for t in ts])
     m = BodyModel.get()
     inst = m.instance(H)
     fit = Fitter(m, inst)
-    out = fit.fit(J)
-    heads = out["heads"]
+    out_ = fit.fit(J)
+    heads = out_["heads"]
     b = fit.b
     # ground contact: lowest foot at ankle height; integrate forward speed
     feet = [b["foot.L"], b["foot.R"]]
@@ -105,22 +123,23 @@ def main() -> None:
     xoff = np.concatenate([[0], np.cumsum(SPEED(ts[:-1]) / fps)])
     off = np.stack([xoff, np.zeros_like(xoff), zoff], 1)
     heads = heads + off[:, None]
-    V = m.skin(inst, out["D"], heads)
+    V = m.skin(inst, out_["D"], heads)
 
     W, Hh = 1280, 720
-    if a.view == "side":      # camera on the bowler's right, looking along +y (world)
+    if view == "side":      # camera on the bowler's right, looking along +y (world)
         def proj(P):
-            s = 210.0
+            s = 210.0 * scale
             cx = 640 - s * (xoff.mean())
             return np.stack([cx + s * P[..., 0], 640 - s * P[..., 2]], -1), P[..., 1]
     else:                     # behind the bowler, slightly elevated, looking along +x
         def proj(P):
             depth = 9.0 + P[..., 0]
-            f = 1900.0
+            f = 1900.0 * scale
             return np.stack([640 - f * P[..., 1] / depth, 400 - f * (P[..., 2] - 1.6) / depth + f * 0.06], -1), -P[..., 0]
     faces = m.faces
-    vw = cv2.VideoWriter(str(a.out), cv2.VideoWriter_fourcc(*"mp4v"), fps, (W, Hh))
-    rng = np.random.default_rng(0)
+    osize = size or (W, Hh)
+    vw = cv2.VideoWriter(str(out), cv2.VideoWriter_fourcc(*fourcc), fps, osize)
+    rng = np.random.default_rng(seed)
     bg = np.zeros((Hh, W, 3), np.uint8)
     bg[:] = (60, 120, 70)
     bg[440:, :] = (55, 140, 80)
@@ -130,6 +149,8 @@ def main() -> None:
     noise = rng.integers(0, 12, bg.shape, dtype=np.uint8)
     bg = cv2.add(bg, noise)
     light = np.array([0.4, -0.5, 0.75]); light /= np.linalg.norm(light)
+    walk = np.cumsum(rng.normal(0, 1, (len(ts), 2)), 0)
+    walk = walk / max(1e-9, np.abs(walk).max()) * shake if shake else np.zeros((len(ts), 2))
     for t in range(len(ts)):
         img = bg.copy()
         p2, depth = proj(V[t])
@@ -146,13 +167,17 @@ def main() -> None:
                 base = (150, 170, 205)                                                    # skin/head
             col = tuple(int(c * (0.35 + 0.65 * shade[i])) for c in base)
             cv2.fillConvexPoly(img, P[i], col, lineType=cv2.LINE_AA)
+        if shake:
+            img = cv2.warpAffine(img, np.float32([[1, 0, walk[t, 0]], [0, 1, walk[t, 1]]]), (W, Hh), borderMode=cv2.BORDER_REFLECT)
+        if osize != (W, Hh):
+            img = cv2.resize(img, osize, interpolation=cv2.INTER_AREA)
+        if jpeg:
+            img = cv2.imdecode(cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, int(jpeg)])[1], cv2.IMREAD_COLOR)
         vw.write(img)
     vw.release()
 
     # ground truth from the *rendered* model (bone heads), same definitions as BowlNet
     Hd = heads
-    def ang(a_, b_, c_):
-        return float(joint_angle(Hd[:, b[a_]], Hd[:, b[b_]], Hd[:, b[c_]])[0]) if False else None
     def frame(tsec):
         return int(round(tsec * fps))
     knee = joint_angle(Hd[:, b["upperleg01.L"]], Hd[:, b["lowerleg01.L"]], Hd[:, b["foot.L"]])
@@ -163,8 +188,7 @@ def main() -> None:
 
     def trunk(fr):
         """Trunk (mid hip joints -> mid shoulder joints) of the *rendered* body: forward lean in the sagittal
-        plane and side lean in the frontal plane. The IK-posed body model does not reproduce the scripted
-        angles exactly (e.g. 28 deg scripted side-bend renders as ~21 deg), so ground truth is measured on it."""
+        plane and side lean in the frontal plane. Measured on the rendered body, which is what the camera sees."""
         t = (Hd[fr, b["upperarm01.L"]] + Hd[fr, b["upperarm01.R"]] - Hd[fr, b["upperleg01.L"]] - Hd[fr, b["upperleg01.R"]]) / 2
         return float(np.degrees(np.arctan2(t[0], t[2]))), float(np.degrees(np.arctan2(abs(t[1]), t[2])))
     tf_br, tl_br = trunk(ev["br"])
@@ -172,7 +196,25 @@ def main() -> None:
     gt = {"fps": fps, "events": ev, "front_knee_ffc": float(knee[ev["ffc"]]), "front_knee_br": float(knee[ev["br"]]),
           "back_knee_bfc": float(bknee[ev["bfc"]]), "trunk_flexion_ffc_br": tf_br - tf_ffc,
           "trunk_forward_br": tf_br, "trunk_lateral_br": tl_br,
-          "stride_length_pct": float(100 * stride / H), "release_height_pct": float(rel), "view": a.view}
+          "stride_length_pct": float(100 * stride / H), "release_height_pct": float(rel), "view": view,
+          "bfc_to_ffc_ms": 1000 * (ev["ffc"] - ev["bfc"]) / fps, "ffc_to_br_ms": 1000 * (ev["br"] - ev["ffc"]) / fps}
+    # H36M-ordered joints of the rendered body (limbs only: the trunk and head joints have no exact body-model match)
+    limbs = {1: "upperleg01.R", 2: "lowerleg01.R", 3: "foot.R", 4: "upperleg01.L", 5: "lowerleg01.L", 6: "foot.L",
+             11: "upperarm01.L", 12: "lowerarm01.L", 13: "wrist.L", 14: "upperarm01.R", 15: "lowerarm01.R", 16: "wrist.R"}
+    keyf = sorted(set(ev.values()))
+    arrays = {"joints": np.stack([Hd[:, b[n]] for n in limbs.values()], 1), "joint_ids": np.array(list(limbs.keys())),
+              "verts_frames": np.array(keyf), "verts": V[keyf].astype(np.float32), "script": J}
+    return gt, arrays
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("out")
+    ap.add_argument("--view", default="side", choices=["side", "behind"])
+    ap.add_argument("--fps", type=float, default=60.0)
+    ap.add_argument("--height", type=float, default=1.80)
+    a = ap.parse_args()
+    gt, _ = render(a.out, a.view, a.fps, a.height)
     Path(a.out).with_suffix(".json").write_text(json.dumps(gt, indent=1))
     print(json.dumps(gt, indent=1))
 
