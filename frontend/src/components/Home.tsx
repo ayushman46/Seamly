@@ -207,6 +207,7 @@ function PlayersPanel({ players, current, adding, setAdding, onCreate, go }: {
         <h2 id="players-title" style={{ fontSize: 17 }}>Players</h2>
         {players.length > 0 && <span className="count">{players.length}</span>}
         <div className="grow" />
+        {players.length > 0 && <button className="btn sm ghost" onClick={() => go("/squad")} title="Every player's latest numbers in one table">Squad table</button>}
         {!adding && players.length > 0 && <button className="btn sm" onClick={() => setAdding(true)}><IPlus size={14} /> Add player</button>}
       </div>
       {adding && (

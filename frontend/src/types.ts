@@ -130,6 +130,13 @@ export interface AnalysisMeta {
   suggest?: { slowmo_factor?: number } | null;   // option change that would make a failed analysis work
   player_id?: string | null;
   pace?: PaceRecord | null;   // ball speed measured on this clip (the marked frames and the result)
+  crease?: CreaseRecord | null;   // front-foot no-ball check: the marked crease and the call
+}
+
+/** Front-foot no-ball check (lib/crease.ts): the crease edge marked on the landing frame (display px) and the call. */
+export interface CreaseRecord {
+  line: { a: [number, number]; b: [number, number] }; frame: number;
+  behind_cm: number; band_cm: number; verdict: "legal" | "no_ball" | "close";
 }
 
 /** Ball speed from the marked frames (lib/pace.ts), kept with the analysis. */

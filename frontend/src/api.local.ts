@@ -3,7 +3,7 @@
  * everything now runs in this browser: videos are analysed by the in-browser engine (src/engine) and
  * analyses/players are kept in IndexedDB. Nothing is uploaded anywhere.
  */
-import type { AnalysisMeta, AnalysisResult, BowlingLogEntry, EventKey, Insights, Player, PlayerProgress, PaceRecord } from "./types";
+import type { AnalysisMeta, AnalysisResult, BowlingLogEntry, CreaseRecord, EventKey, Insights, Player, PlayerProgress, PaceRecord } from "./types";
 import * as db from "./engine/store";
 import { AnalysisError, backend, optionsFrom, type Options } from "./engine/common";
 import type { Overrides, StageA } from "./engine/pipeline";
@@ -108,7 +108,7 @@ async function refresh(id: string): Promise<void> {
 }
 
 const PUBLIC = ["id", "name", "created", "updated", "status", "progress", "stage", "stage_label", "error", "score", "grade", "view", "arm",
-  "thumb_frame", "options", "timing_s", "elapsed", "size_mb", "notice", "suggest", "player_id", "input_type", "arm_conf", "pace"] as const;
+  "thumb_frame", "options", "timing_s", "elapsed", "size_mb", "notice", "suggest", "player_id", "input_type", "arm_conf", "pace", "crease"] as const;
 
 function pub(m: Meta): AnalysisMeta {
   const out = {} as Record<string, unknown>;
@@ -173,10 +173,10 @@ async function loadFiles(id: string, result: AnalysisResult) {
   urls.delete(`${id}/obj`);
 }
 
-/** The "Full analysis" export: the analysis, plus the ball speed when one was measured on this clip. */
+/** The "Full analysis" export: the analysis, plus the ball speed and the no-ball check when they were made on this clip. */
 function exportJson(id: string, r: AnalysisResult): Blob {
-  const pace = metas.get(id)?.pace ?? null;
-  return new Blob([JSON.stringify(pace ? { ...r, pace } : r)], { type: "application/json" });
+  const m = metas.get(id);
+  return new Blob([JSON.stringify({ ...r, ...(m?.pace ? { pace: m.pace } : {}), ...(m?.crease ? { crease: m.crease } : {}) })], { type: "application/json" });
 }
 
 function seriesCsv(r: AnalysisResult): string {
@@ -506,13 +506,16 @@ async function importSample(which: SampleName): Promise<string> {
 const SAMPLE_IDS = new Set<string>(Object.values(SAMPLES).map((s) => s.id));
 const ID = /^[0-9a-z_-]{4,40}$/i;
 
-/** One file with every finished analysis (the bundled samples excepted: any browser can open those) and every player. */
-async function backup(includeVideos: boolean): Promise<{ blob: Blob; analyses: number; players: number }> {
+/** One file with every finished analysis (the bundled samples excepted: any browser can open those) and every player;
+ * or, given a player, only that player and their analyses (a file a player sends to a coach). */
+async function backup(includeVideos: boolean, playerId?: string): Promise<{ blob: Blob; analyses: number; players: number }> {
   await loadAll();
-  const players = await db.all<StoredPlayer>("player");
+  const players = (await db.all<StoredPlayer>("player")).filter((p) => !playerId || p.id === playerId);
+  if (playerId && !players.length) throw new Error("Unknown player.");
   const analyses: BackupAnalysis[] = [];
   const files: Blob[][] = [];
-  const done = [...metas.values()].filter((m) => m.status === "done" && !SAMPLE_IDS.has(m.id)).sort((a, b) => (a.created ?? 0) - (b.created ?? 0));
+  const done = [...metas.values()].filter((m) => m.status === "done" && !SAMPLE_IDS.has(m.id) && (!playerId || m.player_id === playerId))
+    .sort((a, b) => (a.created ?? 0) - (b.created ?? 0));
   for (const m of done) {
     const [result, stagea] = await Promise.all([db.get<AnalysisResult>("result", m.id), db.get<StageA>("stagea", m.id)]);
     if (!result || !stagea) continue;
@@ -675,7 +678,7 @@ export const api = {
     const keep: Overrides = prev.gender !== undefined ? { gender: prev.gender } : {};
     const previous = meta.status === "done" ? { options: oldOpts, overrides: prev } : null;
     // a saved ball speed was timed on the old analysis' frames (and clip speed): it has to be measured again
-    await writeMeta(id, { options: optionsFrom(opts) as unknown as AnalysisMeta["options"], overrides: keep, error: null, previous, status: "queued", progress: 0, stage: null, suggest: null, owner: TAB, pace: null });
+    await writeMeta(id, { options: optionsFrom(opts) as unknown as AnalysisMeta["options"], overrides: keep, error: null, previous, status: "queued", progress: 0, stage: null, suggest: null, owner: TAB, pace: null, crease: null });
     submit(id);
     return { id };
   }),
@@ -699,10 +702,20 @@ export const api = {
     submit(id);
     return { id };
   },
-  patch: async (id: string, body: { name?: string; player_id?: string | null; pace?: PaceRecord | null }) => {
+  patch: async (id: string, body: { name?: string; player_id?: string | null; pace?: PaceRecord | null; crease?: CreaseRecord | null }) => {
     await loadAll();
     requireMeta(id);
     const f: Partial<Meta> = {};
+    if ("crease" in body) {
+      const c = body.crease;
+      const num = (x: unknown) => typeof x === "number" && Number.isFinite(x);
+      const pt = (q: unknown) => Array.isArray(q) && q.length === 2 && num(q[0]) && num(q[1]);
+      if (c && !(pt(c.line?.a) && pt(c.line?.b) && num(c.frame) && num(c.behind_cm) && num(c.band_cm) && ["legal", "no_ball", "close"].includes(c.verdict))) {
+        throw new Error("That crease check isn't valid.");
+      }
+      f.crease = c ? { line: { a: [c.line.a[0], c.line.a[1]], b: [c.line.b[0], c.line.b[1]] }, frame: Math.round(c.frame),
+        behind_cm: c.behind_cm, band_cm: c.band_cm, verdict: c.verdict } : null;
+    }
     if ("pace" in body) {
       const p = body.pace;
       const num = (x: unknown) => typeof x === "number" && Number.isFinite(x);
@@ -722,7 +735,7 @@ export const api = {
     }
     const out = pub((Object.keys(f).length ? await writeMeta(id, f) : undefined) ?? requireMeta(id));
     const r = results.get(id);
-    if ("pace" in body && r) setUrl(`${id}/export.json`, exportJson(id, r));
+    if (("pace" in body || "crease" in body) && r) setUrl(`${id}/export.json`, exportJson(id, r));
     return out;
   },
   /** Run-up speed at back-foot contact (side-on clips with the last strides in view), from the stored camera motion. */

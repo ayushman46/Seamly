@@ -1,7 +1,7 @@
 /** Data layer for a self-hosted Seamly server (the Python backend in backend/, which can run SAM 3D Body).
  *  Selected at build time with VITE_API=server; the default build analyses in the browser (api.local.ts). */
 import type { Runup } from "./lib/runup";
-import type { AnalysisMeta, AnalysisResult, EventKey, Insights, Player, PlayerProgress, PaceRecord } from "./types";
+import type { AnalysisMeta, AnalysisResult, CreaseRecord, EventKey, Insights, Player, PlayerProgress, PaceRecord } from "./types";
 
 async function j<T>(res: Response): Promise<T> {
   if (!res.ok) {
@@ -35,7 +35,7 @@ export const api = {
     fetch(`/api/analyses/${id}/rerun`, { method: "POST", headers: JSON_HDR, body: JSON.stringify(body) }).then((r) => j<{ id: string }>(r)),
   demo: (_which?: string) => fetch("/api/demo", { method: "POST" }).then((r) => j<{ id: string }>(r)),
   analyseSample: (_which?: string) => fetch("/api/demo", { method: "POST" }).then((r) => j<{ id: string }>(r)),
-  patch: (id: string, body: { name?: string; player_id?: string | null; pace?: PaceRecord | null }) =>
+  patch: (id: string, body: { name?: string; player_id?: string | null; pace?: PaceRecord | null; crease?: CreaseRecord | null }) =>
     fetch(`/api/analyses/${id}`, { method: "PATCH", headers: JSON_HDR, body: JSON.stringify(body) }).then((r) => j<AnalysisMeta>(r)),
   insights: (id: string) => fetch(`/api/analyses/${id}/insights`).then((r) => j<Insights>(r)),
   runup: async (_id: string): Promise<Runup | null> => null,   // the server keeps its camera motion to itself
@@ -81,6 +81,6 @@ export const api = {
   addLog: async (_pid: string, _e: { date: string; overs: string; kind: string }): Promise<Player> => { throw new Error("The bowling log is kept in the in-browser version."); },
   removeLog: async (_pid: string, _id: string): Promise<Player> => { throw new Error("The bowling log is kept in the in-browser version."); },
   // the server keeps its own data: backups are for the in-browser build
-  backup: async (_includeVideos: boolean): Promise<{ blob: Blob; analyses: number; players: number }> => { throw new Error("Backups are made on the Seamly server itself."); },
+  backup: async (_includeVideos: boolean, _playerId?: string): Promise<{ blob: Blob; analyses: number; players: number }> => { throw new Error("Backups are made on the Seamly server itself."); },
   restore: async (_file: Blob): Promise<{ analyses: number; players: number; skipped: number; videos: number }> => { throw new Error("Backups are restored on the Seamly server itself."); },
 };

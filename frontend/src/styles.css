@@ -1035,6 +1035,11 @@ button:focus:not(:focus-visible) { outline: none; }
 .share-overlay { position: fixed; inset: 0; z-index: 60; background: rgba(3, 5, 10, 0.72); display: grid; place-items: center; padding: 16px; }
 .share-sheet { width: min(460px, 100%); max-height: calc(100vh - 32px); overflow: auto; padding: 16px; }
 .share-sheet img { width: 100%; height: auto; display: block; border-radius: 12px; border: 1px solid var(--c-line); }
+.clip-sheet { width: min(780px, 100%); }
+.clip-video, .clip-live canvas { width: 100%; height: auto; display: block; border-radius: 10px; border: 1px solid var(--c-line); background: #0b0b0c; }
+.clip-opts { display: grid; gap: 8px; font-size: 13.5px; }
+.clip-progress { height: 6px; border-radius: 3px; background: var(--c-line); overflow: hidden; }
+.clip-progress > div { height: 100%; background: var(--c-accent, #f4f4f5); transition: width 0.2s linear; }
 
 /* bowling log */
 .log-form { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.7fr) minmax(0, 1.2fr) auto; gap: 10px; align-items: end; }
@@ -1205,3 +1210,27 @@ body.pace-measuring { padding-bottom: 150px; }
   .cam-stage { max-height: calc(100vh - 150px); }
 }
 .film-check { margin: 18px 0 0; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; font-size: 13px; }
+
+/* no-ball check */
+.crease-view { width: 100%; height: auto; display: block; border-radius: 10px; border: 1px solid var(--c-line); background: #0b0b0c; touch-action: manipulation; }
+.crease-view.marking { cursor: crosshair; }
+.crease-steps { margin: 0 0 10px; padding-left: 18px; font-size: 13px; color: var(--c-text-2); }
+.crease-steps li + li { margin-top: 3px; }
+.crease-tools { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; margin-top: 8px; }
+.crease-out { margin-top: 10px; font-size: 13px; min-height: 22px; }
+
+/* squad table */
+.sq-wrap { overflow-x: auto; padding: 0; }
+.sq-table { width: 100%; border-collapse: collapse; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+.sq-table th, .sq-table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--c-line); white-space: nowrap; vertical-align: middle; }
+.sq-table thead th { position: sticky; top: 0; background: var(--c-surface, #111113); font-weight: 600; font-size: 12px; color: var(--c-text-2); }
+.sq-table tbody tr:last-child th, .sq-table tbody tr:last-child td { border-bottom: 0; }
+.sq-table tbody th { font-weight: 500; }
+.th-sort { all: unset; cursor: pointer; border-radius: 4px; }
+.th-sort:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 2px; }
+.th-sort.on { color: var(--c-text, #f4f4f5); }
+.sq-name { font-weight: 600; font-size: 14px; }
+.sq-sub { font-size: 12px; }
+.sq-val { display: inline-flex; align-items: center; gap: 6px; }
+.sq-nb { color: #fca5a5; }
+.send-note { flex-basis: 100%; font-size: 12.5px; margin-top: 4px; }

@@ -16,6 +16,8 @@ import Settings from "./Settings";
 import ErrorBoundary from "./ErrorBoundary";
 import FrameCard from "./FrameCard";
 import PaceCard from "./PaceCard";
+import ClipMaker from "./ClipMaker";
+import CreaseCard from "./CreaseCard";
 import PlanPanel from "./PlanPanel";
 import { Verdict } from "./InsightsCard";
 import { setCurrentPlayer } from "../lib/player";
@@ -589,6 +591,8 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
             )}
             <button className="btn" onClick={() => go(`/r/${id}`)}><IFile size={15} /> Report</button>
             <ShareSummary meta={meta} result={result} ins={ins} fileBase={fileBase} />
+            <ClipMaker meta={meta} result={result} ins={ins} fileBase={fileBase} frame={frame}
+              onFrame={(f) => { setPlaying(false); setFrame(f); }} player={() => playerRef.current?.querySelector<HTMLCanvasElement>(".player-stage canvas") ?? null} />
             <div className="rel" ref={menuRef} onBlur={(e) => { if (!menuRef.current?.contains(e.relatedTarget as Node | null)) setMenu(false); }}>
               <button ref={menuBtn} className="btn" onClick={() => setMenu((m) => !m)} aria-expanded={menu} aria-controls="export-list"><IDownload size={15} /> Export <IChevronDown size={14} /></button>
               {menu && (
@@ -676,6 +680,7 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
             </ErrorBoundary>
             <FrameCard result={result} frame={frame} onOpen={() => setTab("frame")} onConfirm={setEvent} busy={busy} />
             <PaceCard id={id} result={result} meta={meta} frame={frame} onSeek={(f) => { setPlaying(false); setFrame(f); }} onMeta={setMeta} flash={flash} />
+            <CreaseCard id={id} result={result} meta={meta} onSeek={(f) => { setPlaying(false); setFrame(f); }} onMeta={setMeta} flash={flash} />
           </div>
         </div>
 

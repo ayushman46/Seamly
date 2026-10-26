@@ -7,6 +7,7 @@ import { loadMesh, skinFrame, type MeshData } from "../lib/mesh";
 import { EVENTS, EVENT_HEX, SERIES_INFO, measuredForView } from "../lib/constants";
 import { IPause, IPlay } from "./Icons";
 import { fmt, unitLabel } from "../lib/format";
+import { register3D } from "../lib/clip";
 
 type Preset = "side_r" | "side_l" | "behind" | "front" | "top";
 const TAG_NAME: Record<string, string> = { front_knee_2d: "Knee", elbow_flexion_2d: "Elbow bend", trunk_angle_2d: "Trunk",
@@ -193,6 +194,51 @@ export default function Viewer3D({ id, result, frame, playing, onTogglePlay, onS
       el.removeChild(renderer.domElement);
       st.current = null;
     };
+  }, []);
+
+  // a side-by-side clip draws this view into its own canvas: the same scene and camera, rendered at the clip's size by a
+  // second renderer (the page's view stays as it is), with the angle tags drawn where they sit
+  useEffect(() => {
+    let cap: THREE.WebGLRenderer | null = null;
+    const v = new THREE.Vector3();
+    register3D({
+      draw: (ctx, x, y, w, h) => {
+        const s = st.current;
+        if (!s) return;
+        if (!cap) {
+          cap = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+          cap.outputColorSpace = THREE.SRGBColorSpace;
+          cap.setPixelRatio(1);
+          cap.setClearColor(0x0e0e10, 1);
+        }
+        if (cap.domElement.width !== w || cap.domElement.height !== h) cap.setSize(w, h, false);
+        const cam = s.camera.clone();
+        cam.aspect = w / Math.max(1, h);
+        cam.updateProjectionMatrix();
+        cap.render(s.scene, cam);
+        ctx.drawImage(cap.domElement, x, y, w, h);
+        ctx.font = "650 16px Inter, -apple-system, sans-serif";
+        ctx.textBaseline = "middle"; ctx.textAlign = "left";
+        const placed: [number, number, number][] = [];
+        for (const tag of s.tags) {
+          const text = tag.el.textContent;
+          if (!text || tag.el.style.visibility === "hidden") continue;
+          v.copy(tag.at).project(cam);
+          if (v.z > 1 || Math.abs(v.x) > 1.05 || Math.abs(v.y) > 1.05) continue;
+          const tw = ctx.measureText(text).width + 14;
+          const tx = Math.min(x + w - tw - 4, x + ((v.x + 1) / 2) * w + 12);
+          let ty = y + ((1 - v.y) / 2) * h - 12;
+          for (let k = 0; k < 6 && placed.some(([px, py, pw]) => tx < px + pw && px < tx + tw && Math.abs(py - ty) < 28); k++) ty += 28;
+          placed.push([tx, ty, tw]);
+          ctx.fillStyle = "rgba(10,10,11,0.8)"; ctx.fillRect(tx, ty - 13, tw, 26);
+          ctx.strokeStyle = tag.el.classList.contains("bowl") ? "rgba(251,113,133,0.8)" : tag.el.classList.contains("front") ? "rgba(52,211,153,0.8)" : "rgba(226,232,240,0.35)";
+          ctx.lineWidth = 1.5; ctx.strokeRect(tx + 0.75, ty - 12.25, tw - 1.5, 24.5);
+          ctx.fillStyle = "#f4f4f5"; ctx.fillText(text, tx + 7, ty);
+        }
+      },
+      end: () => { cap?.dispose(); cap?.forceContextLoss(); cap = null; },
+    });
+    return () => { register3D(null); cap?.dispose(); cap?.forceContextLoss(); cap = null; };
   }, []);
 
   useEffect(() => {

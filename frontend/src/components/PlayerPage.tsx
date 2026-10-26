@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api } from "../api";
+import { MODE, api } from "../api";
 import type { Player, PlayerProgress } from "../types";
 import { VIEW_LABEL } from "../lib/constants";
 import { fmt, unitLabel, DATE_LOCALE } from "../lib/format";
@@ -9,6 +9,7 @@ import Header from "./Header";
 import PlayerForm from "./PlayerForm";
 import Trend from "./Trend";
 import BowlingLog from "./BowlingLog";
+import SendToCoach from "./SendToCoach";
 import { IAlert, IBack, ICalendar, IChevronRight, IColumns, ITrash, IUpload, IVideo } from "./Icons";
 import { SiteFooter } from "./Landing";
 import { usePageTitle } from "../lib/title";
@@ -111,6 +112,7 @@ export default function PlayerPage({ pid, go }: { pid: string; go: (to: string) 
               </div>
               <div className="profile-actions">
                 <button className="btn" onClick={() => setEditing(true)}>Edit profile</button>
+                {MODE === "browser" && s.count > 0 && <SendToCoach player={p} />}
                 <button className="btn primary" onClick={upload}><IUpload size={16} /> Analyse a new delivery</button>
               </div>
             </div>
