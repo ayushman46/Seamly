@@ -119,6 +119,8 @@ export class FrameSource {
     v.setAttribute("playsinline", ""); v.setAttribute("muted", "");
     // Safari only decodes frames of a video that is in the document (kept invisible)
     v.style.cssText = "position:fixed;left:0;top:0;width:2px;height:2px;opacity:0;pointer-events:none;z-index:-1";
+    v.setAttribute("aria-hidden", "true");   // a decoder, not content: screen readers skip it
+    v.tabIndex = -1;
     document.body.appendChild(v);
     v.src = url;
     const fail = (e: unknown) => {

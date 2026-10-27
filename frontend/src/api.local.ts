@@ -114,7 +114,7 @@ async function refresh(id: string): Promise<void> {
 }
 
 const PUBLIC = ["id", "name", "created", "updated", "status", "progress", "stage", "stage_label", "error", "score", "grade", "view", "arm",
-  "thumb_frame", "options", "timing_s", "elapsed", "size_mb", "notice", "suggest", "player_id", "input_type", "arm_conf", "pace", "crease", "source_id", "pair"] as const;
+  "thumb_frame", "options", "timing_s", "elapsed", "size_mb", "notice", "suggest", "player_id", "input_type", "arm_conf", "pace", "crease", "source_id", "pair", "angled"] as const;
 
 function pub(m: Meta): AnalysisMeta {
   const out = {} as Record<string, unknown>;
@@ -301,7 +301,7 @@ async function runJob(id: string) {
     const cur = metas.get(id);
     if (!cur) throw new AnalysisError("This analysis was deleted.");
     const done = { ...cur, status: "done", progress: 1, stage: "done", stage_label: "Complete", finished: now(), score: c.score, grade: c.grade,
-      view: result.view.view, arm: result.bowling_arm.arm, arm_conf: armConf(result), auto_events: overrides.events ? undefined : autoEvents(result),
+      view: result.view.view, angled: !!result.view.oblique, arm: result.bowling_arm.arm, arm_conf: armConf(result), auto_events: overrides.events ? undefined : autoEvents(result),
       thumb_frame: result.events.br.frame, timing_s: result.timing_s,
       summary: summarise(result), error: null, previous: null, suggest: null, elapsed: result.timing_s, gen, overrides, updated: now() } as Meta;
     // one transaction: stage A, result and the metadata pointing at the new generation commit together
@@ -358,7 +358,7 @@ async function applyEdit(id: string, overrides: Overrides, latest?: EventKey[]) 
   const cur = metas.get(id);
   if (!cur) throw new Error("This analysis was deleted.");
   const m = { ...cur, overrides, score: c.score, grade: c.grade, notice: null, summary: summarise(result), arm: result.bowling_arm.arm, arm_conf: armConf(result),
-    view: result.view.view, thumb_frame: result.events.br.frame, updated: now(), crease: recheckCrease(cur.crease, result) } as Meta;
+    view: result.view.view, angled: !!result.view.oblique, thumb_frame: result.events.br.frame, updated: now(), crease: recheckCrease(cur.crease, result) } as Meta;
   // result, mesh and metadata commit together, so they can never disagree
   await db.write(["result", "blob", "meta"], (st) => {
     st.result.put(result, id);
@@ -776,13 +776,15 @@ export const api = {
   /** Both cameras of a pair together: each clip's analysis, the contacts carried between them (each clip re-measured
    * with them, in memory: nothing stored changes) and the fused measurements, score, coaching and back-health screen. */
   twoView: async (a: string, b: string): Promise<
-    | { status: "pending"; metas: AnalysisMeta[] }
+    | { status: "pending" | "failed" | "missing"; metas: AnalysisMeta[] }
     | { status: "views"; metas: AnalysisMeta[]; message: string }
-    | { status: "ok"; side: { id: string; meta: AnalysisMeta; result: AnalysisResult }; rear: { id: string; meta: AnalysisMeta; result: AnalysisResult };
-        view: TwoView; carried: SharedContacts }> => {
+    | { status: "ok"; side: { id: string; meta: AnalysisMeta; result: AnalysisResult; stored: AnalysisResult }; rear: { id: string; meta: AnalysisMeta; result: AnalysisResult; stored: AnalysisResult };
+        view: TwoView; carried: SharedContacts; fallback: boolean }> => {
     await loadAll();
+    if (!metas.has(a) || !metas.has(b)) return { status: "missing", metas: [a, b].filter((x) => metas.has(x)).map((x) => pub(metas.get(x)!)) };
     await Promise.all([refresh(a), refresh(b)]);
     const ma = requireMeta(a), mb = requireMeta(b);
+    if (ma.status === "failed" || mb.status === "failed") return { status: "failed", metas: [pub(ma), pub(mb)] };
     if (ma.status !== "done" || mb.status !== "done") return { status: "pending", metas: [pub(ma), pub(mb)] };
     const [ra, rb] = await Promise.all([loadResult(a), loadResult(b)]);
     if (!ra || !rb) return { status: "pending", metas: [pub(ma), pub(mb)] };
@@ -797,28 +799,37 @@ export const api = {
     const [sid, rid] = ca === "side" ? [a, b] : [b, a];
     let side = ca === "side" ? ra : rb, rear = ca === "side" ? rb : ra;
     const carried = sharedContacts(side, rear);
-    // each clip that receives a contact is measured again with it, as a fixed marker
-    const remeasure = async (id: string, r: AnalysisResult, set: Partial<Record<"bfc" | "ffc", number>>) => {
+    // each clip that receives a contact is measured again with it, as a fixed marker; only contacts that were applied
+    // are reported, and a re-measure that fails or reads the camera differently is set aside
+    const applied: SharedContacts = { side: {}, rear: {}, from: carried.from };
+    let fallback = false;
+    const remeasure = async (id: string, r: AnalysisResult, cam: "side" | "rear") => {
+      const set = carried[cam];
       if (!Object.keys(set).length) return r;
       const m = metas.get(id)!;
       const A = await db.get<StageA>("stagea", id);
-      if (!A) return r;
+      if (!A) { fallback = true; return r; }
       const over: Overrides = { ...(m.overrides ?? {}), events: { ...(m.overrides?.events ?? {}), ...set } };
       try {
         const { stageB } = await engine();
-        return (await stageB(A, await withAgeStature(m, over))).result as AnalysisResult;
+        const nr = (await stageB(A, await withAgeStature(m, over))).result as AnalysisResult;
+        if (cameraOf(nr) !== cam) { fallback = true; return r; }
+        applied[cam] = set;
+        return nr;
       } catch (e) {
         console.warn("two cameras: re-measuring with the other camera's contacts failed", e);
+        fallback = true;
         return r;
       }
     };
     const original = { side, rear };
-    side = await remeasure(sid, side, carried.side);
-    rear = await remeasure(rid, rear, carried.rear);
+    side = await remeasure(sid, side, "side");
+    rear = await remeasure(rid, rear, "rear");
     const pidOf = metas.get(sid)?.player_id ?? metas.get(rid)?.player_id ?? null;
     const player = pidOf ? await db.get<StoredPlayer>("player", pidOf).catch(() => undefined) : undefined;
-    return { status: "ok", side: { id: sid, meta: pub(metas.get(sid)!), result: side }, rear: { id: rid, meta: pub(metas.get(rid)!), result: rear },
-      view: fuseTwo(side, rear, player ?? null, original), carried };
+    // `stored`: the analysis as saved, which the stored body mesh belongs to (the 3D view uses it)
+    return { status: "ok", side: { id: sid, meta: pub(metas.get(sid)!), result: side, stored: original.side }, rear: { id: rid, meta: pub(metas.get(rid)!), result: rear, stored: original.rear },
+      view: fuseTwo(side, rear, player ?? null, original), carried: applied, fallback };
   },
   /** See a sample analysis right away (precomputed). */
   demo: async (which: SampleName = "club") => {

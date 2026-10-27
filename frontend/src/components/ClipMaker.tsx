@@ -15,13 +15,14 @@ const sleep = (ms: number) => new Promise<void>((r) => window.setTimeout(r, Math
  * key moments held and the measured numbers under it; optionally with the coach's voice recorded as it plays. The page
  * itself plays the clip while it records (the player and the 3D view follow), so what is saved is what is on screen.
  */
-export default function ClipMaker({ meta, result, ins, fileBase, frame, onFrame, players, labels, facts, cueText, title: titleText }: {
+export default function ClipMaker({ meta, result, ins, fileBase, frame, onFrame, players, labels, facts, cueText, title: titleText, expect }: {
   meta: AnalysisMeta; result: AnalysisResult; ins: Insights | null; fileBase: string; frame: number;
   onFrame: (f: number) => void;
   players: () => HTMLCanvasElement[];   // one canvas per camera, the first one follows `frame`
   labels?: string[];                    // a name for each camera's panel (two cameras)
   facts?: AnalysisResult;               // the measurements to caption (two cameras: the fused ones)
   cueText?: string | null; title?: string;
+  expect?: (f: number) => number[];     // the frame each camera shows when the first shows f (two cameras)
 }) {
   const [open, setOpen] = useState(false);
   const [speed, setSpeed] = useState(0.25);
@@ -84,7 +85,10 @@ export default function ClipMaker({ meta, result, ins, fileBase, frame, onFrame,
     onFrame(f);
     const c = players()[0] ?? null;
     const t0 = performance.now();
-    while (c && !c.getAttribute("aria-label")?.startsWith(`Video frame ${f} `) && performance.now() - t0 < 1500) await nextPaint();
+    // each camera's canvas names the frame it drew (the other cameras show the frames `expect` gives for f)
+    const want = expect ? expect(f) : [f];
+    const shows = () => players().every((cv, i) => want[i] === undefined || Number(cv.getAttribute("aria-label")?.match(/ideo frame (\d+) /)?.[1]) === want[i]);
+    while (c && !shows() && performance.now() - t0 < 1500) await nextPaint();
     await nextPaint();
   };
 
@@ -122,7 +126,8 @@ export default function ClipMaker({ meta, result, ins, fileBase, frame, onFrame,
     try {
       // every frame is in memory before recording starts, so the clip never shows a frame still loading
       const t0 = performance.now();
-      while (!cancel.current && document.querySelector(".player-hud")?.textContent?.includes("Loading frames") && performance.now() - t0 < 30000) await sleep(150);
+      const loading = () => [...document.querySelectorAll(".player-hud")].some((h) => h.textContent?.includes("Loading frames"));
+      while (!cancel.current && loading() && performance.now() - t0 < 30000) await sleep(150);
       await showFrame(plan[0].frame);
       draw(plan[0]);
       const stream = out.captureStream(30);

@@ -10,6 +10,7 @@ interface Props {
   overlay: { skeleton: boolean; angles: boolean; trail: boolean };
   selMetric: string | null;
   hud: string;
+  camera?: string;   // which camera, when two play together
 }
 
 type Pt = [number, number];
@@ -19,7 +20,7 @@ const angleAt = (a: Pt, b: Pt, c: Pt) => {
   return (Math.acos(Math.max(-1, Math.min(1, d))) * 180) / Math.PI;
 };
 
-export default function FramePlayer({ id, result, frame, overlay, selMetric, hud }: Props) {
+export default function FramePlayer({ id, result, frame, overlay, selMetric, hud, camera }: Props) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const imgs = useRef<Map<number, HTMLImageElement>>(new Map());
   const [loaded, setLoaded] = useState(0);
@@ -228,7 +229,7 @@ export default function FramePlayer({ id, result, frame, overlay, selMetric, hud
 
   return (
     <div className="player-stage" style={portrait ? { aspectRatio: "4 / 5", maxHeight: "72vh" } : undefined}>
-      <canvas ref={canvas} role="img" aria-label={`Video frame ${frame} with the bowler's skeleton and joint angles drawn on top`} />
+      <canvas ref={canvas} role="img" aria-label={`${camera ? `${camera}: v` : "V"}ideo frame ${frame} with the bowler's skeleton and joint angles drawn on top`} />
       <div className="player-hud">
         {hud && <span className="chip" style={{ color: "#fff", borderColor: "#fff" }}>{hud}</span>}
         {loaded < n && <span className="chip">Loading frames {Math.round((loaded / n) * 100)}%</span>}

@@ -136,3 +136,31 @@ describe("shared readings and contacts", () => {
     expect(sharedContacts(side, rear).rear).toEqual({});
   });
 });
+
+describe("review cases", () => {
+  it("never calls two balls the same on the arm's last phase alone", () => {
+    const a = clip("side_on", 30, { ...BALL, uah: 1.03 }, [], { methods: { bfc: "timing_prior", ffc: "timing_prior" } });
+    const b = clip("behind", 30, { ...BALL, uah: 1.03 }, [], { methods: { bfc: "timing_prior", ffc: "timing_prior" } });
+    expect(sameBall(a, b).verdict).toBe("unsure");
+    // ... but a very different last phase is a mismatch
+    const c = clip("behind", 30, { ...BALL, uah: 0.85 }, [], { methods: { bfc: "timing_prior", ffc: "timing_prior" } });
+    expect(sameBall(a, c).verdict).toBe("mismatch");
+  });
+  it("is unsure, not a match, when a stride timing is more than a frame of each clip apart but not far", () => {
+    // 60 fps each: the limit is 2 frames + 5 ms = 38 ms; 50 ms apart
+    expect(sameBall(clip("side_on", 60, BALL), clip("behind", 60, { ...BALL, bfc: 0.75 })).verdict).toBe("unsure");
+  });
+  it("treats a moment more than half a frame outside the other clip as outside", () => {
+    const a = clip("side_on", 60, BALL), b = clip("behind", 60, BALL);
+    const short = { ...b, frames: { ...b.frames, end: b.events.br!.frame + 1 } } as AnalysisResult;   // ends at release
+    expect(alignFrame(a, a.events.br!.frame + 1, short).inside).toBe(false);
+    expect(alignFrame(a, a.events.br!.frame, short).inside).toBe(true);
+  });
+  it("drops only the carried contact that breaks the order, and only against contacts that stay fixed", () => {
+    // the rear clip estimated its back-foot contact after the front-foot contact the side camera saw: estimated, so it
+    // moves, and the front-foot contact is still carried
+    const side = clip("side_on", 60, BALL);
+    const rear = clip("behind", 60, { ...BALL, bfc: 1.02 }, [], { methods: { bfc: "timing_prior", ffc: "timing_prior" } });
+    expect(sharedContacts(side, rear).rear).toEqual({ bfc: rear.events.br!.frame - 18, ffc: rear.events.br!.frame - 6 });
+  });
+});

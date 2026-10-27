@@ -15,15 +15,18 @@ import { IAlert, IBack, ICheck, IInfo, INext, IPause, IPlay, IPrev } from "./Ico
 
 const Viewer3D = lazyPage(() => import("./Viewer3D"));
 
-type Clip = { id: string; meta: AnalysisMeta; result: AnalysisResult };
+type Clip = { id: string; meta: AnalysisMeta; result: AnalysisResult; stored: AnalysisResult };
 type Loaded =
   | { status: "loading" }
   | { status: "error"; message: string }
   | { status: "pending"; metas: AnalysisMeta[] }
+  | { status: "failed"; metas: AnalysisMeta[] }
+  | { status: "missing"; metas: AnalysisMeta[] }
   | { status: "views"; metas: AnalysisMeta[]; message: string }
-  | { status: "ok"; side: Clip; rear: Clip; view: TwoView; carried: SharedContacts };
+  | { status: "ok"; side: Clip; rear: Clip; view: TwoView; carried: SharedContacts; fallback: boolean };
 
-const CAM: Record<Camera | "both", string> = { side: "side-on", rear: "from behind", both: "both cameras" };
+/** How each camera is named: the second one is behind the bowler or in front of them. */
+const camName = (cam: Camera | "both", frontOn: boolean) => (cam === "side" ? "side-on" : cam === "rear" ? (frontOn ? "from in front" : "from behind") : "both cameras");
 const RATING_CLS: Record<string, string> = { good: "good", watch: "watch", risk: "risk" };
 const BACK_TXT = { ok: "No red flags", watch: "Worth watching", flag: "Talk to a coach", unknown: "Not measured" } as const;
 const OVERLAY = { skeleton: true, angles: true, trail: false };
@@ -72,18 +75,27 @@ export default function TwoViewPage({ a, b, go }: { a: string; b: string; go: (t
         ) : data.status === "pending" ? (
           <>
             <h1 className="an-title">Two cameras</h1>
-            <div className="card card-pad" aria-live="polite">
+            <div className="card card-pad">
               <p className="muted" style={{ marginTop: 0 }}>Both clips are analysed first, one after the other; this page fills in when they're done.</p>
+              <p className="sr-only" role="status">{data.metas.filter((m) => m.status === "done").length} of {data.metas.length} clips analysed.</p>
               {data.metas.map((m) => (
                 <div key={m.id} className="row" style={{ gap: 10, marginTop: 8 }}>
-                  {m.status === "done" ? <ICheck size={15} /> : m.status === "failed" ? <IAlert size={15} /> : <div className="spinner sm" />}
+                  {m.status === "done" ? <ICheck size={15} /> : <div className="spinner sm" />}
                   <span className="grow">{m.name}</span>
-                  <span className="faint">{m.status === "done" ? "Done" : m.status === "failed" ? "Couldn't be analysed" : m.status === "queued" ? "Waiting" : `${Math.round((m.progress ?? 0) * 100)}%`}</span>
+                  <span className="faint" aria-hidden="true">{m.status === "done" ? "Done" : m.status === "queued" ? "Waiting" : `${Math.round((m.progress ?? 0) * 100)}%`}</span>
                 </div>
               ))}
-              {data.metas.some((m) => m.status === "failed") && (
-                <p className="faint" style={{ marginBottom: 0 }}>A clip that couldn't be analysed can't be paired: open it for the reason, or <button type="button" className="link-btn" onClick={unpair}>unpair the clips</button>.</p>
-              )}
+            </div>
+          </>
+        ) : data.status === "failed" || data.status === "missing" ? (
+          <>
+            <h1 className="an-title">Two cameras</h1>
+            <div className="notice warn"><IAlert size={16} /> <div>{data.status === "failed"
+              ? "One of the clips couldn't be analysed, so the two can't be put together. Open it for the reason, then analyse it again or pair another clip."
+              : "One of these clips isn't in this browser any more (it was deleted, or the backup it came from didn't include it)."}</div></div>
+            <div className="row wrap" style={{ gap: 8, marginTop: 12 }}>
+              {data.metas.map((m) => <button key={m.id} className="btn sm" onClick={() => go(`/a/${m.id}`)}>Open {m.name}{m.status === "failed" ? " (couldn't be analysed)" : ""}</button>)}
+              <button className="btn sm ghost" onClick={unpair}>Unpair</button>
             </div>
           </>
         ) : data.status === "views" ? (
@@ -139,11 +151,13 @@ function Ready({ d, go, unpair }: { d: Extract<Loaded, { status: "ok" }>; go: (t
   }, [playing, speed, s, sf0, sf1]);
 
   const name = side.meta.name.replace(/ · ball \d+$/, "");
+  const frontOn = r.view.view === "front_on";
+  const rearLabel = frontOn ? "In front of the bowler" : "Behind the bowler";
   const same = tv.same;
   const top = tv.priorities[0];
   const groups: { title: string; cam: Camera | "both"; rows: FusedRow[] }[] = [
     { title: "From the side-on camera", cam: "side", rows: tv.rows.filter((x) => x.from === "side") },
-    { title: "From the camera behind the bowler", cam: "rear", rows: tv.rows.filter((x) => x.from === "rear") },
+    { title: frontOn ? "From the camera in front of the bowler" : "From the camera behind the bowler", cam: "rear", rows: tv.rows.filter((x) => x.from === "rear") },
     { title: "Measured by both cameras (averaged)", cam: "both", rows: tv.rows.filter((x) => x.from === "both") },
   ];
   const val = (m: { value: number | null; unit: string }) => (m.value === null ? "–" : `${fmt(m.value, 0)}${unitLabel(m.unit)}`);
@@ -151,19 +165,18 @@ function Ready({ d, go, unpair }: { d: Extract<Loaded, { status: "ok" }>; go: (t
   const readings = (x: FusedRow) => {
     if (!x.other) return "";
     const sm = s.metrics.find((m) => m.key === x.key), rm = r.metrics.find((m) => m.key === x.key);
-    if (x.from === "both" && sm && rm) return `side-on ${val(sm)}, from behind ${val(rm)}`;
-    const otherCam = x.from === "side" ? "camera behind" : "side-on camera";
+    if (x.from === "both" && sm && rm) return `side-on ${val(sm)}, ${camName("rear", frontOn)} ${val(rm)}`;
+    const otherCam = x.from === "side" ? (frontOn ? "camera in front" : "camera behind") : "side-on camera";
     return x.unit === "ms"
       ? `the ${otherCam} read ${val(x.other)}; timings come from the camera with more frames a second`
       : `the ${otherCam} read ${val(x.other)}: too far apart to average, so the camera that measures this better is used`;
   };
   const carriedText = (["bfc", "ffc"] as const).flatMap((k) => {
     const label = k === "bfc" ? "Back-foot contact" : "Front-foot contact";
-    if (carried.side[k] !== undefined) return [`${label}: seen from behind, carried to the side-on clip`];
-    if (carried.rear[k] !== undefined) return [`${label}: seen side-on, carried to the clip from behind`];
+    if (carried.side[k] !== undefined) return [`${label}: seen ${camName("rear", frontOn)}, carried to the side-on clip`];
+    if (carried.rear[k] !== undefined) return [`${label}: seen side-on, carried to the clip ${camName("rear", frontOn)}`];
     return [];
   });
-  const rearLabel = r.view.view === "front_on" ? "In front of the bowler" : "Behind the bowler";
 
   return (
     <>
@@ -181,7 +194,7 @@ function Ready({ d, go, unpair }: { d: Extract<Loaded, { status: "ok" }>; go: (t
             frame={frame} onFrame={(f) => { setPlaying(false); setFrame(f); }}
             players={() => [...document.querySelectorAll<HTMLCanvasElement>(".two-grid .player-stage canvas")]}
             labels={["Side-on", rearLabel]} facts={{ ...s, metrics: tv.rows.map((x) => x.metric) }}
-            cueText={top?.drill.cue ?? null} title={`${name}: two cameras`} />
+            cueText={top?.drill.cue ?? null} title={`${name}: two cameras`} expect={(f) => [f, alignFrame(s, f, r).frame]} />
           <button className="btn ghost sm" onClick={unpair}>Unpair</button>
         </div>
       </div>
@@ -190,8 +203,8 @@ function Ready({ d, go, unpair }: { d: Extract<Loaded, { status: "ok" }>; go: (t
         {same.verdict === "mismatch" ? <IAlert size={16} /> : same.verdict === "match" ? <ICheck size={16} /> : <IInfo size={16} />}
         <div>
           <b>{same.verdict === "match" ? "The same ball, as far as Seamly can tell." : same.verdict === "mismatch" ? "These may not be the same ball." : "Check these are the same ball."}</b>{" "}
-          {same.checks.map((c) => `${c.label}: ${typeof c.a === "number" ? `${c.a} ms side-on, ${c.b} ms from behind` : `${c.a} and ${c.b}`}${c.ok ? "" : " (doesn't agree)"}`).join("; ")}.
-          {same.verdict === "unsure" && " From behind, the foot contacts are often too hard to see to compare the stride's timing."}
+          {same.checks.map((c) => `${c.label}: ${typeof c.a === "number" ? `${c.a} ms side-on, ${c.b} ms ${camName("rear", frontOn)}` : `${c.a} and ${c.b}`}${c.ok ? "" : " (doesn't agree)"}`).join("; ")}.
+          {same.verdict === "unsure" && ` Seamly can only confirm it when both cameras see a foot land; ${frontOn ? "from in front" : "from behind"} the contacts are often too hard to see.`}
           {same.verdict === "mismatch" && " If it is the same ball, a key moment is off on one clip: check the release frame on each, and the camera view in Detection & settings. Until then the numbers below may mix two moments."}
         </div>
       </div>
@@ -216,11 +229,11 @@ function Ready({ d, go, unpair }: { d: Extract<Loaded, { status: "ok" }>; go: (t
         <div className="two-grid">
           <div>
             <div className="two-label">Side-on</div>
-            <FramePlayer id={side.id} result={s} frame={frame} overlay={OVERLAY} selMetric={null} hud={evAt(s, frame)} />
+            <FramePlayer id={side.id} result={s} frame={frame} overlay={OVERLAY} selMetric={null} hud={evAt(s, frame)} camera="Side-on camera" />
           </div>
           <div className={aligned.inside ? "" : "two-outside"}>
             <div className="two-label">{rearLabel}{aligned.inside ? "" : " · outside this clip"}</div>
-            <FramePlayer id={rear.id} result={r} frame={aligned.frame} overlay={OVERLAY} selMetric={null} hud={evAt(r, aligned.frame)} />
+            <FramePlayer id={rear.id} result={r} frame={aligned.frame} overlay={OVERLAY} selMetric={null} hud={evAt(r, aligned.frame)} camera={`Camera ${frontOn ? "in front of" : "behind"} the bowler`} />
           </div>
         </div>
         <div className="controls">
@@ -249,7 +262,7 @@ function Ready({ d, go, unpair }: { d: Extract<Loaded, { status: "ok" }>; go: (t
       <div className="two-3d">
         <ErrorBoundary label="The 3D viewer">
           <Suspense fallback={<div className="card viewer"><div className="viewer-stage" style={{ display: "grid", placeItems: "center" }}><div className="spinner" /></div></div>}>
-            <Viewer3D id={side.id} result={s} frame={frame} playing={playing}
+            <Viewer3D id={side.id} result={side.stored} frame={frame} playing={playing}
               onTogglePlay={() => setPlaying((p) => !p)} onSeek={(f) => { setPlaying(false); setFrame(f); }} />
           </Suspense>
         </ErrorBoundary>
@@ -267,7 +280,7 @@ function Ready({ d, go, unpair }: { d: Extract<Loaded, { status: "ok" }>; go: (t
                     <span className={`dot ${c.status}`} style={{ marginTop: 6 }} aria-hidden="true" />
                     <div className="grow">
                       <span style={{ fontSize: 13, fontWeight: 600 }}>{c.label}</span>
-                      <span className="faint"> · {BACK_TXT[c.status]}{c.value !== null ? `, ${fmt(c.value)}°` : ""}{tv.backFrom[c.key] ? ` · ${CAM[tv.backFrom[c.key]!]}` : ""}</span>
+                      <span className="faint"> · {BACK_TXT[c.status]}{c.value !== null ? `, ${fmt(c.value)}°` : ""}{tv.backFrom[c.key] ? ` · ${camName(tv.backFrom[c.key]!, frontOn)}` : ""}</span>
                       <div className="faint" style={{ fontSize: 12.5 }}>{c.text}</div>
                     </div>
                   </div>
@@ -309,6 +322,11 @@ function Ready({ d, go, unpair }: { d: Extract<Loaded, { status: "ok" }>; go: (t
             </table>
           </div>
         ))}
+        {d.fallback && (
+          <p className="faint" style={{ fontSize: 12.5, margin: "4px 0 0" }}>
+            A foot contact one camera saw couldn't be used on the other clip (its key moments didn't allow it), so that clip's own contacts are used.
+          </p>
+        )}
         {carriedText.length > 0 && (
           <p className="faint" style={{ fontSize: 12.5, margin: "4px 0 0" }}>
             Foot contacts shared between the cameras: {carriedText.join("; ")}. Measurements at those moments use them.

@@ -133,6 +133,7 @@ export interface AnalysisMeta {
   crease?: CreaseRecord | null;   // front-foot no-ball check: the marked crease and the call
   source_id?: string | null;   // split from another analysis' video (several deliveries in one clip)
   pair?: string | null;   // the same ball filmed by a second camera (side-on with behind / in front)
+  angled?: boolean | null;   // the camera was at an angle to the pitch (view.oblique), kept for lists
 }
 
 /** Front-foot no-ball check (lib/crease.ts): the crease edge marked on the landing frame (display px) and the call. */

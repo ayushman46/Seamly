@@ -26,9 +26,10 @@ export default function PairCard({ id, meta, result, go, onMeta, flash }: {
       if (!live) return;
       setPartner(meta.pair ? ms.find((m) => m.id === meta.pair) ?? null : null);
       const want = cam === "side" ? ["behind", "front_on"] : cam === "rear" ? ["side_on"] : [];
-      const list = ms.filter((m) => m.id !== id && m.status === "done" && m.view && want.includes(m.view) && !/^Example( clip)?:/.test(m.name ?? ""))
-        // the same player's clips first, then the ones made closest in time
-        .sort((x, y) => Number(y.player_id === meta.player_id && !!meta.player_id) - Number(x.player_id === meta.player_id && !!meta.player_id)
+      const list = ms.filter((m) => m.id !== id && m.status === "done" && m.view && want.includes(m.view) && !m.angled && !/^Example( clip)?:/.test(m.name ?? ""))
+        // unpaired clips first, then the same player's, then the ones made closest in time
+        .sort((x, y) => Number(!!x.pair) - Number(!!y.pair)
+          || Number(y.player_id === meta.player_id && !!meta.player_id) - Number(x.player_id === meta.player_id && !!meta.player_id)
           || Math.abs(x.created - meta.created) - Math.abs(y.created - meta.created));
       setCands(list);
       setPick((p) => p || list[0]?.id || "");
@@ -77,7 +78,7 @@ export default function PairCard({ id, meta, result, go, onMeta, flash }: {
           {cands === null ? <div className="spinner sm" /> : cands.length ? (
             <div className="row wrap" style={{ gap: 8 }}>
               <select className="input" value={pick} onChange={(e) => setPick(e.target.value)} aria-label={`The clip filmed ${other}`} style={{ maxWidth: 320 }}>
-                {cands.map((m) => <option key={m.id} value={m.id}>{m.name} · {dateTime(m.created, false)}</option>)}
+                {cands.map((m) => <option key={m.id} value={m.id}>{m.name} · {dateTime(m.created, false)}{m.pair ? " · paired with another clip" : ""}</option>)}
               </select>
               <button type="button" className="btn sm primary" disabled={!pick || busy} onClick={pair}>Pair</button>
             </div>

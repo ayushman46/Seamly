@@ -38,9 +38,10 @@ export function alignFrame(a: AnalysisResult, fa: number, b: AnalysisResult): { 
     const d = Math.abs((sinceRelease(b, f) ?? 0) - t);
     if (d < bestD) { bestD = d; best = f; }
   }
-  // outside b's analysed window the nearest frame is its first or last one: say so rather than pretend
+  // outside b's analysed window the nearest frame is its first or last one: say so rather than pretend (within half a
+  // frame of one of b's frames is inside)
   const frameS = 1 / Math.max(1, b.fps_real || b.fps);
-  return { frame: best, inside: bestD <= frameS };
+  return { frame: best, inside: bestD <= frameS / 2 + 1e-6 };
 }
 
 /** Distinct frames per real second (repeated frames add nothing). */
@@ -78,12 +79,18 @@ export function sharedContacts(side: AnalysisResult, rear: AnalysisResult): Shar
       if (a.inside) out.side[k] = a.frame;
     }
   }
-  // a carried contact must keep the delivery's order on the clip that receives it
+  // a carried contact must keep the delivery's order on the clip that receives it, against what stays fixed there (contacts
+  // found or set by the user, and release; estimated ones are placed again around it): a contact that can't is dropped
   for (const cam of ["side", "rear"] as const) {
     const r = cam === "side" ? side : rear, set = out[cam];
-    const at = (k: "bfc" | "ffc" | "br") => (k !== "br" && set[k] !== undefined ? set[k]! : r.events[k]?.frame ?? null);
-    const b = at("bfc"), f = at("ffc"), br = at("br");
-    if ((b !== null && f !== null && b >= f) || (f !== null && br !== null && f >= br) || (b !== null && br !== null && b >= br)) out[cam] = {};
+    const fixed = (k: "bfc" | "ffc" | "br") => {
+      if (k !== "br" && set[k] !== undefined) return set[k]!;
+      const e = r.events[k];
+      return e && (k === "br" || FOUND(e.method)) ? e.frame : null;
+    };
+    const br = fixed("br");
+    if (set.bfc !== undefined && ((br !== null && set.bfc >= br) || (fixed("ffc") !== null && set.bfc >= fixed("ffc")!))) delete set.bfc;
+    if (set.ffc !== undefined && ((br !== null && set.ffc >= br) || (fixed("bfc") !== null && set.ffc <= fixed("bfc")!))) delete set.ffc;
   }
   return out;
 }
@@ -91,24 +98,27 @@ export function sharedContacts(side: AnalysisResult, rear: AnalysisResult): Shar
 export interface SameBallCheck { label: string; a: number | string; b: number | string; ok: boolean; tol?: number }
 export interface SameBall { verdict: "match" | "unsure" | "mismatch"; checks: SameBallCheck[] }
 
-/** Do the two clips look like the same delivery? The bowling arm must agree, and the stride's timings, where both clips
- * found the foot contacts on the video, must agree within one frame of each clip. */
+/** Do the two clips look like the same delivery? The bowling arm must agree. A "match" needs a stride timing (back-foot
+ * to front-foot contact, or front-foot contact to release) that both cameras found on the video, agreeing within one
+ * frame of each clip; the arm's last phase (upper arm horizontal to release) is too short to tell balls apart, so it
+ * can only show a mismatch (more than two frames of each clip apart). */
 export function sameBall(side: AnalysisResult, rear: AnalysisResult): SameBall {
   const checks: SameBallCheck[] = [];
   const armA = side.bowling_arm.arm, armB = rear.bowling_arm.arm;
   checks.push({ label: "Bowling arm", a: armA, b: armB, ok: armA === armB });
   // one frame of each clip, plus a little for the time base
   const tol = 1000 / distinctFps(side) + 1000 / distinctFps(rear) + 5;
-  let far = false;
-  for (const [label, k0, k1] of [["Back-foot to front-foot contact", "bfc", "ffc"], ["Front-foot contact to release", "ffc", "br"],
-    ["Upper arm horizontal to release", "uah", "br"]] as const) {
+  let far = false, stride = 0;
+  for (const [label, k0, k1, isStride] of [["Back-foot to front-foot contact", "bfc", "ffc", true], ["Front-foot contact to release", "ffc", "br", true],
+    ["Upper arm horizontal to release", "uah", "br", false]] as const) {
     const a = durMs(side, k0, k1), b = durMs(rear, k0, k1);
     if (a === null || b === null) continue;
-    const d = Math.abs(a - b);
-    checks.push({ label, a: Math.round(a), b: Math.round(b), ok: d <= tol, tol: Math.round(tol) });
+    const d = Math.abs(a - b), lim = isStride ? tol : 2 * tol;
+    checks.push({ label, a: Math.round(a), b: Math.round(b), ok: d <= lim, tol: Math.round(lim) });
     if (d > 2 * tol) far = true;
+    if (isStride && d <= tol) stride++;
   }
-  const verdict = armA !== armB || far ? "mismatch" : checks.length > 1 && checks.every((c) => c.ok) ? "match" : "unsure";
+  const verdict = armA !== armB || far ? "mismatch" : stride > 0 && checks.every((c) => c.ok) ? "match" : "unsure";
   return { verdict, checks };
 }
 
