@@ -19,7 +19,7 @@ import { frameObj } from "./engine/body";
 import { playerProgress, summarise } from "./engine/progress";
 import { BACKUP_VERSION, FILE_NAME, decodeBackup, encodeBackup, type BackupAnalysis } from "./lib/backup";
 import { creaseCall } from "./lib/crease";
-import { cameraOf, sharedContacts, twoView as fuseTwo, type SharedContacts, type TwoView } from "./lib/twoview";
+import { cameraOf, sharedContacts, syncOffset, twoView as fuseTwo, type SharedContacts, type TwoView } from "./lib/twoview";
 import { isoDate, parseOvers } from "./lib/bowlingLog";
 import { runupSpeed, type Runup } from "./lib/runup";
 
@@ -798,7 +798,9 @@ export const api = {
     }
     const [sid, rid] = ca === "side" ? [a, b] : [b, a];
     let side = ca === "side" ? ra : rb, rear = ca === "side" ? rb : ra;
-    const carried = sharedContacts(side, rear);
+    // lined up by both clips' movement (or at their releases), then contacts are carried at the same moment
+    const sync = syncOffset(side, rear);
+    const carried = sharedContacts(side, rear, sync.offset);
     // each clip that receives a contact is measured again with it, as a fixed marker; only contacts that were applied
     // are reported, and a re-measure that fails or reads the camera differently is set aside
     const applied: SharedContacts = { side: {}, rear: {}, from: carried.from };
@@ -829,7 +831,7 @@ export const api = {
     const player = pidOf ? await db.get<StoredPlayer>("player", pidOf).catch(() => undefined) : undefined;
     // `stored`: the analysis as saved, which the stored body mesh belongs to (the 3D view uses it)
     return { status: "ok", side: { id: sid, meta: pub(metas.get(sid)!), result: side, stored: original.side }, rear: { id: rid, meta: pub(metas.get(rid)!), result: rear, stored: original.rear },
-      view: fuseTwo(side, rear, player ?? null, original), carried: applied, fallback };
+      view: fuseTwo(side, rear, player ?? null, original, sync), carried: applied, fallback };
   },
   /** See a sample analysis right away (precomputed). */
   demo: async (which: SampleName = "club") => {

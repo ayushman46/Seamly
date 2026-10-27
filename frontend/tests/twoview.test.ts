@@ -1,6 +1,6 @@
 /** Two cameras, one ball (lib/twoview.ts): real-time alignment, the same-ball check and which camera each number is from. */
 import { describe, expect, it } from "vitest";
-import { alignFrame, cameraOf, fuseMetrics, sameBall, sharedContacts, sinceRelease, twoView } from "../src/lib/twoview";
+import { alignFrame, cameraOf, fuseMetrics, sameBall, sharedContacts, sinceRelease, syncOffset, twoView } from "../src/lib/twoview";
 import type { AnalysisResult, Metric } from "../src/types";
 
 const ev = (frame: number, method = "detected") => ({ frame, time: 0, confidence: 0.9, method });
@@ -163,5 +163,37 @@ describe("review cases", () => {
     const side = clip("side_on", 60, BALL);
     const rear = clip("behind", 60, { ...BALL, bfc: 1.02 }, [], { methods: { bfc: "timing_prior", ffc: "timing_prior" } });
     expect(sharedContacts(side, rear).rear).toEqual({ bfc: rear.events.br!.frame - 18, ffc: rear.events.br!.frame - 6 });
+  });
+});
+
+describe("lining up by the movement", () => {
+  // one delivery's motion in real time: the bowling wrist swings up to release (t = 1.1 s), the feet land in turn
+  const wristUp = (t: number) => 1.6 * Math.exp(-((t - 1.1) ** 2) / 0.02) - 0.4;
+  const backFoot = (t: number) => (t < 0.8 ? 0.4 * Math.max(0, Math.sin((t - 0.5) * 10)) : 0) - 2.2;
+  const frontFoot = (t: number) => (t > 0.8 && t < 1.0 ? 0.5 * Math.sin((t - 0.8) * 15) : 0) - 2.2;
+  function moving(view: string, fps: number, releaseAt: number) {
+    const n = Math.round(2 * fps), torso = 200, hip = 500;
+    const xy: [number, number][][] = [], conf: number[][] = [];
+    for (let i = 0; i < n; i++) {
+      const t = i / fps;
+      const p: [number, number][] = Array.from({ length: 17 }, () => [300, 300] as [number, number]);
+      p[5] = [290, hip - torso]; p[6] = [310, hip - torso]; p[11] = [295, hip]; p[12] = [305, hip];
+      p[10] = [320, hip - torso * wristUp(t)]; p[9] = [280, hip - torso * (-0.3)];
+      p[15] = [290, hip - torso * backFoot(t)]; p[16] = [310, hip - torso * frontFoot(t)];
+      xy.push(p); conf.push(Array(17).fill(0.9));
+    }
+    const r = clip(view, fps, { ...BALL, br: releaseAt });
+    return { ...r, keypoints2d: { names: [], xy, conf } } as AnalysisResult;
+  }
+  it("finds how far apart two cameras put the same release, from the motion", () => {
+    // the rear camera found its release 3 frames early at 60 fps: its timeline runs 50 ms later
+    const s = syncOffset(moving("side_on", 120, 1.1), moving("behind", 60, 1.05));
+    expect(s.method).toBe("motion");
+    expect(s.offset).toBeCloseTo(0.05, 2);
+    // both found the true release: nothing to correct
+    expect(syncOffset(moving("side_on", 120, 1.1), moving("behind", 60, 1.1)).offset).toBeCloseTo(0, 2);
+  });
+  it("keeps the releases when there's no motion to match", () => {
+    expect(syncOffset(clip("side_on", 60, BALL), clip("behind", 60, BALL))).toEqual({ offset: 0, score: 0, method: "release" });
   });
 });

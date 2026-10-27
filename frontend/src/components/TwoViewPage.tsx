@@ -122,7 +122,7 @@ function Ready({ d, go, unpair }: { d: Extract<Loaded, { status: "ok" }>; go: (t
   const [frame, setFrame] = useState(s.events.br?.frame ?? sf0);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(0.25);
-  const aligned = useMemo(() => alignFrame(s, frame, r), [s, r, frame]);
+  const aligned = useMemo(() => alignFrame(s, frame, r, tv.sync.offset), [s, r, frame, tv.sync.offset]);
   const evAt = (res: AnalysisResult, f: number) => EVENTS.find((e) => res.events[e.key]?.frame === f)?.label ?? "";
 
   // playback in real time (side-on clip's clock, scaled by speed); the other camera follows
@@ -194,7 +194,7 @@ function Ready({ d, go, unpair }: { d: Extract<Loaded, { status: "ok" }>; go: (t
             frame={frame} onFrame={(f) => { setPlaying(false); setFrame(f); }}
             players={() => [...document.querySelectorAll<HTMLCanvasElement>(".two-grid .player-stage canvas")]}
             labels={["Side-on", rearLabel]} facts={{ ...s, metrics: tv.rows.map((x) => x.metric) }}
-            cueText={top?.drill.cue ?? null} title={`${name}: two cameras`} expect={(f) => [f, alignFrame(s, f, r).frame]} />
+            cueText={top?.drill.cue ?? null} title={`${name}: two cameras`} expect={(f) => [f, alignFrame(s, f, r, tv.sync.offset).frame]} />
           <button className="btn ghost sm" onClick={unpair}>Unpair</button>
         </div>
       </div>
@@ -255,7 +255,9 @@ function Ready({ d, go, unpair }: { d: Extract<Loaded, { status: "ok" }>; go: (t
         <input type="range" className="two-scrub" min={sf0} max={sf1} value={frame} aria-label="Frame"
           onChange={(e) => { setPlaying(false); setFrame(Number(e.target.value)); }} />
         <p className="faint" style={{ fontSize: 12, margin: "6px 14px 12px" }}>
-          The clips are lined up at the release each camera found, in real time, so they play in step at any frame rates.
+          {tv.sync.method === "motion"
+            ? `Lined up by the movement in both clips (match ${Math.round(tv.sync.score * 100)}%), which put the releases ${Math.abs(Math.round(tv.sync.offset * 1000))} ms apart: one camera found its release a little ${tv.sync.offset < 0 ? "earlier" : "later"} than the other. They play in step at any frame rates.`
+            : "Lined up at the release each camera found, in real time, so they play in step at any frame rates."}
         </p>
       </section>
 

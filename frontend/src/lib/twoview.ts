@@ -28,9 +28,11 @@ export function sinceRelease(r: AnalysisResult, f: number): number | null {
   return (t[i] - t[j]) / Math.max(1, r.options.slowmo_factor || 1);
 }
 
-/** The frame of clip b at the same real time (from release) as frame fa of clip a, and whether b reaches that time. */
-export function alignFrame(a: AnalysisResult, fa: number, b: AnalysisResult): { frame: number; inside: boolean } {
-  const t = sinceRelease(a, fa);
+/** The frame of clip b at the same moment as frame fa of clip a, and whether b reaches that moment. The moment is real
+ * time from each clip's release plus `offset` (seconds, from syncOffset: how much later b's timeline runs). */
+export function alignFrame(a: AnalysisResult, fa: number, b: AnalysisResult, offset = 0): { frame: number; inside: boolean } {
+  const t0 = sinceRelease(a, fa);
+  const t = t0 === null ? null : t0 + offset;
   const f0 = b.frames.start, last = b.frames.end - 1;
   if (t === null || b.events.br?.frame == null) return { frame: f0, inside: false };
   let best = f0, bestD = Infinity;
@@ -42,6 +44,87 @@ export function alignFrame(a: AnalysisResult, fa: number, b: AnalysisResult): { 
   // frame of one of b's frames is inside)
   const frameS = 1 / Math.max(1, b.fps_real || b.fps);
   return { frame: best, inside: bestD <= frameS / 2 + 1e-6 };
+}
+
+/** Four curves that look alike from the side and from behind, whichever limb is labelled left or right: the higher and
+ * the lower wrist, and the higher and the lower ankle, each above the hips in torso lengths (so camera distance, zoom
+ * and height don't matter), against real time from the clip's release. */
+function motionCurves(r: AnalysisResult): { t: number[]; f: (number | null)[][] } {
+  const t: number[] = [], f: (number | null)[][] = [[], [], [], []];
+  if (!r.keypoints2d?.xy?.length) return { t, f };
+  const kp = r.keypoints2d.xy, kc = r.keypoints2d.conf, f0 = r.frames.start;
+  for (let i = 0; i < kp.length; i++) {
+    const s = sinceRelease(r, f0 + i);
+    if (s === null) continue;
+    const p = kp[i], c = kc[i];
+    t.push(s);
+    const hip = (p[11][1] + p[12][1]) / 2, torso = Math.abs(hip - (p[5][1] + p[6][1]) / 2);
+    const ok = (j: number) => c[j] >= 0.3 && Math.min(c[5], c[6], c[11], c[12]) >= 0.3 && torso > 1;
+    const up = (j: number) => (ok(j) ? (hip - p[j][1]) / torso : null);
+    const pair = (a: number, b: number) => { const x = up(a), y = up(b); return x === null || y === null ? [null, null] : [Math.max(x, y), Math.min(x, y)]; };
+    const [wHi, wLo] = pair(9, 10), [aHi, aLo] = pair(15, 16);
+    f[0].push(wHi); f[1].push(wLo); f[2].push(aHi); f[3].push(aLo);
+  }
+  return { t, f };
+}
+
+/** Linear interpolation of a curve at time x (null outside it or across a gap). */
+function sample(t: number[], y: (number | null)[], x: number): number | null {
+  if (x < t[0] || x > t[t.length - 1]) return null;
+  let i = 0;
+  while (i + 1 < t.length && t[i + 1] < x) i++;
+  if (i + 1 >= t.length) return y[i];
+  const a = y[i], b = y[i + 1];
+  if (a === null || b === null) return null;
+  const w = (x - t[i]) / Math.max(1e-9, t[i + 1] - t[i]);
+  return a + (b - a) * w;
+}
+
+function pearson(x: number[], y: number[]): number {
+  const n = x.length, mx = x.reduce((a, b) => a + b, 0) / n, my = y.reduce((a, b) => a + b, 0) / n;
+  let sxy = 0, sxx = 0, syy = 0;
+  for (let i = 0; i < n; i++) { sxy += (x[i] - mx) * (y[i] - my); sxx += (x[i] - mx) ** 2; syy += (y[i] - my) ** 2; }
+  return sxx > 1e-12 && syy > 1e-12 ? sxy / Math.sqrt(sxx * syy) : 0;
+}
+
+export interface Sync { offset: number; score: number; method: "motion" | "release" }
+
+/** How well the two clips' motion curves match when the rear timeline runs c seconds later: the mean correlation over
+ * the curves with enough frames in common (-1 when fewer than two do). */
+export function syncScorer(side: AnalysisResult, rear: AnalysisResult): (c: number) => number {
+  const A = motionCurves(side), B = motionCurves(rear);
+  return (c: number) => {
+    let sum = 0, n = 0;
+    for (let k = 0; k < 4; k++) {
+      const x: number[] = [], y: number[] = [];
+      for (let i = 0; i < A.t.length; i++) {
+        const ta = A.t[i];
+        if (ta < -0.5 || ta > 0.25 || A.f[k][i] === null) continue;
+        const v = sample(B.t, B.f[k], ta + c);
+        if (v === null) continue;
+        x.push(A.f[k][i]!); y.push(v);
+      }
+      if (x.length >= 8) { sum += pearson(x, y); n++; }
+    }
+    return n >= 2 ? sum / n : -1;
+  };
+}
+
+/** How much later (seconds) the rear clip's timeline runs than the side clip's, both counted from their own release:
+ * 0 if both releases were found on the same moment. Found by matching the four motion curves over the delivery stride
+ * (half a second before release to a quarter after), so one clip's release a frame or two off doesn't throw the pair
+ * out of step; kept at 0 (the releases) when the curves don't agree well enough to decide. */
+export function syncOffset(side: AnalysisResult, rear: AnalysisResult): Sync {
+  const score = syncScorer(side, rear);
+  let best = 0, bestS = -Infinity;
+  for (let c = -0.25; c <= 0.25 + 1e-9; c += 0.002) {
+    const v = score(c);
+    if (v > bestS) { bestS = v; best = c; }
+  }
+  const atRelease = score(0);
+  // the motion decides only when it matches well, and better than lining up the releases does
+  if (bestS >= 0.6 && bestS > atRelease + 0.01) return { offset: Math.round(best * 1000) / 1000, score: Math.round(bestS * 100) / 100, method: "motion" };
+  return { offset: 0, score: Math.round(Math.max(atRelease, 0) * 100) / 100, method: "release" };
 }
 
 /** Distinct frames per real second (repeated frames add nothing). */
@@ -65,17 +148,17 @@ export interface SharedContacts {
 /** Foot contacts found on the video by one camera and only estimated by the other (side-on sees a foot land; from
  * behind, often only the back foot's stop): carried across at the same real time from release. Contacts the user set
  * on a clip are left alone; side-on wins when both cameras found one. */
-export function sharedContacts(side: AnalysisResult, rear: AnalysisResult): SharedContacts {
+export function sharedContacts(side: AnalysisResult, rear: AnalysisResult, offset = 0): SharedContacts {
   const out: SharedContacts = { side: {}, rear: {}, from: {} };
   for (const k of ["bfc", "ffc"] as const) {
     const s = side.events[k], r = rear.events[k];
     const sFound = !!s && FOUND(s.method), rFound = !!r && FOUND(r.method);
     if (sFound) out.from[k] = "side"; else if (rFound) out.from[k] = "rear";
     if (sFound && !rFound && r?.method !== "user") {
-      const a = alignFrame(side, s!.frame, rear);
+      const a = alignFrame(side, s!.frame, rear, offset);
       if (a.inside) out.rear[k] = a.frame;
     } else if (rFound && !sFound && s?.method !== "user") {
-      const a = alignFrame(rear, r!.frame, side);
+      const a = alignFrame(rear, r!.frame, side, -offset);
       if (a.inside) out.side[k] = a.frame;
     }
   }
@@ -184,12 +267,13 @@ export interface TwoView {
   back: Insights["back_health"];
   backFrom: Record<string, Camera | "both" | null>;   // the camera each back-health check was measured on
   same: SameBall;
+  sync: Sync;                                  // how the two clips are lined up in time
 }
 
 /** The whole delivery from both cameras: the fused measurements, one score and coaching over all of them, and the
  * back-health screen with every check made on the camera that sees it. */
 export function twoView(side: AnalysisResult, rear: AnalysisResult, player: Pick<Player, "age_group" | "style"> | null,
-  original?: { side: AnalysisResult; rear: AnalysisResult }): TwoView {
+  original?: { side: AnalysisResult; rear: AnalysisResult }, sync?: Sync): TwoView {
   const rows = fuseMetrics(side, rear);
   const metrics = rows.map((r) => r.metric);
   // timing precision follows the slower camera's distinct frame rate
@@ -210,5 +294,6 @@ export function twoView(side: AnalysisResult, rear: AnalysisResult, player: Pick
   sum.unlock = fps < 90 ? ["Use slow motion (120–240 fps) on both phones to time release and foot contacts precisely."] : [];
   return { rows, score: c.score, grade: c.grade, priorities: coachingIn.priorities, strengths: c.strengths, summary: sum, back, backFrom,
     // the same-ball check compares what each camera found by itself, before any contact was carried across
-    same: sameBall(original?.side ?? side, original?.rear ?? rear) };
+    same: sameBall(original?.side ?? side, original?.rear ?? rear),
+    sync: sync ?? syncOffset(original?.side ?? side, original?.rear ?? rear) };
 }
