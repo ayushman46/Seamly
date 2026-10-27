@@ -187,14 +187,15 @@ browser engine as a pair. Ground truth comes from the rendered body.
 | | Side-on alone | Behind alone | Both cameras |
 |---|---|---|---|
 | Key measurements made (of 10) | 5.7 | 2.0 | 8.3 |
-| Back-health checks made (of 3) | 0 | 1 | 2.3 |
+| Back-health checks made (of 3) | 0 | 1 | 2.7 |
 
 Mean over three pairs (side-bend 20° and 54°, and the default delivery at 240 fps side-on with 60 fps behind). Values
 taken from the camera that measures them keep that camera's accuracy; what the pair adds:
 
 - **Back-foot contact** carried from the camera behind landed on the true frame of the 240 fps side-on clip (side-on
   alone had only estimated it, 6 frames early), which made the **back knee** and the **stride timing** measurable
-  (11° and 31 ms mean error; the back knee is known to read about 8° low).
+  (10° and 40 ms mean error; the back knee is known to read about 8° low, so a red flag resting on a carried contact
+  is shown as "watch" until the contact is confirmed on its own clip).
 - **Release height** comes from both cameras: when they agree within 12 points, weighted by each camera's measured
   error (7.4 points side-on, 5.4 from behind, §3), otherwise from the camera behind. Mean error 6.7 points over the
   three pairs (6.4 on the default delivery, where the two agreed), against 21 side-on alone (two of those side clips
