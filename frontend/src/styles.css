@@ -1273,3 +1273,5 @@ body.pace-measuring { padding-bottom: 150px; }
 .two-3d { margin-top: 18px; }
 .two-table td, .two-table th { vertical-align: top; }
 .two-note { font-size: 12px; font-weight: 400; margin-top: 2px; }
+.hmeta .chip.accent { position: relative; z-index: 1; cursor: pointer; }
+@media (max-width: 560px) { .two-table th { width: 58%; } }

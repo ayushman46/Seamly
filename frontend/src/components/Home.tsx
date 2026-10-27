@@ -259,7 +259,7 @@ function HistoryCard({ m, go, onDeleted, picked, onPick, player }: { m: Analysis
     <div className={`card hcard ${picked ? "picked" : ""}`}>
       <div className="hthumb" style={{ backgroundImage: thumb }}>
         {m.status === "done" && m.score !== null && (
-          <span className="score-pill">{m.score}<small>/100</small></span>
+          <span className="score-pill" title={m.pair ? "From this camera alone: open Two cameras for the whole action" : undefined}>{m.score}<small>/100</small></span>
         )}
         {m.status === "done" && m.grade && <span className="chip good grade">{m.grade}</span>}
         {m.status !== "done" && (

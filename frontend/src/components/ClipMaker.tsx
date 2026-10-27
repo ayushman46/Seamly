@@ -260,7 +260,7 @@ export default function ClipMaker({ meta, result, ins, fileBase, frame, onFrame,
                   </div>
                   <label className="pick" style={{ paddingLeft: 0 }}>
                     <input type="checkbox" checked={with3d && capture3D() !== null} disabled={capture3D() === null} onChange={(e) => setWith3d(e.target.checked)} />
-                    The 3D body beside the video{capture3D() === null ? " (the 3D view isn't available here)" : ""}
+                    The 3D body beside the {cams === 2 ? "videos" : "video"}{capture3D() === null ? " (the 3D view isn't available here)" : ""}
                   </label>
                   <label className="pick" style={{ paddingLeft: 0 }}>
                     <input type="checkbox" checked={voice} onChange={(e) => setVoice(e.target.checked)} /> Record my voice as it plays (a coach's voice-over)

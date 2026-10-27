@@ -208,6 +208,7 @@ describe("QA fixes", () => {
     const carried = twoView(side, rear, { age_group: "adult", style: "fast" }, undefined, undefined, { side: { bfc: 40 }, rear: {}, from: { bfc: "rear" } });
     expect(carried.rows.find((r) => r.key === "back_knee_bfc")?.metric.rating).toBe("watch");
     expect(carried.back?.checks.find((c) => c.key === "back_knee")?.status).toBe("watch");
+    expect(carried.back?.checks.find((c) => c.key === "back_knee")?.text).toMatch(/In the range linked to back injury, but measured at a foot contact taken from the camera behind/);
   });
   it("gives the measuring camera's own reason for a check it couldn't make", () => {
     const side = clip("side_on", 60, BALL, [metric("back_knee_bfc", 150, "good", SIDE)]);

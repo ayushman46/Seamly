@@ -1,7 +1,16 @@
-/** A number for display: fixed decimals, a true minus sign (−) and no "-0". */
+/** A number for display: fixed decimals, a true minus sign (−) and no "-0". An exact half rounds to even, as the
+ * engine's coaching text does (126.5 → 126 in both), so a value reads the same in a headline and in a table. */
 export const fmt = (v: number | null | undefined, d = 0) => {
   if (v === null || v === undefined || !isFinite(v)) return "–";
-  const s = v.toFixed(d);
+  let s = v.toFixed(d);
+  const a = Math.abs(v);
+  if (a.toFixed(d + 1).endsWith("5")) {
+    const exact = a.toFixed(Math.min(100, d + 80)), dot = exact.indexOf("."), frac = exact.slice(dot + 1);
+    if (frac[d] === "5" && /^0*$/.test(frac.slice(d + 1))) {
+      const trunc = d > 0 ? exact.slice(0, dot + 1 + d) : exact.slice(0, dot);
+      if (Number(trunc[trunc.length - 1]) % 2 === 0) s = (v < 0 ? "-" : "") + trunc;
+    }
+  }
   return /^-0(\.0+)?$/.test(s) ? s.slice(1) : s.replace(/^-/, "−");
 };
 /** Unit after a number: degrees and % sit right after it, words get a (non-breaking) space ("120 ms"). */

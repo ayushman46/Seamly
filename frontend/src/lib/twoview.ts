@@ -281,10 +281,12 @@ export function twoView(side: AnalysisResult, rear: AnalysisResult, player: Pick
   const rows = fuseMetrics(side, rear);
   // a value read at a contact carried from the other camera is measured, but a red flag needs that contact confirmed on
   // its own clip: such a "risk" reads as "watch" (the contact can be a frame out, and the back knee reads a little low)
+  const softened = new Set<string>();
   for (const row of rows) {
     const set = row.from === "rear" ? carried?.rear : row.from === "side" ? carried?.side : undefined;
     const atCarried = (row.metric.event ?? "").split("-").some((e) => set && e in set);
     if (atCarried && row.metric.rating === "risk") {
+      softened.add(row.key);
       row.metric = { ...row.metric, rating: "watch",
         note: `Measured at a foot contact taken from the ${row.from === "side" ? "camera behind" : "side-on camera"}; confirm the contact on this clip before treating it as a red flag.` };
     }
@@ -303,6 +305,14 @@ export function twoView(side: AnalysisResult, rear: AnalysisResult, player: Pick
     mixed_action: fromOf("hip_shoulder_sep_bfc") ?? fromOf("shoulder_counter_rotation"),
     back_knee: fromOf("back_knee_bfc"),
   };
+  // a check that would be a red flag but rests on a carried contact says so (the generic "watch" text would understate it)
+  const checkKeys: Record<string, string[]> = { side_bend: ["trunk_lateral_br"], mixed_action: ["hip_shoulder_sep_bfc", "shoulder_counter_rotation"], back_knee: ["back_knee_bfc"] };
+  for (const ch of back?.checks ?? []) {
+    if (!checkKeys[ch.key]?.some((k) => softened.has(k))) continue;
+    const src = checkKeys[ch.key].map((k) => rows.find((r) => r.key === k)).find((r) => r && softened.has(r.key));
+    ch.text = `In the range linked to back injury, but measured at a foot contact taken from the ${src?.from === "side" ? "camera behind" : "side-on camera"}: `
+      + `check that contact on the ${src?.from === "side" ? "side-on" : "other"} clip (drag its marker if it's off) before treating this as a red flag.`;
+  }
   // a check neither camera could make gives the reason from the camera that should make it, not a generic "film from behind"
   if (back) {
     const reasonOf: Record<string, [AnalysisResult, string[]]> = {

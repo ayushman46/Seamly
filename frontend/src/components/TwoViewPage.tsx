@@ -69,9 +69,9 @@ export default function TwoViewPage({ a, b, go }: { a: string; b: string; go: (t
     try { await api.recompute(id, { view }); } catch (e) { setData({ status: "error", message: (e as Error).message }); return; }
     setTick((n) => n + 1);
   };
-  // focus goes to the page's heading once the results are in (they replace the waiting card)
+  // focus goes to the page's heading once the results are in (they replace the waiting card), or after unpairing
   useEffect(() => {
-    if (data.status !== "ok") return;
+    if (data.status !== "ok" && data.status !== "unpaired") return;
     const h = document.querySelector<HTMLElement>("main h1");
     if (h) { h.tabIndex = -1; h.focus({ preventScroll: true }); }
   }, [data.status]);
@@ -118,7 +118,10 @@ export default function TwoViewPage({ a, b, go }: { a: string; b: string; go: (t
                   : "These two clips aren't paired."}</div>
             </div>
             <div className="row wrap" style={{ gap: 8, marginTop: 12 }}>
-              {data.status === "unpaired" && <button className="btn sm primary" onClick={repair}>Pair them</button>}
+              {data.status === "unpaired" && (() => {
+                const cams = data.metas.map((m) => (!m.view || m.angled ? null : m.view === "side_on" ? "side" : "rear"));
+                return cams[0] && cams[1] && cams[0] !== cams[1] ? <button className="btn sm primary" onClick={repair}>Pair them</button> : null;
+              })()}
               {data.metas.map((m) => <button key={m.id} className="btn sm" onClick={() => go(`/a/${m.id}`)}>Open {m.name}{m.status === "failed" ? " (couldn't be analysed)" : ""}</button>)}
               {data.status === "failed" && <button className="btn sm ghost" onClick={unpair}>Unpair</button>}
             </div>
@@ -161,7 +164,8 @@ function sameText(same: TwoView["same"], frontOn: boolean): string {
   if (arm) parts.push(arm.ok ? `Both cameras see a ${arm.a}-arm bowler` : `The side-on camera sees a ${arm.a}-arm bowler and ${rearCam} a ${arm.b}-arm one`);
   for (const c of same.checks.filter((x) => x.label !== "Bowling arm")) {
     const what = c.label.charAt(0).toLowerCase() + c.label.slice(1);
-    parts.push(`${what} takes ${c.a} ms side-on and ${c.b} ms on ${rearCam}${c.ok ? ", which agrees" : ", which doesn't agree"}`);
+    const stride = c.label !== "Upper arm horizontal to release";
+    parts.push(`${what} takes ${c.a} ms side-on and ${c.b} ms on ${rearCam}${c.ok ? (stride ? ", which agrees" : " (close enough for so short a phase: within two frames of each camera)") : ", which doesn't agree"}`);
   }
   let text = parts.join("; ") + ".";
   if (same.verdict === "unsure") {
@@ -246,8 +250,9 @@ function Ready({ d, go, unpair }: { d: Extract<Loaded, { status: "ok" }>; go: (t
     const sm = s.metrics.find((m) => m.key === x.key), rm = r.metrics.find((m) => m.key === x.key);
     if (x.from === "both" && sm && rm) return `side-on ${val(sm)}, ${camName("rear", frontOn)} ${val(rm)}`;
     const otherCam = x.from === "side" ? (frontOn ? "camera in front" : "camera behind") : "side-on camera";
+    const sameRate = Math.abs(s.fps_real * (1 - (s.quality.repeated_frames ?? 0)) - r.fps_real * (1 - (r.quality.repeated_frames ?? 0))) < 1;
     return x.unit === "ms"
-      ? `the ${otherCam} read ${val(x.other)}; timings come from the camera with more frames a second`
+      ? `the ${otherCam} read ${val(x.other)}; ${sameRate ? "with equal frame rates timings come from the side-on camera, which sees the feet land" : "timings come from the camera with more frames a second"}`
       : `the ${otherCam} read ${val(x.other)}: too far apart to average, so the ${x.from === "rear" ? (frontOn ? "camera in front" : "camera behind") : "side-on camera"}, which measures this better, is used`;
   };
   const carriedText = (["bfc", "ffc"] as const).flatMap((k) => {
@@ -335,12 +340,15 @@ function Ready({ d, go, unpair }: { d: Extract<Loaded, { status: "ok" }>; go: (t
           </div>
         </div>
         <input type="range" className="two-scrub" min={sf0} max={sf1} value={frame} aria-label="Frame"
-          aria-valuetext={(() => { const t = sinceRelease(s, frame); const ev = evAt(s, frame); return `${ev ? `${ev}, ` : ""}${t === null ? `frame ${frame}` : t === 0 ? "release" : `${Math.abs(Math.round(t * 1000))} ms ${t < 0 ? "before" : "after"} release`}`; })()}
+          aria-valuetext={(() => { const t = sinceRelease(s, frame); const ev = evAt(s, frame); return t === 0 ? (ev || "Ball release") : `${ev ? `${ev}, ` : ""}${t === null ? `frame ${frame}` : `${Math.abs(Math.round(t * 1000))} ms ${t < 0 ? "before" : "after"} release`}`; })()}
           onChange={(e) => { setPlaying(false); setFrame(Number(e.target.value)); }} />
         <p className="faint" style={{ fontSize: 12, margin: "6px 14px 12px" }}>
-          <span className="sr-only">Space plays and pauses; the arrow keys step a frame. </span>
+          <span>Space plays and pauses; ← → step a frame. </span>
           {tv.sync.method === "motion"
-            ? `Lined up by the movement in both clips (match ${Math.round(tv.sync.score * 100)}%), which put the releases ${Math.abs(Math.round(tv.sync.offset * 1000))} ms apart: one camera found its release a little ${tv.sync.offset < 0 ? "earlier" : "later"} than the other. They play in step at any frame rates.`
+            ? (() => {
+                const ms = Math.abs(Math.round(tv.sync.offset * 1000)), frames = Math.round(Math.abs(tv.sync.offset) * Math.max(s.fps_real, r.fps_real));
+                return `Lined up by the movement in both clips (match ${Math.round(tv.sync.score * 100)}%), not at the release each camera found: those are ${ms} ms apart (${frames} frame${frames === 1 ? "" : "s"}), so ${frames > 2 ? "one clip's release frame is probably off; check it on each clip" : "they nearly agree"}. They play in step at any frame rates.`;
+              })()
             : "Lined up at the release each camera found, in real time, so they play in step at any frame rates."}
         </p>
       </section>

@@ -57,10 +57,13 @@ export default function PairCard({ id, meta, result, go, onMeta, flash }: {
       {meta.pair ? (
         <>
           <p className="muted" style={{ margin: "0 0 10px", fontSize: 13 }}>
-            Paired with {partner ? <b>{partner.name}</b> : "a clip that is no longer here"}: the same ball from the other camera.
+            Paired with {partner ? <b>{partner.name}</b> : "a clip that is no longer here"}{partner && pairFits(cam, partner) === false
+              ? ", but the two can't be put together yet: one must be side-on and the other behind or in front of the bowler, both square to the pitch."
+              : ": the same ball from the other camera."}
           </p>
           <div className="row wrap" style={{ gap: 8 }}>
-            {partner && <button type="button" className="btn sm primary" onClick={() => go(`/two/${id}/${partner.id}`)}>See both cameras together</button>}
+            {partner && <button type="button" className="btn sm primary" onClick={() => go(`/two/${id}/${partner.id}`)}>
+              {pairFits(cam, partner) === false ? "See what to fix" : "See both cameras together"}</button>}
             <button type="button" className="btn sm ghost" onClick={unpair}>Unpair</button>
           </div>
         </>
@@ -92,6 +95,13 @@ export default function PairCard({ id, meta, result, go, onMeta, flash }: {
       )}
     </section>
   );
+}
+
+/** Whether this clip and its partner make a pair Seamly can fuse (null: the partner is still being analysed). */
+function pairFits(mine: ReturnType<typeof cameraOf>, partner: AnalysisMeta): boolean | null {
+  if (partner.status === "queued" || partner.status === "running") return null;
+  const theirs = partner.status !== "done" || !partner.view || partner.angled ? null : partner.view === "side_on" ? "side" : "rear";
+  return mine !== null && theirs !== null && mine !== theirs;
 }
 
 /** The note at the top of a paired analysis: an invitation when the two clips fit together, or what to fix when they
