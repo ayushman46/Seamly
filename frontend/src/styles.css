@@ -978,7 +978,22 @@ button:focus:not(:focus-visible) { outline: none; }
   /* keep small blocks whole, but let long sections flow across pages (whole-section breaks left pages half empty) */
   .report h2 { break-after: avoid; }
   .report li, .report figure, .report tr, .rp-kino { break-inside: avoid; }
+  /* two cameras: both videos at release, the screen and the numbers; no 3D, controls or buttons */
+  .two-page .two-3d, .two-page .two-scrub, .two-page .an-actions, .two-page .player-hud, .two-page > .btn, .two-page .clip-overlay { display: none !important; }
+  .two-page .notice, .two-page .verdict, .two-page .two-cols > section, .two-page .two-table tr { break-inside: avoid; }
+  .two-page .chip { border-color: #999 !important; color: #111 !important; background: none !important; }
+  .two-page .faint, .two-page .muted, .two-page .two-label, .two-page .two-group { color: #444 !important; }
+  .two-page .cue { color: #111 !important; }
+  html:has(.two-page), body:has(.two-page), body:has(.two-page) #root, .two-page { background: #fff !important; color: #111 !important; }
+  .two-page h1, .two-page h2, .two-page h3, .two-page b, .two-page th, .two-page td, .two-page .verdict-headline, .two-page .card-title,
+  .two-page .an-chips .chip, .two-page .ring .val { color: #111 !important; }
+  .two-page .notice { background: #f4f4f5 !important; border-color: #ccc !important; color: #111 !important; }
+  .two-page .two-grid { background: #ccc !important; }
+  .two-page .two-grid > div, .two-page .two-players { background: #fff !important; }
+  .two-page .cue { background: #f4f4f5 !important; }
+  .print-only { display: block !important; }
 }
+.print-only { display: none; }
 
 /* inline link-style button (inside notices) */
 .link-btn { background: none; border: 0; padding: 0; color: var(--c-accent, #34d399); text-decoration: underline; cursor: pointer; font: inherit; }

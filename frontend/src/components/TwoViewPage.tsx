@@ -3,7 +3,7 @@ import { api } from "../api";
 import type { AnalysisMeta, AnalysisResult, EventKey } from "../types";
 import { alignFrame, sinceRelease, type Camera, type FusedRow, type SharedContacts, type TwoView } from "../lib/twoview";
 import { EVENTS } from "../lib/constants";
-import { fmt, unitLabel } from "../lib/format";
+import { DATE_LOCALE, fmt, unitLabel } from "../lib/format";
 import { usePageTitle } from "../lib/title";
 import { lazyPage } from "../lib/lazy";
 import ErrorBoundary from "./ErrorBoundary";
@@ -208,6 +208,12 @@ function Ready({ d, go, unpair }: { d: Extract<Loaded, { status: "ok" }>; go: (t
     return () => cancelAnimationFrame(raf);
   }, [playing, speed, s, sf0, sf1]);
 
+  // print: both cameras at release, then the browser's print dialog (save as PDF from there)
+  const printIt = () => {
+    setPlaying(false);
+    if (s.events.br) setFrame(s.events.br.frame);
+    window.setTimeout(() => window.print(), 400);
+  };
   // keyboard: space plays and pauses, the arrows step a frame (shift: five), as on the analysis page
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -268,9 +274,11 @@ function Ready({ d, go, unpair }: { d: Extract<Loaded, { status: "ok" }>; go: (t
             players={() => [...document.querySelectorAll<HTMLCanvasElement>(".two-grid .player-stage canvas")]}
             labels={["Side-on", rearLabel]} facts={{ ...s, metrics: tv.rows.map((x) => x.metric) }}
             cueText={top?.drill.cue ?? null} title={`${name}: two cameras`} expect={(f) => [f, alignFrame(s, f, r, tv.sync.offset).frame]} />
+          <button className="btn sm" onClick={printIt} title="A printable page (or PDF) with both cameras at release, the back-health screen and every measurement">Print / PDF</button>
           <button className="btn ghost sm" onClick={unpair}>Unpair</button>
         </div>
       </div>
+      <p className="print-only faint" style={{ fontSize: 12 }}>Seamly · two cameras · printed {new Date().toLocaleDateString(DATE_LOCALE, { day: "numeric", month: "short", year: "numeric" })} · both videos shown at {evAt(s, frame) || `frame ${frame}`}</p>
 
       <div className={`notice ${same.verdict === "mismatch" ? "warn" : ""}`} style={{ marginBottom: 14 }} role={same.verdict === "mismatch" ? "alert" : undefined}>
         {same.verdict === "mismatch" ? <IAlert size={16} /> : same.verdict === "match" ? <ICheck size={16} /> : <IInfo size={16} />}
