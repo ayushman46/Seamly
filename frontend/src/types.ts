@@ -180,6 +180,7 @@ export interface SessionSummary {
   fps_real?: number | null;
   top: { key: string; headline: string; title: string } | null;
   metrics: Record<string, { label: string; unit: string; value: number; rating: string; reliability: string }>;
+  pair?: string | null;   // the same ball from a second camera
 }
 
 export interface PlayerProgress {

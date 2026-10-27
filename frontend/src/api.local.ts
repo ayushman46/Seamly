@@ -954,7 +954,10 @@ export const api = {
     const mine = [...metas.values()].filter((m) => m.player_id === pid);
     const pace = mine.filter((m) => m.status === "done" && m.pace).sort((a, b) => a.created - b.created)
       .map((m) => ({ id: m.id, created: m.created, kmh: m.pace!.kmh, lo: m.pace!.lo, hi: m.pace!.hi }));
-    return { player: playerOut(p), ...playerProgress(p, mine.map((m) => ({ meta: m, summary: m.summary }))), pace } as unknown as PlayerProgress;
+    const prog = playerProgress(p, mine.map((m) => ({ meta: m, summary: m.summary })));
+    // a ball filmed by two cameras: each session knows its pair (for a link to both together)
+    const sessions = prog.sessions.map((x: { id: string }) => ({ ...x, pair: metas.get(x.id)?.pair ?? null }));
+    return { player: playerOut(p), ...prog, sessions, pace } as unknown as PlayerProgress;
   },
   upload: async (file: File, opts: { bowling_arm: string; height_cm?: number; slowmo_factor: number; player_id?: string | null }, onProgress?: (f: number) => void) => {
     await loadAll();

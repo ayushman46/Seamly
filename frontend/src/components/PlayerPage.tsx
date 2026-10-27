@@ -291,7 +291,8 @@ export default function PlayerPage({ pid, go }: { pid: string; go: (to: string) 
               <div role="heading" aria-level={2} className="card-title section-label">Sessions</div>
               <div className="stack" style={{ gap: 8 }}>
                 {[...data.sessions].reverse().map((x) => (
-                  <div key={x.id} className="card session-row" role="link" tabIndex={0} aria-label={`Open ${x.name}`} onClick={() => go(`/a/${x.id}`)}
+                  <div key={x.id}>
+                  <div className="card session-row" role="link" tabIndex={0} aria-label={`Open ${x.name}`} onClick={() => go(`/a/${x.id}`)}
                     onKeyDown={(e) => e.key === "Enter" && go(`/a/${x.id}`)}>
                     <span className="mono faint" style={{ width: 64 }}>{dateOf(x.created)}</span>
                     <span className="grow" style={{ fontWeight: 600 }}>{x.name}</span>
@@ -299,6 +300,12 @@ export default function PlayerPage({ pid, go }: { pid: string; go: (to: string) 
                     {x.top && <span className="faint hide-sm" style={{ fontSize: 12 }}>Focus: {x.top.title}</span>}
                     <span className="score-pill static">{x.score ?? "–"}<small>/100</small></span>
                     <IChevronRight size={16} className="faint" />
+                  </div>
+                  {x.pair && (
+                    <button type="button" className="link-btn session-pair" onClick={() => go(`/two/${x.id}/${x.pair}`)}>
+                      Also filmed by a second camera: see both together
+                    </button>
+                  )}
                   </div>
                 ))}
               </div>
