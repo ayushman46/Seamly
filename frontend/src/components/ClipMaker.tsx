@@ -27,6 +27,8 @@ export default function ClipMaker({ meta, result, ins, fileBase, frame, onFrame,
   const [progress, setProgress] = useState<number | null>(null);
   const [clip, setClip] = useState<{ blob: Blob; url: string; mime: string } | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [askingMic, setAskingMic] = useState(false);   // waiting for the browser's microphone prompt
+  const runId = useRef(0);   // a newer attempt (or giving up on the microphone) retires a pending one
   const cancel = useRef(false);
   const outRef = useRef<HTMLCanvasElement | null>(null);   // the clip as it records, shown in the dialog
   const micRef = useRef<MediaStream | null>(null);
@@ -87,9 +89,13 @@ export default function ClipMaker({ meta, result, ins, fileBase, frame, onFrame,
     setErr(null);
     setClip((c) => { if (c) URL.revokeObjectURL(c.url); return null; });
     let mic: MediaStream | null = null;
+    const run = ++runId.current;
     if (voice) {
+      setAskingMic(true);
       try { mic = micRef.current = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }); }
-      catch (e) { setErr(`Couldn't use the microphone (${(e as Error).message || (e as Error).name}). Untick “Record my voice” to make the clip without it.`); return; }
+      catch (e) { if (run !== runId.current || !alive.current) return; setErr(`Couldn't use the microphone (${(e as Error).message || (e as Error).name}). Untick “Record my voice” to make the clip without it.`); return; }
+      finally { if (alive.current) setAskingMic(false); }
+      if (!alive.current || run !== runId.current) { mic.getTracks().forEach((t) => t.stop()); return; }
     }
     const start = frame;
     cancel.current = false;
@@ -250,8 +256,14 @@ export default function ClipMaker({ meta, result, ins, fileBase, frame, onFrame,
                     <input type="checkbox" checked={hideName} onChange={(e) => setHideName(e.target.checked)} /> Hide the name (to share a child's clip more privately)
                   </label>
                 </div>
+                {askingMic && (
+                  <p className="muted" role="status" style={{ margin: "12px 0 0", fontSize: 13 }}>
+                    Waiting for the microphone: allow it in your browser's prompt, or{" "}
+                    <button type="button" className="link-btn" onClick={() => { runId.current++; setVoice(false); setAskingMic(false); }}>make the clip without my voice</button>.
+                  </p>
+                )}
                 <div className="row wrap" style={{ gap: 8, marginTop: 14, justifyContent: "flex-end" }}>
-                  <button className="btn primary" onClick={make} disabled={!mime}><IFilm size={15} /> Make clip</button>
+                  <button className="btn primary" onClick={make} disabled={!mime || askingMic}><IFilm size={15} /> Make clip</button>
                 </div>
               </>
             )}
