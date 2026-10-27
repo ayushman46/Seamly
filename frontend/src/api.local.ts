@@ -19,7 +19,7 @@ import { frameObj } from "./engine/body";
 import { playerProgress, summarise } from "./engine/progress";
 import { BACKUP_VERSION, FILE_NAME, decodeBackup, encodeBackup, type BackupAnalysis } from "./lib/backup";
 import { creaseCall } from "./lib/crease";
-import { cameraOf, sharedContacts, syncOffset, twoView as fuseTwo, type SharedContacts, type TwoView } from "./lib/twoview";
+import { cameraOf, sharedContacts, speedFix, syncOffset, twoView as fuseTwo, type SharedContacts, type SpeedFix, type TwoView } from "./lib/twoview";
 import { isoDate, parseOvers } from "./lib/bowlingLog";
 import { runupSpeed, type Runup } from "./lib/runup";
 
@@ -777,7 +777,7 @@ export const api = {
    * with them, in memory: nothing stored changes) and the fused measurements, score, coaching and back-health screen. */
   twoView: async (a: string, b: string): Promise<
     | { status: "pending" | "failed" | "missing" | "unpaired"; metas: AnalysisMeta[] }
-    | { status: "views"; metas: AnalysisMeta[]; message: string }
+    | { status: "views"; metas: AnalysisMeta[]; message: string; speed: { id: string; fix: SpeedFix } | null }
     | { status: "ok"; side: { id: string; meta: AnalysisMeta; result: AnalysisResult; stored: AnalysisResult }; rear: { id: string; meta: AnalysisMeta; result: AnalysisResult; stored: AnalysisResult };
         view: TwoView; carried: SharedContacts; fallback: boolean }> => {
     await loadAll();
@@ -793,15 +793,26 @@ export const api = {
     const ca = cameraOf(ra), cb = cameraOf(rb);
     if (!ca || !cb || ca === cb) {
       const what = (c: typeof ca, r: AnalysisResult) => (!c ? (r.view.oblique ? "angled" : "unclear") : c === "side" ? "side-on" : "from behind or in front");
-      return { status: "views", metas: [pub(ma), pub(mb)], message: ca && ca === cb
+      // a clip at the wrong clip speed can read as angled: if one is side-on and the other behind or in front (at an
+      // angle or not), say so, with the fix
+      let speed: { id: string; fix: SpeedFix } | null = null;
+      const sideOf = (r: AnalysisResult) => r.view.view === "side_on", rearOf = (r: AnalysisResult) => r.view.view === "behind" || r.view.view === "front_on";
+      const pairAs = sideOf(ra) && rearOf(rb) ? ([ra, rb, a, b] as const) : sideOf(rb) && rearOf(ra) ? ([rb, ra, b, a] as const) : null;
+      if (pairAs) {
+        const fix = speedFix(pairAs[0], pairAs[1]);
+        if (fix) speed = { id: fix.cam === "side" ? pairAs[2] : pairAs[3], fix };
+      }
+      return { status: "views", metas: [pub(ma), pub(mb)], speed, message: ca && ca === cb
         ? `Both clips are ${what(ca, ra)}. Pair a side-on clip with one filmed from behind (or in front of) the bowler.`
         : `One clip is ${what(ca, ra)} and the other ${what(cb, rb)}: pairing needs one square side-on clip and one square from behind or in front. If a view was read wrongly, correct it in Detection & settings.` };
     }
     const [sid, rid] = ca === "side" ? [a, b] : [b, a];
     let side = ca === "side" ? ra : rb, rear = ca === "side" ? rb : ra;
-    // lined up by both clips' movement (or at their releases), then contacts are carried at the same moment
+    // lined up by both clips' movement (or at their releases), then contacts are carried at the same moment; not while
+    // one clip's clip speed looks wrong (its clock is off, so "the same moment" would be a different one)
     const sync = syncOffset(side, rear);
-    const carried = sharedContacts(side, rear, sync.offset);
+    const speed = speedFix(side, rear);
+    const carried: SharedContacts = speed ? { side: {}, rear: {}, from: {} } : sharedContacts(side, rear, sync.offset);
     // each clip that receives a contact is measured again with it, as a fixed marker; only contacts that were applied
     // are reported, and a re-measure that fails or reads the camera differently is set aside
     const applied: SharedContacts = { side: {}, rear: {}, from: carried.from };
@@ -832,7 +843,7 @@ export const api = {
     const player = pidOf ? await db.get<StoredPlayer>("player", pidOf).catch(() => undefined) : undefined;
     // `stored`: the analysis as saved, which the stored body mesh belongs to (the 3D view uses it)
     return { status: "ok", side: { id: sid, meta: pub(metas.get(sid)!), result: side, stored: original.side }, rear: { id: rid, meta: pub(metas.get(rid)!), result: rear, stored: original.rear },
-      view: fuseTwo(side, rear, player ?? null, original, sync, applied), carried: applied, fallback };
+      view: fuseTwo(side, rear, player ?? null, original, sync, applied, speed), carried: applied, fallback };
   },
   /** See a sample analysis right away (precomputed). */
   demo: async (which: SampleName = "club") => {

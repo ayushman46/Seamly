@@ -1227,6 +1227,8 @@ body.pace-measuring { padding-bottom: 150px; }
   .cam-stage { max-height: calc(100vh - 150px); }
 }
 .film-check { margin: 18px 0 0; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; font-size: 13px; }
+.film-two { margin: 16px 0 0; max-width: 820px; color: var(--c-text-2); font-size: var(--fs-sm); line-height: 1.6; }
+.film-two b { color: var(--c-text); }
 
 /* no-ball check */
 .crease-view { width: 100%; height: auto; display: block; border-radius: 10px; border: 1px solid var(--c-line); background: #0b0b0c; touch-action: manipulation; }

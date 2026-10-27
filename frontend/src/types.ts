@@ -85,7 +85,7 @@ export interface AnalysisResult {
   fps: number;
   fps_real: number;
   pose3d?: "sam3d" | "motionbert";
-  options: { bowling_arm: string; height_m: number | null; slowmo_factor: number };
+  options: { bowling_arm: string; height_m: number | null; slowmo_factor: number; candidate?: number | null };
   bowler: { track: number; shot: number; score: Candidate };
   candidates: Candidate[];
   bowling_arm: { arm: "left" | "right"; confidence: number; source: string };
@@ -119,7 +119,7 @@ export interface AnalysisMeta {
   view: View | null;
   arm: string | null;
   thumb_frame: number | null;
-  options: { bowling_arm: string; height_m: number | null; slowmo_factor: number } | null;
+  options: { bowling_arm: string; height_m: number | null; slowmo_factor: number; candidate?: number | null } | null;
   timing_s: number | null;
   elapsed: number | null;
   size_mb: number | null;

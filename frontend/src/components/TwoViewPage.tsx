@@ -1,7 +1,7 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import type { AnalysisMeta, AnalysisResult, EventKey } from "../types";
-import { alignFrame, sinceRelease, type Camera, type FusedRow, type SharedContacts, type TwoView } from "../lib/twoview";
+import { alignFrame, sinceRelease, type Camera, type FusedRow, type SharedContacts, type SpeedFix, type TwoView } from "../lib/twoview";
 import { EVENTS } from "../lib/constants";
 import { DATE_LOCALE, fmt, unitLabel } from "../lib/format";
 import { usePageTitle } from "../lib/title";
@@ -23,7 +23,7 @@ type Loaded =
   | { status: "failed"; metas: AnalysisMeta[] }
   | { status: "missing"; metas: AnalysisMeta[] }
   | { status: "unpaired"; metas: AnalysisMeta[] }
-  | { status: "views"; metas: AnalysisMeta[]; message: string }
+  | { status: "views"; metas: AnalysisMeta[]; message: string; speed: { id: string; fix: SpeedFix } | null }
   | { status: "ok"; side: Clip; rear: Clip; view: TwoView; carried: SharedContacts; fallback: boolean };
 
 /** How each camera is named: the second one is behind the bowler or in front of them. */
@@ -67,6 +67,15 @@ export default function TwoViewPage({ a, b, go }: { a: string; b: string; go: (t
   const setView = async (id: string, view: "behind" | "front_on") => {
     setData({ status: "loading" });
     try { await api.recompute(id, { view }); } catch (e) { setData({ status: "error", message: (e as Error).message }); return; }
+    setTick((n) => n + 1);
+  };
+  // a clip analysed at the wrong clip speed: analyse it again at the speed its movement says (a new clip speed changes
+  // the analysis window, so it's a re-analysis), then the page waits for it; a clip that was one of several
+  // deliveries in its video stays that delivery
+  const setClipSpeed = async (id: string, factor: number, candidate: number | null | undefined) => {
+    setData({ status: "loading" });
+    try { await api.rerun(id, { slowmo_factor: factor, ...(candidate !== null && candidate !== undefined ? { candidate } : {}) }); }
+    catch (e) { setData({ status: "error", message: (e as Error).message }); return; }
     setTick((n) => n + 1);
   };
   // focus goes to the page's heading once the results are in (they replace the waiting card), or after unpairing
@@ -129,7 +138,12 @@ export default function TwoViewPage({ a, b, go }: { a: string; b: string; go: (t
         ) : data.status === "views" ? (
           <>
             <h1 className="an-title">Two cameras</h1>
-            <div className="notice warn" role="alert"><IAlert size={16} /> <div>{data.message}</div></div>
+            {data.speed ? (() => {
+              const sp = data.speed, m = data.metas.find((x) => x.id === sp.id);
+              return <SpeedNotice fix={sp.fix} current={m?.options?.slowmo_factor ?? 1} frontOn={sp.fix.cam === "rear" && m?.view === "front_on"}
+                extra={`That can also make a clip's camera view read wrongly, which is why the two can't be put together yet.`}
+                onFix={() => setClipSpeed(sp.id, sp.fix.factor, m?.options?.candidate)} />;
+            })() : <div className="notice warn" role="alert"><IAlert size={16} /> <div>{data.message}</div></div>}
             <div className="card card-pad" style={{ marginTop: 12 }}>
               {data.metas.map((m) => {
                 const read = !m.view ? "not read yet" : `${({ side_on: "side-on", behind: "behind the bowler", front_on: "in front of the bowler" } as const)[m.view]}${m.angled ? ", at an angle" : ""}`;
@@ -149,10 +163,36 @@ export default function TwoViewPage({ a, b, go }: { a: string; b: string; go: (t
             </div>
           </>
         ) : (
-          <Ready d={data} go={go} unpair={unpair} />
+          <Ready d={data} go={go} unpair={unpair} setClipSpeed={setClipSpeed} />
         )}
       </main>
     </>
+  );
+}
+
+/** One clip at the wrong clip speed (slow motion saved at normal speed, or a speed set for both clips when only one
+ * phone filmed in slow motion): which clip, why Seamly thinks so, and the one-click fix. */
+function SpeedNotice({ fix, current, frontOn, extra, also, onFix }: {
+  fix: SpeedFix; current: number; frontOn: boolean; extra?: string; also?: string; onFix: () => void;
+}) {
+  const cur = Math.max(1, current || 1);
+  const which = fix.cam === "side" ? "side-on clip" : `clip ${frontOn ? "from in front" : "from behind"}`;
+  return (
+    <div className="notice warn" role="alert" style={{ marginBottom: 14 }}>
+      <IAlert size={16} />
+      <div>
+        <b>The {which} seems to be at the wrong speed.</b>{" "}
+        {fix.factor > cur
+          ? `Its movement matches the other camera's only when its time runs ${fix.ratio}× faster: the phone probably filmed in slow motion and saved it at normal speed.`
+          : `Its movement matches the other camera's only when its time runs ${fix.ratio}× slower: its clip speed is ${cur}×, but this phone ${fix.factor > 1 ? "filmed less slowly than that" : "didn't film in slow motion"}.`}
+        {" "}{extra ?? "Until it's fixed the timings are off, the two videos don't play in step, and the same-ball check can't compare them."}
+        {also && <> {also}</>}
+        <div className="row wrap" style={{ gap: 8, marginTop: 8 }}>
+          <button type="button" className="btn sm primary" onClick={onFix}>Set its clip speed to {fix.factor}×</button>
+          <span className="faint" style={{ fontSize: 12.5 }}>Seamly analyses that clip again, then this page fills in.</span>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -164,20 +204,27 @@ function sameText(same: TwoView["same"], frontOn: boolean): string {
   if (arm) parts.push(arm.ok ? `Both cameras see a ${arm.a}-arm bowler` : `The side-on camera sees a ${arm.a}-arm bowler and ${rearCam} a ${arm.b}-arm one`);
   for (const c of same.checks.filter((x) => x.label !== "Bowling arm")) {
     const what = c.label.charAt(0).toLowerCase() + c.label.slice(1);
-    const stride = c.label !== "Upper arm horizontal to release";
-    parts.push(`${what} takes ${c.a} ms side-on and ${c.b} ms on ${rearCam}${c.ok ? (stride ? ", which agrees" : " (close enough for so short a phase: within two frames of each camera)") : ", which doesn't agree"}`);
+    parts.push(`${what} takes ${c.a} ms side-on and ${c.b} ms on ${rearCam}${c.ok ? ", which agrees" : ", which doesn't agree"}`);
   }
   let text = parts.join("; ") + ".";
-  if (same.verdict === "unsure") {
+  if (same.verdict === "unsure" && same.coarse && same.checks.some((c) => c.label !== "Bowling arm") && same.checks.every((c) => c.ok)) {
+    text += " At these frame rates a frame is too long for the stride's timing to tell two balls apart (two balls of the same spell time much the same): film in slow motion to be sure.";
+  } else if (same.verdict === "unsure") {
     const missed = (cam: "side" | "rear") => same.unseen[cam].map((k) => (k === "bfc" ? "back" : "front")).join(" and ");
     const who = [same.unseen.side.length ? `the side-on camera didn't see the ${missed("side")} foot land` : "",
       same.unseen.rear.length ? `${rearCam} didn't see the ${missed("rear")} foot land` : ""].filter(Boolean).join(" and ");
-    text += ` To be sure it's the same ball (not two balls of the same spell) Seamly compares the stride's timing, but ${who || "the contacts weren't seen by both"}.`;
+    const off = same.checks.some((c) => c.label !== "Bowling arm" && !c.ok);
+    text += who ? ` To be sure it's the same ball (not two balls of the same spell) Seamly compares the stride's timing, but ${who}.`
+      : off ? " The stride's timing is further apart than a frame of each clip allows, though not by much: check the foot contacts and the release on each clip."
+        : " To be sure it's the same ball (not two balls of the same spell) Seamly compares the stride's timing, but the contacts weren't seen by both.";
   }
   return text;
 }
 
-function Ready({ d, go, unpair }: { d: Extract<Loaded, { status: "ok" }>; go: (to: string) => void; unpair: () => void }) {
+function Ready({ d, go, unpair, setClipSpeed }: {
+  d: Extract<Loaded, { status: "ok" }>; go: (to: string) => void; unpair: () => void;
+  setClipSpeed: (id: string, factor: number, candidate: number | null | undefined) => void;
+}) {
   const { side, rear, view: tv, carried } = d;
   const s = side.result, r = rear.result;
   const sf0 = s.frames.start, sf1 = s.frames.end - 1;
@@ -285,6 +332,13 @@ function Ready({ d, go, unpair }: { d: Extract<Loaded, { status: "ok" }>; go: (t
       </div>
       <p className="print-only faint" style={{ fontSize: 12 }}>Seamly · two cameras · printed {new Date().toLocaleDateString(DATE_LOCALE, { day: "numeric", month: "short", year: "numeric" })} · both videos shown at {evAt(s, frame) || `frame ${frame}`}</p>
 
+      {tv.speed ? (() => {
+        const sp = tv.speed, c = sp.cam === "side" ? side : rear;
+        // a different bowling arm has nothing to do with the clip speed: it stays said
+        const arm = same.checks.find((x) => x.label === "Bowling arm" && !x.ok);
+        return <SpeedNotice fix={sp} current={c.result.options.slowmo_factor} frontOn={frontOn} onFix={() => setClipSpeed(c.id, sp.factor, c.result.options.candidate)}
+          also={arm ? `Also, the side-on camera sees a ${arm.a}-arm bowler and ${frontOn ? "the camera in front" : "the camera behind"} a ${arm.b}-arm one: check these are the same ball.` : undefined} />;
+      })() : (
       <div className={`notice ${same.verdict === "mismatch" ? "warn" : ""}`} style={{ marginBottom: 14 }} role={same.verdict === "mismatch" ? "alert" : undefined}>
         {same.verdict === "mismatch" ? <IAlert size={16} /> : same.verdict === "match" ? <ICheck size={16} /> : <IInfo size={16} />}
         <div>
@@ -294,6 +348,7 @@ function Ready({ d, go, unpair }: { d: Extract<Loaded, { status: "ok" }>; go: (t
           {tv.sync.score < 0.4 && ` The movement in the two clips doesn't line up well (${Math.round(Math.max(0, tv.sync.score) * 100)}% match): check both clips follow the same bowler through the same ball.`}
         </div>
       </div>
+      )}
 
       <section className="card verdict" aria-labelledby="two-verdict">
         <ScoreRing score={tv.score} grade={tv.grade} />

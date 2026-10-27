@@ -1,6 +1,6 @@
 /** Two cameras, one ball (lib/twoview.ts): real-time alignment, the same-ball check and which camera each number is from. */
 import { describe, expect, it } from "vitest";
-import { alignFrame, cameraOf, fuseMetrics, sameBall, sharedContacts, sinceRelease, syncOffset, twoView } from "../src/lib/twoview";
+import { alignFrame, cameraOf, fuseMetrics, sameBall, sharedContacts, sinceRelease, speedFix, syncOffset, twoView, wristRise } from "../src/lib/twoview";
 import type { AnalysisResult, Metric } from "../src/types";
 
 const ev = (frame: number, method = "detected") => ({ frame, time: 0, confidence: 0.9, method });
@@ -44,9 +44,16 @@ describe("lining two clips up", () => {
 
 describe("same ball?", () => {
   it("agrees when the arm and the stride timings match within a frame of each clip", () => {
-    const s = sameBall(clip("side_on", 60, BALL), clip("behind", 30, BALL));
+    const s = sameBall(clip("side_on", 60, BALL), clip("behind", 60, BALL));
     expect(s.verdict).toBe("match");
     expect(s.checks.map((c) => c.label)).toEqual(["Bowling arm", "Back-foot to front-foot contact", "Front-foot contact to release"]);
+    expect(sameBall(clip("side_on", 120, BALL), clip("behind", 30, BALL)).verdict).toBe("match");
+  });
+  it("only checks, not agrees, when a frame is too long for the timing to tell balls apart", () => {
+    // 60 and 30 fps: a frame of each is 50 ms, about what two bowlers' strides differ by
+    const s = sameBall(clip("side_on", 60, BALL), clip("behind", 30, BALL));
+    expect(s).toMatchObject({ verdict: "unsure", coarse: true });
+    expect(s.checks.every((c) => c.ok)).toBe(true);
   });
   it("flags a different bowling arm or a stride far out of time", () => {
     expect(sameBall(clip("side_on", 60, BALL), clip("behind", 60, BALL, [], { arm: "left" })).verdict).toBe("mismatch");
@@ -139,13 +146,14 @@ describe("shared readings and contacts", () => {
 });
 
 describe("review cases", () => {
-  it("never calls two balls the same on the arm's last phase alone", () => {
+  it("doesn't judge the ball on the arm's last phase (too short, and often misread from behind)", () => {
     const a = clip("side_on", 30, { ...BALL, uah: 1.03 }, [], { methods: { bfc: "timing_prior", ffc: "timing_prior" } });
     const b = clip("behind", 30, { ...BALL, uah: 1.03 }, [], { methods: { bfc: "timing_prior", ffc: "timing_prior" } });
     expect(sameBall(a, b).verdict).toBe("unsure");
-    // ... but a very different last phase is a mismatch
+    // the upper arm read 180 ms early from behind (as on a real test clip): still only "check", not "not the same ball"
     const c = clip("behind", 30, { ...BALL, uah: 0.85 }, [], { methods: { bfc: "timing_prior", ffc: "timing_prior" } });
-    expect(sameBall(a, c).verdict).toBe("mismatch");
+    expect(sameBall(a, c).verdict).toBe("unsure");
+    expect(sameBall(a, c).checks.map((x) => x.label)).toEqual(["Bowling arm"]);
   });
   it("is unsure, not a match, when a stride timing is more than a frame of each clip apart but not far", () => {
     // 60 fps each: the limit is 2 frames + 5 ms = 38 ms; 50 ms apart
@@ -171,19 +179,21 @@ describe("lining up by the movement", () => {
   const wristUp = (t: number) => 1.6 * Math.exp(-((t - 1.1) ** 2) / 0.02) - 0.4;
   const backFoot = (t: number) => (t < 0.8 ? 0.4 * Math.max(0, Math.sin((t - 0.5) * 10)) : 0) - 2.2;
   const frontFoot = (t: number) => (t > 0.8 && t < 1.0 ? 0.5 * Math.sin((t - 0.8) * 15) : 0) - 2.2;
-  function moving(view: string, fps: number, releaseAt: number) {
-    const n = Math.round(2 * fps), torso = 200, hip = 500;
+  // `stretch`: slow motion, the file playing `stretch` times slower than real; `set`: the clip speed the analysis used;
+  // `amp`: how high the wrist swings (torso lengths)
+  function moving(view: string, fps: number, releaseAt: number, stretch = 1, set = stretch, amp = 1) {
+    const n = Math.round(2 * fps * stretch), torso = 200, hip = 500;
     const xy: [number, number][][] = [], conf: number[][] = [];
     for (let i = 0; i < n; i++) {
-      const t = i / fps;
+      const t = i / (fps * stretch);
       const p: [number, number][] = Array.from({ length: 17 }, () => [300, 300] as [number, number]);
       p[5] = [290, hip - torso]; p[6] = [310, hip - torso]; p[11] = [295, hip]; p[12] = [305, hip];
-      p[10] = [320, hip - torso * wristUp(t)]; p[9] = [280, hip - torso * (-0.3)];
+      p[10] = [320, hip - torso * wristUp(t) * amp]; p[9] = [280, hip - torso * (-0.3)];
       p[15] = [290, hip - torso * backFoot(t)]; p[16] = [310, hip - torso * frontFoot(t)];
       xy.push(p); conf.push(Array(17).fill(0.9));
     }
-    const r = clip(view, fps, { ...BALL, br: releaseAt });
-    return { ...r, keypoints2d: { names: [], xy, conf } } as AnalysisResult;
+    const r = clip(view, fps, { ...BALL, br: releaseAt }, [], { slowmo: stretch });
+    return { ...r, fps_real: fps * set, options: { slowmo_factor: set }, keypoints2d: { names: [], xy, conf } } as AnalysisResult;
   }
   it("finds how far apart two cameras put the same release, from the motion", () => {
     // the rear camera found its release 3 frames early at 60 fps: its timeline runs 50 ms later
@@ -195,6 +205,48 @@ describe("lining up by the movement", () => {
   });
   it("keeps the releases when there's no motion to match", () => {
     expect(syncOffset(clip("side_on", 60, BALL), clip("behind", 60, BALL))).toEqual({ offset: 0, score: 0, method: "release" });
+  });
+  it("finds a slow-motion clip analysed at normal speed, and the clip speed that fixes it", () => {
+    // the phone behind filmed 120 fps slow motion and saved it at 30 fps; the clip speed was left at 1x
+    const rear4 = speedFix(moving("side_on", 240, 1.1), moving("behind", 30, 1.1, 4, 1));
+    expect(rear4).toMatchObject({ cam: "rear", factor: 4, ratio: 4 });
+    expect(rear4!.score).toBeGreaterThan(rear4!.as_is + 0.15);
+    // the side-on phone's 240 fps saved at 30 fps
+    expect(speedFix(moving("side_on", 30, 1.1, 8, 1), moving("behind", 60, 1.1))).toMatchObject({ cam: "side", factor: 8, ratio: 8 });
+    // 4x set for both clips at upload, but only the phone behind filmed in slow motion: the side-on clip goes back to 1x
+    expect(speedFix(moving("side_on", 60, 1.1, 1, 4), moving("behind", 30, 1.1, 4, 4))).toMatchObject({ cam: "side", factor: 1, ratio: 4 });
+    // both right: nothing to fix, also when the releases are a few frames apart; no motion: nothing to say
+    expect(speedFix(moving("side_on", 120, 1.1), moving("behind", 30, 1.1, 4, 4))).toBeNull();
+    expect(speedFix(moving("side_on", 120, 1.1), moving("behind", 60, 1.05))).toBeNull();
+    expect(speedFix(clip("side_on", 60, BALL), clip("behind", 60, BALL))).toBeNull();
+    expect(twoView(moving("side_on", 240, 1.1), moving("behind", 30, 1.1, 4, 1), null).speed).toMatchObject({ cam: "rear", factor: 4 });
+  });
+  it("says nothing when the timing could mean either clip's speed is wrong and the wrists don't tell", () => {
+    // 4x set for both at upload: the side-on phone really filmed 4x, the one behind 8x. Lowering the side-on clip to 2x
+    // or raising the behind one to 8x both fit the timing; neither wrist is far off a bowler's, so no guess
+    expect(speedFix(moving("side_on", 30, 1.1, 4, 4, 1.5), moving("behind", 30, 1.1, 8, 4, 1.5))).toBeNull();
+  });
+  it("needs the stride's timing to agree before saying a clip speed is wrong", () => {
+    // the movement matches 4x better (a wrist's rise is one bump at any speed), but the contacts and release this
+    // clip found say its stride takes as long as the side-on one's: two different balls, not a speed to fix
+    const stretched = moving("behind", 30, 1.1, 4, 1);
+    const timedLikeSide = { ...stretched, events: clip("behind", 30, BALL).events } as AnalysisResult;
+    expect(speedFix(moving("side_on", 240, 1.1), timedLikeSide)).toBeNull();
+  });
+  it("without the contacts, goes by a wrist rising slower than any bowler's, and the movement", () => {
+    const estimated = (r: AnalysisResult) => ({ ...r, events: { ...r.events, bfc: { ...r.events.bfc!, method: "timing_prior" }, ffc: { ...r.events.ffc!, method: "timing_prior" } } }) as AnalysisResult;
+    // 120 fps from behind saved at 30 fps, analysed at 1x, its contacts not found
+    const side = moving("side_on", 240, 1.1, 1, 1, 1.5), rear = estimated(moving("behind", 30, 1.1, 4, 1, 1.5));
+    expect(wristRise(side)!).toBeGreaterThan(10);
+    expect(wristRise(rear)!).toBeLessThan(5);
+    expect(speedFix(side, rear)).toMatchObject({ cam: "rear", factor: 4, ratio: 4 });
+    // 120 fps saved at 24 fps plays 5x slower: a 24 fps file's likeliest factors are 2x, 5x and 10x
+    expect(speedFix(side, estimated(moving("behind", 24, 1.1, 5, 1, 1.5)))).toMatchObject({ cam: "rear", factor: 5 });
+    // a wrist that never rises before release (a misplaced release) isn't a slow one
+    const flat = { ...side, keypoints2d: { ...side.keypoints2d, xy: side.keypoints2d.xy.map((p) => p.map((q, j) => (j === 10 ? [q[0], 500] : q))) } } as AnalysisResult;
+    expect(wristRise(flat)).toBeNull();
+    // both at the right speed, contacts not found: both wrists rise like a bowler's, nothing to fix
+    expect(speedFix(side, estimated(moving("behind", 30, 1.1, 4, 4, 1.5)))).toBeNull();
   });
 });
 

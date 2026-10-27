@@ -429,7 +429,7 @@ function Uploader({ go, disabled, health, players, current, onChoose, onCreate, 
         <label className="pick two-cams-pick">
           <input type="checkbox" checked={twoCams} onChange={(e) => setTwoCams(e.target.checked)} />
           <span><b>The same ball from two cameras</b> (one side-on, one behind the stumps): analysed together for the whole action and the full back-health screen.{" "}
-            {twoCams && <span className="faint">Both clips use the clip speed below; if only one phone filmed in slow motion, analyse them one at a time and pair them from either analysis.</span>}</span>
+            {twoCams && <span className="faint">Both clips use the clip speed below. If only one phone filmed in slow motion, leave it at normal speed: Seamly spots the slow-motion clip and offers to fix its speed.</span>}</span>
         </label>
       )}
       <div className="field" style={{ marginTop: 14 }}>

@@ -2,6 +2,7 @@ import type { AnalysisResult, Insights, Metric, Player, Priority } from "../type
 import { coach } from "../engine/coaching";
 import { rate } from "../engine/metrics";
 import { backHealth, summary } from "../engine/insights";
+import { SLOWMO_CHOICES } from "../engine/common";
 
 /**
  * Two cameras, one ball: a side-on clip and a clip from behind (or in front of) the bowler of the same delivery,
@@ -70,9 +71,11 @@ function motionCurves(r: AnalysisResult): { t: number[]; f: (number | null)[][] 
 
 /** Linear interpolation of a curve at time x (null outside it or across a gap). */
 function sample(t: number[], y: (number | null)[], x: number): number | null {
-  if (x < t[0] || x > t[t.length - 1]) return null;
-  let i = 0;
-  while (i + 1 < t.length && t[i + 1] < x) i++;
+  if (!t.length || x < t[0] || x > t[t.length - 1]) return null;
+  // the last time before x (binary search: the speed check samples a lot)
+  let lo = 0, hi = t.length - 1;
+  while (lo < hi) { const m = (lo + hi + 1) >> 1; if (t[m] < x) lo = m; else hi = m - 1; }
+  const i = lo;
   if (i + 1 >= t.length) return y[i];
   const a = y[i], b = y[i + 1];
   if (a === null || b === null) return null;
@@ -93,21 +96,27 @@ export interface Sync { offset: number; score: number; method: "motion" | "relea
  * the curves with enough frames in common (-1 when fewer than two do). */
 export function syncScorer(side: AnalysisResult, rear: AnalysisResult): (c: number) => number {
   const A = motionCurves(side), B = motionCurves(rear);
-  return (c: number) => {
-    let sum = 0, n = 0;
-    for (let k = 0; k < 4; k++) {
-      const x: number[] = [], y: number[] = [];
-      for (let i = 0; i < A.t.length; i++) {
-        const ta = A.t[i];
-        if (ta < -0.5 || ta > 0.25 || A.f[k][i] === null) continue;
-        const v = sample(B.t, B.f[k], ta + c);
-        if (v === null) continue;
-        x.push(A.f[k][i]!); y.push(v);
-      }
-      if (x.length >= 8) { sum += pearson(x, y); n++; }
+  return (c: number) => matchScore(A, B, c, 1, 1);
+}
+
+type Curves = ReturnType<typeof motionCurves>;
+
+/** The mean correlation of the curves when B runs c seconds later, with each clip's time divided by its stretch (a
+ * clip whose time runs k times too long, slow motion played at normal speed, has stretch k). */
+function matchScore(A: Curves, B: Curves, c: number, ka: number, kb: number): number {
+  let sum = 0, n = 0;
+  for (let k = 0; k < 4; k++) {
+    const x: number[] = [], y: number[] = [];
+    for (let i = 0; i < A.t.length; i++) {
+      const ta = A.t[i] / ka;
+      if (ta < -0.5 || ta > 0.25 || A.f[k][i] === null) continue;
+      const v = sample(B.t, B.f[k], (ta + c) * kb);
+      if (v === null) continue;
+      x.push(A.f[k][i]!); y.push(v);
     }
-    return n >= 2 ? sum / n : -1;
-  };
+    if (x.length >= 8) { sum += pearson(x, y); n++; }
+  }
+  return n >= 2 ? sum / n : -1;
 }
 
 /** How much later (seconds) the rear clip's timeline runs than the side clip's, both counted from their own release:
@@ -127,16 +136,152 @@ export function syncOffset(side: AnalysisResult, rear: AnalysisResult): Sync {
   return { offset: 0, score: Math.round(Math.max(atRelease, 0) * 100) / 100, method: "release" };
 }
 
+export interface SpeedFix {
+  cam: Camera;           // the clip whose clip speed is wrong
+  factor: number;        // the clip speed it should have (its current one times or divided by `ratio`)
+  ratio: number;         // how many times longer the slower-looking clip's time runs than the other's
+  timed: number;         // that ratio as measured (the stride's phases both clips timed, or the wrist's rise time)
+  score: number;         // how well the motion matches with the time corrected (0–1), against `as_is` as the clips are
+  as_is: number;
+}
+
+// phases long enough to time at 25–30 fps (a frame is a small part of them), from contacts and release each clip
+// found itself
+const LONG_PHASES = [["bfc", "br"], ["bfc", "ffc"], ["ffc", "br"]] as const;
+// how fast the higher wrist rises towards release (torso lengths a real second): 13–51 on every real and rendered
+// delivery tested, under 1 on slow motion analysed at normal speed (its last half-second before release is a
+// fraction of the real swing, when the wrist is already near the top); far above 51, a real-time clip analysed as
+// slow motion
+const RISE_SLOW = 5, RISE_REAL = 10, RISE_FAST = 80;
+
+/** The fastest the higher wrist rises, in torso lengths a second of the clip's real time, over the half-second before
+ * release (to just after it). */
+export function wristRise(r: AnalysisResult): number | null {
+  const { t, f } = motionCurves(r);
+  let top: number | null = null;
+  for (let i = 1; i < t.length; i++) {
+    const a = f[0][i - 1], b = f[0][i], dt = t[i] - t[i - 1];
+    if (a === null || b === null || dt <= 0 || t[i] < -0.5 || t[i] > 0.1) continue;
+    const v = (b - a) / dt;
+    top = top === null ? v : Math.max(top, v);
+  }
+  // a wrist that never rises in that half-second says the release is misplaced, not that the clip is slow
+  return top !== null && top > 0 ? top : null;
+}
+
+/** How long the higher wrist takes to climb from 20% to 80% of its rise to its highest point (seconds of the clip's
+ * real time): for one ball, the same on both cameras, so its ratio is how many times too long one clip's time runs. */
+export function wristRiseTime(r: AnalysisResult): number | null {
+  const { t, f } = motionCurves(r);
+  const cv = t.map((x, i) => [x, f[0][i]] as const).filter((p): p is readonly [number, number] => p[1] !== null);
+  if (cv.length < 8) return null;
+  let iPk = 0;
+  for (let i = 1; i < cv.length; i++) if (cv[i][1] > cv[iPk][1]) iPk = i;
+  const pk = cv[iPk][1];
+  // back from the highest point to the bottom of the swing (until the wrist comes clearly back up)
+  let j = iPk, lo = pk;
+  while (j > 0 && cv[j - 1][1] <= lo + 0.15) { j--; lo = Math.min(lo, cv[j][1]); }
+  if (pk - lo < 0.5) return null;
+  const cross = (level: number) => {
+    for (let i = iPk; i > j; i--) {
+      const [ta, va] = cv[i - 1], [tb, vb] = cv[i];
+      if (va <= level && level <= vb) return ta + ((level - va) / Math.max(1e-9, vb - va)) * (tb - ta);
+    }
+    return null;
+  };
+  const t20 = cross(lo + 0.2 * (pk - lo)), t80 = cross(lo + 0.8 * (pk - lo));
+  return t20 === null || t80 === null || t80 <= t20 ? null : t80 - t20;
+}
+
+// phones film slow motion at 60, 120 or 240 fps and save it at the file's rate (30, or 24–25): from a 30 fps file 2x,
+// 4x or 8x, from a 24 or 25 fps one 2x, 5x or 10x, are by far the likeliest factors
+const CAPTURE_FPS = [60, 120, 240];
+const nearest = (xs: number[], k: number) => xs.reduce((a, c) => (Math.abs(c - k) < Math.abs(a - k) ? c : a), xs[0]);
+/** The clip-speed factor a measured ratio is, for a slow-motion file playing at `fileFps`: the nearest phone factor
+ * within 25%, otherwise the nearest clip-speed choice within 15%, otherwise none (too unclear to guess). */
+function snapFactor(k: number, fileFps: number): number | null {
+  const choices = SLOWMO_CHOICES.filter((x) => x > 1);
+  const phone = [...new Set(CAPTURE_FPS.map((c) => nearest(choices, c / Math.max(1, fileFps))))];
+  const p = nearest(phone, k);
+  if (Math.abs(k - p) / p <= 0.25) return p;
+  const c = nearest(choices, k);
+  return Math.abs(k - c) / c <= 0.15 ? c : null;
+}
+
+/** One clip's time running a whole number of times too long or too short: slow motion that the phone saved at
+ * normal speed, or a clip speed set for both clips when only one phone filmed in slow motion. It takes two things
+ * that agree. First, the clip's timing: every phase of the stride both clips timed is about the same whole number of
+ * times longer on one of them; or, when the contacts weren't found (a clip at the wrong speed often hides them), one
+ * clip's wrist rises to release far slower than any real bowler's while the other's is normal. Second, the movement:
+ * the motion curves match with that clip's time shrunk by that factor, clearly better than as they are. The motion
+ * alone isn't enough: a wrist's rise to release is one bump, and one bump still looks like another stretched. The fix
+ * raises the slower clip's speed or lowers the faster one's (a speed shared by both clips at upload), whichever is
+ * possible; when both are, the wrists decide, and when they don't, nothing is said. */
+export function speedFix(side: AnalysisResult, rear: AnalysisResult): SpeedFix | null {
+  const A = motionCurves(side), B = motionCurves(rear);
+  if (A.t.length < 8 || B.t.length < 8) return null;
+  const best = (ka: number, kb: number) => {
+    let top = -Infinity, at = 0;
+    for (let c = -0.25; c <= 0.25 + 1e-9; c += 0.005) { const v = matchScore(A, B, c, ka, kb); if (v > top) { top = v; at = c; } }
+    for (let c = at - 0.005; c <= at + 0.005 + 1e-9; c += 0.001) top = Math.max(top, matchScore(A, B, c, ka, kb));
+    return top;
+  };
+  const stretched = (slow: Camera, k: number) => (slow === "rear" ? best(1, k) : best(k, 1));
+  const q: number[] = [];
+  for (const [k0, k1] of LONG_PHASES) {
+    const a = durMs(side, k0, k1), b = durMs(rear, k0, k1);
+    if (a !== null && b !== null && a >= 60 && b >= 60) q.push(b / a);
+  }
+  let slow: Camera, k: number, timed: number | null = null;
+  if (q.length) {
+    const sorted = [...q].sort((x, y) => x - y);
+    const med = sorted.length % 2 ? sorted[sorted.length >> 1] : Math.sqrt(sorted[sorted.length / 2 - 1] * sorted[sorted.length / 2]);
+    slow = med >= 1 ? "rear" : "side";
+    k = med >= 1 ? med : 1 / med;
+    if (!q.every((x) => Math.abs((med >= 1 ? x : 1 / x) - k) / k <= 0.25)) return null;
+    timed = Math.round(k * 100) / 100;
+  } else {
+    // no phase both timed: a wrist far slower than a bowler's says which clip, the wrist's rise time how much
+    const rs = wristRise(side), rr = wristRise(rear);
+    if (rs === null || rr === null) return null;
+    if (rr < RISE_SLOW && rs >= RISE_REAL) slow = "rear";
+    else if (rs < RISE_SLOW && rr >= RISE_REAL) slow = "side";
+    else return null;
+    const ts = wristRiseTime(side), tr = wristRiseTime(rear);
+    if (ts === null || tr === null) return null;
+    k = slow === "rear" ? tr / ts : ts / tr;
+  }
+  const snapped = k >= 1.6 ? snapFactor(k, (slow === "side" ? side : rear).fps) : null;
+  if (snapped === null) return null;
+  const ratio = snapped;
+  const asIs = best(1, 1), score = stretched(slow, ratio);
+  if (score < 0.5 || score < asIs + 0.1) return null;
+  const clip = (c: Camera) => (c === "side" ? side : rear);
+  const fast: Camera = slow === "side" ? "rear" : "side";
+  const cur = (c: Camera) => Math.max(1, clip(c).options.slowmo_factor || 1);
+  const lowered = cur(fast) / ratio, raised = cur(slow) * ratio;
+  const valid = (f: number) => SLOWMO_CHOICES.some((x) => Math.abs(x - f) < 1e-6);
+  const raise = valid(raised) ? { cam: slow, factor: raised } : null, lower = valid(lowered) ? { cam: fast, factor: lowered } : null;
+  // the timing says only how the two clips' speeds compare: with both a lower speed on one and a higher on the other
+  // possible, a wrist far slower than a bowler's says raise, far faster says lower, and otherwise it's too unclear
+  const rSlow = wristRise(clip(slow)), rFast = wristRise(clip(fast));
+  const fix = timed === null ? raise
+    : raise && lower ? (rSlow !== null && rSlow < RISE_SLOW ? raise : rFast !== null && rFast > RISE_FAST ? lower : null)
+      : raise ?? lower;
+  if (!fix) return null;
+  return { ...fix, ratio, timed: timed ?? Math.round(k * 100) / 100, score: Math.round(score * 100) / 100, as_is: Math.round(Math.max(asIs, 0) * 100) / 100 };
+}
+
 /** Distinct frames per real second (repeated frames add nothing). */
 const distinctFps = (r: AnalysisResult) => r.fps_real * (1 - (r.quality.repeated_frames ?? 0));
 
 const FOUND = (m: string | undefined) => !!m && m !== "timing_prior" && m !== "constrained";
-const durMs = (r: AnalysisResult, k0: "bfc" | "ffc" | "uah", k1: "ffc" | "br") => {
+function durMs(r: AnalysisResult, k0: "bfc" | "ffc" | "uah", k1: "ffc" | "br"): number | null {
   const a = r.events[k0], b = r.events[k1];
   if (!a || !b || !FOUND(a.method) || !FOUND(b.method)) return null;
   const s0 = sinceRelease(r, a.frame), s1 = sinceRelease(r, b.frame);
   return s0 === null || s1 === null ? null : (s1 - s0) * 1000;
-};
+}
 
 export type Contact = "bfc" | "ffc";
 export interface SharedContacts {
@@ -181,13 +326,16 @@ export function sharedContacts(side: AnalysisResult, rear: AnalysisResult, offse
 export interface SameBallCheck { label: string; a: number | string; b: number | string; ok: boolean; tol?: number }
 export interface SameBall {
   verdict: "match" | "unsure" | "mismatch"; checks: SameBallCheck[];
+  coarse: boolean;                     // frames too far apart (e.g. 60 and 30 fps, or both 30) for the stride's timing to tell balls apart
   unseen: Record<Camera, Contact[]>;   // foot contacts each camera didn't see land (so the stride can't be compared)
 }
 
 /** Do the two clips look like the same delivery? The bowling arm must agree. A "match" needs a stride timing (back-foot
  * to front-foot contact, or front-foot contact to release) that both cameras found on the video, agreeing within one
- * frame of each clip; the arm's last phase (upper arm horizontal to release) is too short to tell balls apart, so it
- * can only show a mismatch (more than two frames of each clip apart). */
+ * frame of each clip, and frames close enough for that to mean something (both at 60 fps, or one in slow motion); more than
+ * two frames apart is a mismatch. The arm's last phase (upper arm horizontal to release)
+ * isn't compared: it's a frame or two long, and from behind or in front the upper arm's moment is often misread (on
+ * two of six test clips by over 100 ms), which called the same ball two. */
 export function sameBall(side: AnalysisResult, rear: AnalysisResult): SameBall {
   const checks: SameBallCheck[] = [];
   const armA = side.bowling_arm.arm, armB = rear.bowling_arm.arm;
@@ -195,18 +343,20 @@ export function sameBall(side: AnalysisResult, rear: AnalysisResult): SameBall {
   // one frame of each clip, plus a little for the time base
   const tol = 1000 / distinctFps(side) + 1000 / distinctFps(rear) + 5;
   let far = false, stride = 0;
-  for (const [label, k0, k1, isStride] of [["Back-foot to front-foot contact", "bfc", "ffc", true], ["Front-foot contact to release", "ffc", "br", true],
-    ["Upper arm horizontal to release", "uah", "br", false]] as const) {
+  for (const [label, k0, k1] of [["Back-foot to front-foot contact", "bfc", "ffc"], ["Front-foot contact to release", "ffc", "br"]] as const) {
     const a = durMs(side, k0, k1), b = durMs(rear, k0, k1);
     if (a === null || b === null) continue;
-    const d = Math.abs(a - b), lim = isStride ? tol : 2 * tol;
-    checks.push({ label, a: Math.round(a), b: Math.round(b), ok: d <= lim, tol: Math.round(lim) });
+    const d = Math.abs(a - b);
+    checks.push({ label, a: Math.round(a), b: Math.round(b), ok: d <= tol, tol: Math.round(tol) });
     if (d > 2 * tol) far = true;
-    if (isStride && d <= tol) stride++;
+    if (d <= tol) stride++;
   }
-  const verdict = armA !== armB || far ? "mismatch" : stride > 0 && checks.every((c) => c.ok) ? "match" : "unsure";
+  // at 25–30 fps a frame each is ~75 ms, wider than most bowlers' strides differ by: agreeing then says little (one
+  // phone in slow motion, 120 fps or more, with the other at 30 is fine)
+  const coarse = tol > 50;
+  const verdict = armA !== armB || far ? "mismatch" : stride > 0 && !coarse && checks.every((c) => c.ok) ? "match" : "unsure";
   const unseen = (r: AnalysisResult) => (["bfc", "ffc"] as const).filter((k) => !FOUND(r.events[k]?.method));
-  return { verdict, checks, unseen: { side: unseen(side), rear: unseen(rear) } };
+  return { verdict, checks, coarse, unseen: { side: unseen(side), rear: unseen(rear) } };
 }
 
 // how far two readings may differ and still be averaged (about each one's precision): degrees, % of height
@@ -272,12 +422,13 @@ export interface TwoView {
   backFrom: Record<string, Camera | "both" | null>;   // the camera each back-health check was measured on
   same: SameBall;
   sync: Sync;                                  // how the two clips are lined up in time
+  speed: SpeedFix | null;                      // one clip's clip speed looks wrong (its time runs a whole number of times off)
 }
 
 /** The whole delivery from both cameras: the fused measurements, one score and coaching over all of them, and the
  * back-health screen with every check made on the camera that sees it. */
 export function twoView(side: AnalysisResult, rear: AnalysisResult, player: Pick<Player, "age_group" | "style"> | null,
-  original?: { side: AnalysisResult; rear: AnalysisResult }, sync?: Sync, carried?: SharedContacts): TwoView {
+  original?: { side: AnalysisResult; rear: AnalysisResult }, sync?: Sync, carried?: SharedContacts, speed?: SpeedFix | null): TwoView {
   const rows = fuseMetrics(side, rear);
   // a value read at a contact carried from the other camera is measured, but a red flag needs that contact confirmed on
   // its own clip: such a "risk" reads as "watch" (the contact can be a frame out, and the back knee reads a little low)
@@ -332,5 +483,6 @@ export function twoView(side: AnalysisResult, rear: AnalysisResult, player: Pick
   return { rows, score: c.score, grade: c.grade, priorities: coachingIn.priorities, strengths: c.strengths, summary: sum, back, backFrom,
     // the same-ball check compares what each camera found by itself, before any contact was carried across
     same: sameBall(original?.side ?? side, original?.rear ?? rear),
-    sync: sync ?? syncOffset(original?.side ?? side, original?.rear ?? rear) };
+    sync: sync ?? syncOffset(original?.side ?? side, original?.rear ?? rear),
+    speed: speed !== undefined ? speed : speedFix(original?.side ?? side, original?.rear ?? rear) };
 }

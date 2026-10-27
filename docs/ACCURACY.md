@@ -212,10 +212,39 @@ from behind the foot contacts are often too hard to see, so it usually says "che
 faceless test mannequin two of the five rear clips are read as front-on (§5): the pair is then refused with a clear
 message, and setting the view to Behind (§5) makes it work.
 
+**Real clips of different balls, paired on purpose** (the real side-on club clip with four real clips of other
+bowlers, 25 and 30 fps): two were called "may not be the same ball" (left-arm against right-arm), one was refused
+(the clip from behind reads as angled), and one, where the camera behind misread a right-arm bowler as left-arm,
+was called "check these are the same ball" with "the movement doesn't line up (17% match)". How well the movement
+matched didn't separate same from different balls (0.70–0.72 for two different bowlers, 0.70–0.82 for the same
+rendered ball): bowling actions look alike. At 25–30 fps the stride's timing can't either (a frame each is ~75 ms,
+and one such pair agreed within it), so the check now only says "the same ball" when a frame of each is short enough
+(both 60 fps, or one in slow motion); otherwise it says "check" and why. The arm's last phase (upper arm horizontal
+to release) is no longer compared: from behind or in front it was misread by over 100 ms on two of six clips, which
+called a correctly paired ball "may not be the same ball".
+
+**A clip at the wrong speed.** Slow motion saved at normal speed (a phone's usual export) makes that clip's time run
+4× or 8× too long; analysed at normal speed its foot contacts are usually not found, and it can even read as angled.
+Seamly looks for two things that agree: the clip's wrist rises to release far slower than any bowler's (under 1 torso
+length a second on the slowed clips, 13–51 on every real and rendered delivery tested) or the stride's phases are a
+whole number of times longer, and the movement matches better with that clip's time shrunk. The factor comes from the
+wrist's rise time (20–80% of its climb), snapped to the factors phones use (60, 120 or 240 fps over the file's rate).
+
+| Pair | Wrong speed found | Factor | After the one-click fix |
+|---|---|---|---|
+| 240 fps side-on + 120 fps behind saved at 30 fps (4×), analysed at 1× (refused: read as angled) | behind | 4× (measured 3.8) | "the same ball"; 9 of 11 measurements identical to the pair filmed right, the other two within 1° |
+| 240 fps side-on saved at 30 fps (8×), analysed at 1×, + 60 fps behind | side-on | 8× (measured 9.3) | key moments within 4 frames (17 ms) of the clip filmed right; that file's left and right then read swapped on the faceless mannequin (trunk lean −41° for 38°), which the same render re-encoded at 240 fps didn't |
+| 4 correctly paired rendered balls, 4 real pairs of different balls | none | — | — |
+
+Matching the movement alone gave false alarms on two of the four real pairs (a wrist's rise is one bump, and one bump
+still looks like another stretched), so it is only used to confirm.
+
 ## 10. Still to do
 
 - Lab validation against marker-based motion capture (real bodies, real knees): the synthetic body can't say whether
   the detector's knee placement on a bent knee differs on people.
+- Two real phones on the same balls (a side-on and a behind-the-stumps phone through a net session): the pair
+  features are measured on rendered pairs and on real clips of different balls, not yet on one real ball filmed twice.
 - A radar-gun session for ball speed.
 - Spinners: a release rule for slower arms.
 - Left/right label consistency in the browser's pose model at 60+ fps side-on, and front/back from behind (both seen

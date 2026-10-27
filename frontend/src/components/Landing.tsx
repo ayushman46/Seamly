@@ -192,6 +192,11 @@ export function FilmingGuide() {
           <li>Whole action in frame, feet visible</li>
           <li>Slow motion if your phone has it</li>
         </ul>
+        <p className="film-two">
+          <b>Two phones?</b> Put one side-on and one behind the stumps, and start both before the run-up: they don't need to be in sync.
+          Choose both clips together and tick “The same ball from two cameras”, and each part of the action is measured from the camera
+          that sees it, with the full back-health screen.
+        </p>
         <p className="film-check">
           <a className="btn sm" href="#/camera">Check your camera position live</a>
           <span className="faint">The phone's camera tells you, before you film, whether the angle, distance and framing will measure well.</span>
