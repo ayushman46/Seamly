@@ -200,7 +200,11 @@ taken from the camera that measures them keep that camera's accuracy; what the p
   three pairs (6.4 on the default delivery, where the two agreed), against 21 side-on alone (two of those side clips
   swapped the mannequin's wrists) and 5.4 from behind alone: on three pairs the difference from the better camera alone
   is within the noise.
-- **Alignment**: the two clips play within one frame of each other at every key moment, at 240 fps beside 60 fps.
+- **Alignment.** Lining the clips up at the release each camera found puts them as far apart as the two release
+  frames' errors: 0–83 ms on five synthetic pairs (mean 50 ms; the renders share one clock, so the truth is known).
+  Seamly instead matches the movement in both clips (wrists and ankles above the hips, in torso lengths) and keeps the
+  releases only when the movement doesn't decide: 1–33 ms (mean 9 ms). Its peak is about a frame wide, so an error of
+  two frames at 60 fps can stay; big ones (83 ms, a mannequin's release found five frames early) are removed.
 
 The same-ball check only says "the same ball" when a stride timing both cameras saw agrees within a frame of each;
 from behind the foot contacts are often too hard to see, so it usually says "check these are the same ball". On the
