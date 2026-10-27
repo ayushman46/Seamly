@@ -168,10 +168,13 @@ each release.
 
 | | Result |
 |---|---|
-| Release frame | within one frame on 8 of 9 cuts that show the release (ipl01, 02, 05, 07, 09, 10, 12, 13); two frames early on a spinner (Varun Chakaravarthy, close-up) |
+| Release frame | within one frame on 8 of the 9 cuts checked by eye (ipl01, 02, 05, 07, 09, 10, 12, 13); two frames early on a close-up of a spinner (Varun Chakaravarthy). Two cuts weren't checked by eye: against the scout's rough estimates they are 2 and 5 frames early (ipl08 starts with the arm already overhead) |
 | Delivery found | 10 of 11 at first; the eleventh starts mid-swing, so the arm's sweep measured 140° (the bar was 150°). A sweep cut short by the start or end of the clip now counts from 120° at 450°/s or more (both engines) |
-| Camera view | 7 of 11 read as the cut's camera position; with no run-up, a lone stride cue now defers to the 3D direction when they disagree by more than 60° (the camera is then marked angled) |
-| Too little body in the picture | close-ups put the feet below the frame and the bowling hand above it at release; a capture tip now says so, and release height is not rated when the hand is past the top edge |
+| Camera view | with no run-up in any cut and the feet below the frame in 7, the 2D view cues are mostly missing: 10 of 11 are now marked angled or uncertain, so plane-specific measurements are withheld with the reason shown. Before, one cut filmed from behind and to one side (where a forward lean shows up as side-bend) read a 57° side-bend and raised a back-health flag |
+| Body out of the picture | close-ups put the feet below the frame and the bowling hand above it at release; a capture tip now says so, and nothing measured from the feet (knees, stride, release height, head over the front foot) or from a hand past the top edge is rated |
+| Motion blur at 24 fps | on the one cut still rated (ipl01) the bowling wrist's keypoint jumps to the front hand on the release frames, so its arm slot (71°) and release height (80%) are unreliable; the app already says release measurements are approximate at 24 fps |
+
+After these fixes, nine earlier real clips (two broadcast, four Commons, the club match and two degraded copies of it) gave identical views, arms, events, scores and measurements.
 
 What this footage can't show: none of the cuts has a run-up or a ball reaching the batter, so run-up speed and ball
 speed couldn't be checked; at 24 fps one frame is 42 ms.
