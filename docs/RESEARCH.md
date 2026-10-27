@@ -290,3 +290,18 @@ inside the ±6 cm band the check reports at 720p. The frame matters: two frames 
 because the foot is still travelling, which is why the check asks for the first frame the foot is down. The synthetic
 mannequin's planted foot slides with its body, so frames after landing can't be scored; none of the real test clips
 shows a crease clearly enough to mark, so the check is not yet validated on real footage.
+
+## 9. Two cameras, one ball (2026-10-28)
+
+**The gap.** Lab biomechanics films a bowler from the side and from behind at once (two phase-locked 200 Hz cameras
+in published studies); coaches are told to film both views. No free or consumer product fuses them: SPEEDUP Cricket's
+"two devices" are one phone tracking the ball and one filming the bowler; Trackman Cricket Pro connects extra cameras
+to a 4 kg radar for video, without saying the angles are fused; two-phone markerless systems (OpenCap) need a
+calibration board and synchronised recording; research with unsynchronised phones stays in papers. A single camera
+measures half the action, and Seamly's back-health screen needs both halves (side-bend and alignment from behind, the
+back knee side-on).
+
+**What Seamly does.** No synchronisation or calibration: each clip is analysed on its own, the two are lined up in real
+time at the release each one found (slow motion divided out), and then they help each other: a foot contact seen by
+one camera is carried to the clip where it was only estimated (each clip re-measured with it), every measurement comes
+from the camera that sees its plane, and readings both make are averaged when they agree. Results: docs/ACCURACY.md §9.

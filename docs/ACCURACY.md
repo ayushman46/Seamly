@@ -179,7 +179,33 @@ After these fixes, nine earlier real clips (two broadcast, four Commons, the clu
 What this footage can't show: none of the cuts has a run-up or a ball reaching the batter, so run-up speed and ball
 speed couldn't be checked; at 24 fps one frame is 42 ms.
 
-## 9. Still to do
+## 9. Two cameras, one ball (2026-10-28)
+
+The same scripted delivery rendered side-on and from behind (the camera positions a coach would use), analysed by the
+browser engine as a pair. Ground truth comes from the rendered body.
+
+| | Side-on alone | Behind alone | Both cameras |
+|---|---|---|---|
+| Key measurements made (of 10) | 5.7 | 2.0 | 8.3 |
+| Back-health checks made (of 3) | 0 | 1 | 2.3 |
+
+Mean over three pairs (side-bend 20° and 54°, and the default delivery at 240 fps side-on with 60 fps behind). Values
+taken from the camera that measures them keep that camera's accuracy; what the pair adds:
+
+- **Back-foot contact** carried from the camera behind landed on the true frame of the 240 fps side-on clip (side-on
+  alone had only estimated it, 6 frames early), which made the **back knee** and the **stride timing** measurable
+  (11° and 31 ms mean error; the back knee is known to read about 8° low).
+- **Release height** from both cameras, averaged when they agree within 12 points: 8 points off on the default
+  delivery against 14 side-on alone. When they disagree the camera behind is used (it measured release height better
+  in §3/§4).
+- **Alignment**: the two clips play within one frame of each other at every key moment, at 240 fps beside 60 fps.
+
+The same-ball check only says "the same ball" when a stride timing both cameras saw agrees within a frame of each;
+from behind the foot contacts are often too hard to see, so it usually says "check these are the same ball". On the
+faceless test mannequin two of the five rear clips are read as front-on (§5): the pair is then refused with a clear
+message, and setting the view to Behind (§5) makes it work.
+
+## 10. Still to do
 
 - Lab validation against marker-based motion capture (real bodies, real knees): the synthetic body can't say whether
   the detector's knee placement on a bent knee differs on people.
