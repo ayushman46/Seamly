@@ -14,6 +14,15 @@ from .metrics import NORMS
 SIGNED = {"trunk_flexion_ffc_br", "trunk_forward_br"}
 
 DRILLS = {
+    "back_leg": {
+        "title": "Land on a firm back leg",
+        "cue": "Land the back foot under your hips with the knee firm, then let the front leg reach.",
+        "drills": [
+            "Bound-and-stick: a short bound onto the back foot, freezing for two seconds with the knee firm and the hips over the foot (3 × 6).",
+            "Walk-through deliveries landing tall on the back foot, adding speed only while the landing stays firm (3 × 6).",
+            "Step-downs onto the back foot from a low step, landing softly without the knee sinking (2 × 8).",
+        ],
+    },
     "front_leg": {
         "title": "Brace the front leg",
         "cue": "Land tall, push the ground away — ‘stand up’ through the front leg as the arm comes over.",
@@ -108,7 +117,7 @@ RULES = [
      "Hips and shoulders misaligned at back-foot contact ({v:.0f}°)", "Classification; injury link debated"),
     ("shoulder_counter_rotation", ("watch", "risk"), "load", "mixed_action", 0.9,
      "Shoulders twist back {v:.0f}° after back-foot contact", "Low-moderate evidence (stronger in juniors)"),
-    ("back_knee_bfc", ("watch", "risk"), "load", "front_leg", 0.6,
+    ("back_knee_bfc", ("watch", "risk"), "load", "back_leg", 0.6,
      "Back leg folds at back-foot contact ({v:.0f}°)", "One prospective study"),
     ("release_height_pct", ("watch",), "pace", "release_height", 0.6,
      "Release point is low ({v:.0f}% of height)", "Descriptive"),

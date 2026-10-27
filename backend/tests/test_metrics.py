@@ -135,3 +135,12 @@ def test_arm_peak_speed_skips_glitches():
     kc[7, 10] = 0.1
     assert abs(arm_peak_speed(kp, kc, 6, 10, 8, 25) - 20 * 25) < 1e-6
     assert arm_peak_speed(kp[:2], kc[:2], 6, 10, 1, 25) is None
+
+
+def test_back_leg_drill():
+    from bowlnet.coaching import coach
+    m = lambda key, value, rating: {"key": key, "label": key, "value": value, "unit": "deg", "rating": rating,
+                                     "confidence": 0.8, "event": "bfc", "reliability": "measured"}
+    c = coach([m("back_knee_bfc", 140, "risk")], "side_on", 60)
+    assert c["priorities"][0]["drill"]["title"] == "Land on a firm back leg"
+    assert coach([m("front_knee_br", 150, "watch")], "side_on", 60)["priorities"][0]["drill"]["title"] == "Brace the front leg"

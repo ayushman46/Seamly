@@ -42,7 +42,7 @@ WHY = {
     "elbow": "Only an accredited lab test can judge whether an action is legal; this is a screening estimate.",
 }
 
-# some priorities share a drill but not the reason (a folding back leg is a back-health issue, not a pace one)
+# reasons tied to the measurement rather than its drill
 WHY_BY_METRIC = {
     "back_knee_bfc": "A back leg that folds when it lands was linked to lower-back stress injuries in a study of "
                      "young fast bowlers. A firmer back leg spreads the landing load.",
@@ -52,6 +52,8 @@ WHY_BY_METRIC = {
 }
 
 STRENGTH = {
+    "back_leg": ["Single-leg step-downs from a low step, slow on the way down (3 × 8 each leg)",
+                 "Single-leg box squats to a low box (3 × 8 each leg)"],
     "front_leg": ["Single-leg step-downs from a low step, slow on the way down (3 × 8 each leg)",
                   "Glute bridges (3 × 12)"],
     "trunk_flexion": ["Dead bugs (3 × 10)", "Hip-hinge with a broomstick on your back (3 × 10)"],
@@ -193,6 +195,11 @@ def _d(text: str, sets: int, reps: int, balls: bool, adult_only: bool = False) -
 # Plan drills (same content as coaching.DRILLS) with the number of deliveries each one bowls, so every session can
 # be kept inside the day's limit. "No ball" drills are movement rehearsals and don't count towards it.
 PLAN_DRILLS = {
+    "back_leg": [
+        _d("Bound-and-stick onto the back foot, freezing for two seconds with the knee firm (no ball)", 3, 6, False),
+        _d("Walk-through deliveries landing tall on the back foot, adding speed only while the landing stays firm", 3, 6, True),
+        _d("Step-downs onto the back foot from a low step, landing softly without the knee sinking (no ball)", 2, 8, False),
+    ],
     "front_leg": [
         _d("Standing brace: front foot planted, bowl from a static delivery-stride position, keeping the knee firm", 3, 6, True),
         _d("Walk-through then jog-through deliveries, adding speed only while the knee stays firm", 3, 6, True),
