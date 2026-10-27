@@ -91,6 +91,7 @@ export function WhatYouGet() {
     { title: "The moments that matter", text: "Back-foot contact, front-foot contact, release and follow-through, marked on your own clip." },
     { title: "Angles, measured honestly", text: "Front knee, trunk, stride and release height against published ranges. Only what your camera can really see." },
     { title: "Pace from the same clip", text: "Ball speed timed over the pitch, shown with its range, beside the run-up speed and the parts of the action that drive it. No radar gun." },
+    { title: "Two phones, the whole action", text: "Film one ball side-on and from behind with any two phones. Seamly lines them up and measures each part from the camera that sees it, with the full back-health screen." },
     { title: "One thing to fix", text: "A clear verdict and a cue for the nets, a two-week plan that keeps junior loads safe, a 3D body and progress over time." },
   ];
   return (

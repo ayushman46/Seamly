@@ -69,7 +69,13 @@ export default function SquadPage({ go }: { go: (to: string) => void }) {
         const mine = metas.filter((m: AnalysisMeta) => m.player_id === pl.id && m.status === "done");
         const newest = [...mine].sort((a, b) => b.created - a.created)[0];
         let back: Back = "unknown";
-        if (newest) { try { back = (await api.insights(newest.id)).back_health?.overall ?? "unknown"; } catch { back = "unknown"; } }
+        if (newest) {
+          try {
+            // a ball filmed by two cameras has the complete screen; one camera sees only part of it
+            const two = newest.pair ? await api.twoView(newest.id, newest.pair).catch(() => null) : null;
+            back = two && two.status === "ok" ? two.view.back?.overall ?? "unknown" : (await api.insights(newest.id)).back_health?.overall ?? "unknown";
+          } catch { back = "unknown"; }
+        }
         const fwd = latest(prog, "trunk_forward_br"), lat = latest(prog, "trunk_lateral_br");
         const wl = workload(pl.log ?? [], new Date());
         const speeds = prog.pace ?? [];
@@ -185,7 +191,7 @@ export default function SquadPage({ go }: { go: (to: string) => void }) {
                     {head("knee", "Front knee at release", "Latest measured, side-on clips")}
                     {head("trunk", "Trunk at release", "Trunk lean (side-on) or side-bend (from behind), latest measured")}
                     {head("height", "Release height", "% of the bowler's height, latest measured")}
-                    {head("back", "Back health", "From the latest clip")}
+                    {head("back", "Back health", "From the latest clip (both cameras when it was filmed with two)")}
                     {head("week", "Balls, last 7 days", "From the bowling log")}
                     {head("ratio", "Workload", "Acute:chronic ratio from the bowling log (0.8–1.3 is the usual safe range)")}
                     {head("noballs", "No-ball checks", "Front-foot checks made on clips")}
