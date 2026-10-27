@@ -79,9 +79,10 @@ describe("each number from the camera that sees it", () => {
     expect(by.front_knee_br.other).toBeNull();
     expect(by.trunk_lateral_br.from).toBe("rear");
     expect(by.trunk_lateral_br.metric.value).toBe(38);
-    // both cameras measure release height and agree: the confidence-weighted mean (108 at 0.6, 104 at 0.75)
+    // both cameras measure release height and agree: weighted by each camera's measured error (7.4 side-on, 5.4 behind)
     expect(by.release_height_pct.from).toBe("both");
-    expect(by.release_height_pct.metric.value).toBeCloseTo((108 * 0.6 + 104 * 0.75) / 1.35, 1);
+    const ws = 1 / 7.4 ** 2, wr = 1 / 5.4 ** 2;
+    expect(by.release_height_pct.metric.value).toBeCloseTo((108 * ws + 104 * wr) / (ws + wr), 1);
     expect(by.release_height_pct.other?.value).toBe(108);
     expect(by.ffc_to_br_ms.from).toBe("rear");                // timings from the faster camera
     expect(by.hip_shoulder_sep_bfc.from).toBe("rear");

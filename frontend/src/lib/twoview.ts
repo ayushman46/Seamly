@@ -124,9 +124,10 @@ export function sameBall(side: AnalysisResult, rear: AnalysisResult): SameBall {
 
 // how far two readings may differ and still be averaged (about each one's precision): degrees, % of height
 const AGREE: Record<string, number> = { deg: 10, "% height": 12 };
-// when two readings disagree, the camera that measures it better (docs/ACCURACY.md: release height 5.4 points mean
-// error from behind, 7.4 side-on, where an arm crossing the body can also swap the wrists)
-const BETTER: Record<string, Camera> = { release_height_pct: "rear" };
+// each camera's measured error on a reading both make (docs/ACCURACY.md: release height 7.4 points mean error side-on,
+// 5.4 from behind): agreeing readings are weighted by 1/error², and when they disagree the better camera's is used
+const ERROR: Record<string, Record<Camera, number>> = { release_height_pct: { side: 7.4, rear: 5.4 } };
+const better = (key: string): Camera | undefined => (ERROR[key] ? (ERROR[key].rear < ERROR[key].side ? "rear" : "side") : undefined);
 
 export interface FusedRow {
   key: string; label: string; unit: string; metric: Metric;
@@ -153,7 +154,7 @@ export function fuseMetrics(side: AnalysisResult, rear: AnalysisResult): FusedRo
     let from: Camera;
     if (sOk && rOk) {
       if (s!.unit === "ms") from = distinctFps(rear) > distinctFps(side) ? "rear" : "side";
-      else from = BETTER[key] ?? (r!.confidence > s!.confidence ? "rear" : "side");
+      else from = better(key) ?? (r!.confidence > s!.confidence ? "rear" : "side");
     } else from = sOk ? "side" : "rear";
     let metric = from === "side" ? s! : r!;
     const other = from === "side" ? (rOk ? r! : null) : (sOk ? s! : null);
@@ -161,7 +162,9 @@ export function fuseMetrics(side: AnalysisResult, rear: AnalysisResult): FusedRo
     const agree = AGREE[metric.unit];
     let both = false;
     if (other && agree !== undefined && Math.abs(metric.value! - other.value!) <= agree) {
-      const w1 = metric.confidence, w2 = other.confidence;
+      // the chosen reading and the other one, weighted by each camera's measured error (or by confidence without one)
+      const e = ERROR[key], camOther: Camera = from === "side" ? "rear" : "side";
+      const w1 = e ? 1 / e[from as Camera] ** 2 : metric.confidence, w2 = e ? 1 / e[camOther] ** 2 : other.confidence;
       const v = Math.round(((metric.value! * w1 + other.value! * w2) / (w1 + w2)) * 10) / 10;
       metric = { ...metric, value: v, rating: rate(key, v), confidence: Math.max(w1, w2), source: "both cameras" };
       both = true;

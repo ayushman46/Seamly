@@ -195,10 +195,11 @@ taken from the camera that measures them keep that camera's accuracy; what the p
 - **Back-foot contact** carried from the camera behind landed on the true frame of the 240 fps side-on clip (side-on
   alone had only estimated it, 6 frames early), which made the **back knee** and the **stride timing** measurable
   (11° and 31 ms mean error; the back knee is known to read about 8° low).
-- **Release height** comes from both cameras: averaged when they agree within 12 points, otherwise taken from the
-  camera behind (it measured release height better in §3). Mean error 7.2 points over the three pairs, against 21
-  side-on alone (two of those side clips swapped the mannequin's wrists) and 5.4 from behind alone: averaging with a
-  poorer side-on reading costs a little against the better camera on its own.
+- **Release height** comes from both cameras: when they agree within 12 points, weighted by each camera's measured
+  error (7.4 points side-on, 5.4 from behind, §3), otherwise from the camera behind. Mean error 6.7 points over the
+  three pairs (6.4 on the default delivery, where the two agreed), against 21 side-on alone (two of those side clips
+  swapped the mannequin's wrists) and 5.4 from behind alone: on three pairs the difference from the better camera alone
+  is within the noise.
 - **Alignment**: the two clips play within one frame of each other at every key moment, at 240 fps beside 60 fps.
 
 The same-ball check only says "the same ball" when a stride timing both cameras saw agrees within a frame of each;
