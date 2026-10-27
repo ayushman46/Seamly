@@ -114,6 +114,9 @@ export function sameBall(side: AnalysisResult, rear: AnalysisResult): SameBall {
 
 // how far two readings may differ and still be averaged (about each one's precision): degrees, % of height
 const AGREE: Record<string, number> = { deg: 10, "% height": 12 };
+// when two readings disagree, the camera that measures it better (docs/ACCURACY.md: release height 5.4 points mean
+// error from behind, 7.4 side-on, where an arm crossing the body can also swap the wrists)
+const BETTER: Record<string, Camera> = { release_height_pct: "rear" };
 
 export interface FusedRow {
   key: string; label: string; unit: string; metric: Metric;
@@ -127,7 +130,8 @@ const measures = (r: AnalysisResult, m: Metric | undefined): m is Metric =>
   && (!m.needs_view || m.needs_view.includes(r.view.view)) && !r.view.oblique;
 
 /** Every measurement from the camera that sees it. Measured by both: timings from the clip with more distinct frames
- * a second, the rest from the more confident reading (side-on on a tie); the other reading is kept to compare. */
+ * a second; the rest averaged when the two agree, otherwise from the camera that measures it better (or the more
+ * confident reading); the other reading is kept to compare. */
 export function fuseMetrics(side: AnalysisResult, rear: AnalysisResult): FusedRow[] {
   const bySide = new Map(side.metrics.map((m) => [m.key, m])), byRear = new Map(rear.metrics.map((m) => [m.key, m]));
   const keys = [...new Set([...side.metrics.map((m) => m.key), ...rear.metrics.map((m) => m.key)])];
@@ -139,7 +143,7 @@ export function fuseMetrics(side: AnalysisResult, rear: AnalysisResult): FusedRo
     let from: Camera;
     if (sOk && rOk) {
       if (s!.unit === "ms") from = distinctFps(rear) > distinctFps(side) ? "rear" : "side";
-      else from = r!.confidence > s!.confidence ? "rear" : "side";
+      else from = BETTER[key] ?? (r!.confidence > s!.confidence ? "rear" : "side");
     } else from = sOk ? "side" : "rear";
     let metric = from === "side" ? s! : r!;
     const other = from === "side" ? (rOk ? r! : null) : (sOk ? s! : null);

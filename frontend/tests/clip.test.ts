@@ -56,9 +56,15 @@ describe("clip captions", () => {
     expect(clipFacts(clip(60, 200, { ffc: 112, br: 120 }, ms, true), 150, null)).toEqual([]);
   });
   it("lays out even-sized frames for the encoder", () => {
-    for (const L of [clipLayout(false, true), clipLayout(true, true), clipLayout(false, false), clipLayout(true, false)]) {
-      expect(L.W % 2).toBe(0);
-      expect(L.H % 2).toBe(0);
+    for (const cams of [1, 2] as const) {
+      for (const L of [clipLayout(false, true, cams), clipLayout(true, true, cams), clipLayout(false, false, cams), clipLayout(true, false, cams)]) {
+        expect(L.W % 2).toBe(0);
+        expect(L.H % 2).toBe(0);
+        expect(L.videos).toHaveLength(cams);
+        // the panels sit side by side inside the frame
+        const right = Math.max(...L.videos.map((v) => v[0] + v[2]), L.three ? L.three[0] + L.three[2] : 0);
+        expect(right).toBeLessThanOrEqual(L.W);
+      }
     }
   });
 });

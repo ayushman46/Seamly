@@ -112,6 +112,12 @@ describe("shared readings and contacts", () => {
     expect(row.metric.value).toBe(100);
     expect(row.other?.value).toBe(120);
   });
+  it("when release heights disagree, uses the camera behind (it measures release height better)", () => {
+    const a = clip("side_on", 60, BALL, [metric("release_height_pct", 130, "good", SQUARE, { unit: "% height", confidence: 0.9 })]);
+    const b = clip("behind", 60, BALL, [metric("release_height_pct", 106, "watch", SQUARE, { unit: "% height", confidence: 0.6 })]);
+    const [row] = fuseMetrics(a, b);
+    expect([row.from, row.metric.value, row.other?.value]).toEqual(["rear", 106, 130]);
+  });
   it("carries a contact one camera saw to the clip that only estimated it, at the same real time", () => {
     const side = clip("side_on", 240, BALL, [], { methods: { bfc: "timing_prior" } });
     const rear = clip("behind", 60, BALL, [], { methods: { ffc: "timing_prior" } });

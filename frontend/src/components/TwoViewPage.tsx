@@ -1,14 +1,19 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import type { AnalysisMeta, AnalysisResult, EventKey } from "../types";
 import { alignFrame, type Camera, type FusedRow, type SharedContacts, type TwoView } from "../lib/twoview";
 import { EVENTS } from "../lib/constants";
 import { fmt, unitLabel } from "../lib/format";
 import { usePageTitle } from "../lib/title";
+import { lazyPage } from "../lib/lazy";
+import ErrorBoundary from "./ErrorBoundary";
 import Header from "./Header";
 import FramePlayer from "./FramePlayer";
 import { ScoreRing } from "./InsightsCard";
+import ClipMaker from "./ClipMaker";
 import { IAlert, IBack, ICheck, IInfo, INext, IPause, IPlay, IPrev } from "./Icons";
+
+const Viewer3D = lazyPage(() => import("./Viewer3D"));
 
 type Clip = { id: string; meta: AnalysisMeta; result: AnalysisResult };
 type Loaded =
@@ -150,7 +155,7 @@ function Ready({ d, go, unpair }: { d: Extract<Loaded, { status: "ok" }>; go: (t
     const otherCam = x.from === "side" ? "camera behind" : "side-on camera";
     return x.unit === "ms"
       ? `the ${otherCam} read ${val(x.other)}; timings come from the camera with more frames a second`
-      : `the ${otherCam} read ${val(x.other)}: more than either camera's precision apart, so the more confident reading is used`;
+      : `the ${otherCam} read ${val(x.other)}: too far apart to average, so the camera that measures this better is used`;
   };
   const carriedText = (["bfc", "ffc"] as const).flatMap((k) => {
     const label = k === "bfc" ? "Back-foot contact" : "Front-foot contact";
@@ -171,7 +176,14 @@ function Ready({ d, go, unpair }: { d: Extract<Loaded, { status: "ok" }>; go: (t
             <span className="chip">{s.bowling_arm.arm === "right" ? "Right-arm" : "Left-arm"}</span>
           </div>
         </div>
-        <div className="an-actions"><button className="btn ghost sm" onClick={unpair}>Unpair</button></div>
+        <div className="an-actions">
+          <ClipMaker meta={side.meta} result={s} ins={null} fileBase={`${name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "delivery"}-two-cameras`}
+            frame={frame} onFrame={(f) => { setPlaying(false); setFrame(f); }}
+            players={() => [...document.querySelectorAll<HTMLCanvasElement>(".two-grid .player-stage canvas")]}
+            labels={["Side-on", rearLabel]} facts={{ ...s, metrics: tv.rows.map((x) => x.metric) }}
+            cueText={top?.drill.cue ?? null} title={`${name}: two cameras`} />
+          <button className="btn ghost sm" onClick={unpair}>Unpair</button>
+        </div>
       </div>
 
       <div className={`notice ${same.verdict === "mismatch" ? "warn" : ""}`} style={{ marginBottom: 14 }} role={same.verdict === "mismatch" ? "alert" : undefined}>
@@ -233,6 +245,16 @@ function Ready({ d, go, unpair }: { d: Extract<Loaded, { status: "ok" }>; go: (t
           The clips are lined up at the release each camera found, in real time, so they play in step at any frame rates.
         </p>
       </section>
+
+      <div className="two-3d">
+        <ErrorBoundary label="The 3D viewer">
+          <Suspense fallback={<div className="card viewer"><div className="viewer-stage" style={{ display: "grid", placeItems: "center" }}><div className="spinner" /></div></div>}>
+            <Viewer3D id={side.id} result={s} frame={frame} playing={playing}
+              onTogglePlay={() => setPlaying((p) => !p)} onSeek={(f) => { setPlaying(false); setFrame(f); }} />
+          </Suspense>
+        </ErrorBoundary>
+        <p className="faint" style={{ fontSize: 12, margin: "6px 2px 0" }}>The 3D body from the side-on clip, in step with both videos: it shows the action; every number comes from the videos.</p>
+      </div>
 
       <div className="two-cols">
         <section className="card card-pad" aria-labelledby="two-back">

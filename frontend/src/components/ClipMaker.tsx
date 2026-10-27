@@ -15,9 +15,13 @@ const sleep = (ms: number) => new Promise<void>((r) => window.setTimeout(r, Math
  * key moments held and the measured numbers under it; optionally with the coach's voice recorded as it plays. The page
  * itself plays the clip while it records (the player and the 3D view follow), so what is saved is what is on screen.
  */
-export default function ClipMaker({ meta, result, ins, fileBase, frame, onFrame, player }: {
+export default function ClipMaker({ meta, result, ins, fileBase, frame, onFrame, players, labels, facts, cueText, title: titleText }: {
   meta: AnalysisMeta; result: AnalysisResult; ins: Insights | null; fileBase: string; frame: number;
-  onFrame: (f: number) => void; player: () => HTMLCanvasElement | null;
+  onFrame: (f: number) => void;
+  players: () => HTMLCanvasElement[];   // one canvas per camera, the first one follows `frame`
+  labels?: string[];                    // a name for each camera's panel (two cameras)
+  facts?: AnalysisResult;               // the measurements to caption (two cameras: the fused ones)
+  cueText?: string | null; title?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [speed, setSpeed] = useState(0.25);
@@ -47,7 +51,8 @@ export default function ClipMaker({ meta, result, ins, fileBase, frame, onFrame,
   const plan = useMemo(() => clipPlan(result, speed), [result, speed]);
   const seconds = Math.round(plan.reduce((a, s) => a + s.ms, 0) / 1000);
   const recording = progress !== null;
-  const cue = ins?.summary.fixes[0]?.cue ?? result.coaching.priorities[0]?.drill.cue ?? null;
+  const cue = cueText !== undefined ? cueText : ins?.summary.fixes[0]?.cue ?? result.coaching.priorities[0]?.drill.cue ?? null;
+  const cams = players().length >= 2 ? 2 : 1;
   const name = `${hideName ? "seamly" : fileBase}-clip.${mime ? clipExt(mime) : "mp4"}`;
 
   const close = () => {
@@ -77,14 +82,15 @@ export default function ClipMaker({ meta, result, ins, fileBase, frame, onFrame,
   // wait until the page shows this frame: the player's canvas names the frame it drew
   const showFrame = async (f: number) => {
     onFrame(f);
-    const c = player();
+    const c = players()[0] ?? null;
     const t0 = performance.now();
     while (c && !c.getAttribute("aria-label")?.startsWith(`Video frame ${f} `) && performance.now() - t0 < 1500) await nextPaint();
     await nextPaint();
   };
 
   const make = async () => {
-    const canvasEl = player();
+    const canvases = players();
+    const canvasEl = canvases[0] ?? null;
     if (!mime || !canvasEl) { setErr("This browser can't record video. Try Chrome, Edge, Firefox or Safari 14.1 or later."); return; }
     setErr(null);
     setClip((c) => { if (c) URL.revokeObjectURL(c.url); return null; });
@@ -101,16 +107,17 @@ export default function ClipMaker({ meta, result, ins, fileBase, frame, onFrame,
     cancel.current = false;
     setProgress(0);
     const three = with3d && capture3D() !== null;
-    const portrait = result.video.height > result.video.width;
-    const L = clipLayout(portrait, three);
+    // portrait panels only when every camera filmed upright
+    const portrait = canvases.every((c) => c.height > c.width);
+    const L = clipLayout(portrait, three, cams);
     const out = document.createElement("canvas");
     out.width = L.W; out.height = L.H;
     out.setAttribute("role", "img");
     out.setAttribute("aria-label", "The clip as it records");
     outRef.current = out;
     const ctx = out.getContext("2d")!;
-    const title = hideName ? "" : meta.name;
-    const draw = (s: ClipStep) => drawClipFrame(ctx, L, canvasEl, s, result, { title, cue, pace: meta.pace });
+    const title = hideName ? "" : titleText ?? meta.name;
+    const draw = (s: ClipStep) => drawClipFrame(ctx, L, players(), s, facts ?? result, { title, cue, pace: meta.pace, labels });
     let rec: MediaRecorder | null = null;
     try {
       // every frame is in memory before recording starts, so the clip never shows a frame still loading

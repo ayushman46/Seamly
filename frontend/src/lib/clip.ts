@@ -54,17 +54,27 @@ export function clipPlan(result: AnalysisResult, speed: number, holdMs = 800, en
   return steps;
 }
 
-export interface ClipLayout { W: number; H: number; video: [number, number, number, number]; three: [number, number, number, number] | null; bar: number }
+type Box = [number, number, number, number];
+export interface ClipLayout { W: number; H: number; videos: Box[]; three: Box | null; bar: number }
 
-/** Landscape footage: video 16:9 beside a 3D panel; portrait (4:5) footage: two equal panels. Sizes are even (H.264). */
-export function clipLayout(portrait: boolean, with3d: boolean): ClipLayout {
+/** One camera: landscape footage 16:9 beside a 3D panel, portrait (4:5) footage in two equal panels. Two cameras of
+ * one ball: both videos side by side, then the 3D panel. Sizes are even (H.264). */
+export function clipLayout(portrait: boolean, with3d: boolean, cams: 1 | 2 = 1): ClipLayout {
   const bar = 76;
+  if (cams === 2) {
+    if (portrait) {
+      const w = with3d ? 400 : 480, h = with3d ? 500 : 600;
+      return { W: (with3d ? 3 : 2) * w, H: h + bar, videos: [[0, 0, w, h], [w, 0, w, h]], three: with3d ? [2 * w, 0, w, h] : null, bar };
+    }
+    const w = with3d ? 600 : 800, h = with3d ? 338 : 450;
+    return { W: 1600, H: h + bar, videos: [[0, 0, w, h], [w, 0, w, h]], three: with3d ? [2 * w, 0, 1600 - 2 * w, h] : null, bar };
+  }
   if (portrait) {
     const w = 560, h = 700;
-    return { W: with3d ? 2 * w : w, H: h + bar, video: [0, 0, w, h], three: with3d ? [w, 0, w, h] : null, bar };
+    return { W: with3d ? 2 * w : w, H: h + bar, videos: [[0, 0, w, h]], three: with3d ? [w, 0, w, h] : null, bar };
   }
   const w = with3d ? 1120 : 1280, h = with3d ? 630 : 720;
-  return { W: with3d ? 1600 : w, H: h + bar, video: [0, 0, w, h], three: with3d ? [w, 0, 480, h] : null, bar };
+  return { W: with3d ? 1600 : w, H: h + bar, videos: [[0, 0, w, h]], three: with3d ? [w, 0, 480, h] : null, bar };
 }
 
 const LABEL: Record<string, string> = {
@@ -96,18 +106,30 @@ const relText = (result: AnalysisResult, frame: number) => {
   return ms === 0 ? "release" : `${ms > 0 ? "+" : "−"}${Math.abs(ms)} ms`;
 };
 
-/** Draws one frame of the clip: the player's canvas, the 3D panel and the caption bar. */
-export function drawClipFrame(ctx: CanvasRenderingContext2D, L: ClipLayout, player: HTMLCanvasElement, step: ClipStep,
-  result: AnalysisResult, opts: { title: string; cue: string | null; pace: PaceRecord | null | undefined }) {
+/** Draws one frame of the clip: the players' canvases (one per camera), the 3D panel and the caption bar. */
+export function drawClipFrame(ctx: CanvasRenderingContext2D, L: ClipLayout, players: HTMLCanvasElement[], step: ClipStep,
+  result: AnalysisResult, opts: { title: string; cue: string | null; pace: PaceRecord | null | undefined; labels?: string[] }) {
   const { W, H, bar } = L;
   ctx.fillStyle = "#0b0b0c";
   ctx.fillRect(0, 0, W, H);
-  const [vx, vy, vw, vh] = L.video;
-  if (player.width) {
-    const s = Math.min(vw / player.width, vh / player.height);
-    ctx.drawImage(player, vx + (vw - player.width * s) / 2, vy + (vh - player.height * s) / 2, player.width * s, player.height * s);
-  }
   const font = (px: number, w = 600) => `${w} ${px}px Inter, -apple-system, "Segoe UI", sans-serif`;
+  L.videos.forEach(([bx, by0, bw, bh], i) => {
+    const player = players[i];
+    if (player?.width) {
+      const s = Math.min(bw / player.width, bh / player.height);
+      ctx.drawImage(player, bx + (bw - player.width * s) / 2, by0 + (bh - player.height * s) / 2, player.width * s, player.height * s);
+    }
+    if (i > 0) { ctx.fillStyle = "rgba(255,255,255,0.12)"; ctx.fillRect(bx, by0, 1, bh); }
+    const label = opts.labels?.[i];
+    if (label) {
+      ctx.font = font(15, 600);
+      const lw = ctx.measureText(label).width;
+      ctx.fillStyle = "rgba(10,10,11,0.72)"; ctx.fillRect(bx + 12, by0 + bh - 40, lw + 18, 28);
+      ctx.fillStyle = "#e4e4e7"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+      ctx.fillText(label, bx + 21, by0 + bh - 26);
+    }
+  });
+  const [vx, vy] = L.videos[0];
   if (L.three) {
     const [tx, ty, tw, th] = L.three;
     ctx.save();

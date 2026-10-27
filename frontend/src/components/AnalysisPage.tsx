@@ -595,7 +595,7 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
             <button className="btn" onClick={() => go(`/r/${id}`)}><IFile size={15} /> Report</button>
             <ShareSummary meta={meta} result={result} ins={ins} fileBase={fileBase} />
             <ClipMaker meta={meta} result={result} ins={ins} fileBase={fileBase} frame={frame}
-              onFrame={(f) => { setPlaying(false); setFrame(f); }} player={() => playerRef.current?.querySelector<HTMLCanvasElement>(".player-stage canvas") ?? null} />
+              onFrame={(f) => { setPlaying(false); setFrame(f); }} players={() => [...(playerRef.current?.querySelectorAll<HTMLCanvasElement>(".player-stage canvas") ?? [])]} />
             <div className="rel" ref={menuRef} onBlur={(e) => { if (!menuRef.current?.contains(e.relatedTarget as Node | null)) setMenu(false); }}>
               <button ref={menuBtn} className="btn" onClick={() => setMenu((m) => !m)} aria-expanded={menu} aria-controls="export-list"><IDownload size={15} /> Export <IChevronDown size={14} /></button>
               {menu && (
