@@ -19,6 +19,7 @@ import { frameObj } from "./engine/body";
 import { playerProgress, summarise } from "./engine/progress";
 import { BACKUP_VERSION, FILE_NAME, decodeBackup, encodeBackup, type BackupAnalysis } from "./lib/backup";
 import { creaseCall } from "./lib/crease";
+import { cameraOf, sharedContacts, twoView as fuseTwo, type SharedContacts, type TwoView } from "./lib/twoview";
 import { isoDate, parseOvers } from "./lib/bowlingLog";
 import { runupSpeed, type Runup } from "./lib/runup";
 
@@ -113,7 +114,7 @@ async function refresh(id: string): Promise<void> {
 }
 
 const PUBLIC = ["id", "name", "created", "updated", "status", "progress", "stage", "stage_label", "error", "score", "grade", "view", "arm",
-  "thumb_frame", "options", "timing_s", "elapsed", "size_mb", "notice", "suggest", "player_id", "input_type", "arm_conf", "pace", "crease", "source_id"] as const;
+  "thumb_frame", "options", "timing_s", "elapsed", "size_mb", "notice", "suggest", "player_id", "input_type", "arm_conf", "pace", "crease", "source_id", "pair"] as const;
 
 function pub(m: Meta): AnalysisMeta {
   const out = {} as Record<string, unknown>;
@@ -604,7 +605,7 @@ async function restore(file: Blob): Promise<{ analyses: number; players: number;
     }
     const entries = a.files.map((f, j) => [f?.name, files[i][j]] as const).filter(([name]) => typeof name === "string" && FILE_NAME.test(name));
     const meta = { ...m, status: "done", progress: 1, stage: "done", stage_label: "Complete", error: null, gen: "", owner: undefined, previous: null, source_id: undefined,
-      pace: cleanPace(m.pace), crease: cleanCrease(m.crease),
+      pace: cleanPace(m.pace), crease: cleanCrease(m.crease), pair: typeof m.pair === "string" && ID.test(m.pair) ? m.pair : null,
       player_id: m.player_id && have.has(m.player_id) ? m.player_id : null, size_mb: m.size_mb ?? null, arm_conf: m.arm_conf ?? armConf(r) } as Meta;
     await db.write(["blob", "stagea", "result", "meta"], (st) => {
       for (const [name, b] of entries) st.blob.put(b, `${m.id}/${name}`);
@@ -649,6 +650,8 @@ export const api = {
     const qi = queue.indexOf(id);
     if (qi >= 0) queue.splice(qi, 1);
     metas.delete(id); results.delete(id); meshBufs.delete(id); dropUrls(id);
+    // the other camera of a pair stays, unpaired
+    if (m.pair && metas.get(m.pair)?.pair === id) await writeMeta(m.pair, { pair: null });
     // a video other deliveries were split from stays while any of them is kept; a shared one goes with the last of them
     const src = m.source_id ?? id;
     const stillUsed = [...metas.values()].some((x) => (x.source_id ?? x.id) === src);
@@ -749,6 +752,73 @@ export const api = {
       ids.push(nid);
     }
     return ids;
+  },
+  /** Pair two analyses of the same ball from two cameras (b null: unpair). Either may still be analysing. */
+  pair: async (a: string, b: string | null): Promise<AnalysisMeta> => {
+    await loadAll();
+    const ma = requireMeta(a);
+    const drop = async (x: string, keep: string | null) => {
+      const old = metas.get(x)?.pair;
+      if (old && old !== keep && metas.get(old)?.pair === x) await writeMeta(old, { pair: null });
+    };
+    if (b === null) {
+      await drop(a, null);
+      return pub((await writeMeta(a, { pair: null })) ?? ma);
+    }
+    if (a === b) throw new Error("Pair this clip with another clip of the same ball.");
+    requireMeta(b);
+    if (SAMPLE_IDS.has(a) || SAMPLE_IDS.has(b)) throw new Error("The examples can't be paired.");
+    await drop(a, b);
+    await drop(b, a);
+    await writeMeta(b, { pair: a });
+    return pub((await writeMeta(a, { pair: b })) ?? ma);
+  },
+  /** Both cameras of a pair together: each clip's analysis, the contacts carried between them (each clip re-measured
+   * with them, in memory: nothing stored changes) and the fused measurements, score, coaching and back-health screen. */
+  twoView: async (a: string, b: string): Promise<
+    | { status: "pending"; metas: AnalysisMeta[] }
+    | { status: "views"; metas: AnalysisMeta[]; message: string }
+    | { status: "ok"; side: { id: string; meta: AnalysisMeta; result: AnalysisResult }; rear: { id: string; meta: AnalysisMeta; result: AnalysisResult };
+        view: TwoView; carried: SharedContacts }> => {
+    await loadAll();
+    await Promise.all([refresh(a), refresh(b)]);
+    const ma = requireMeta(a), mb = requireMeta(b);
+    if (ma.status !== "done" || mb.status !== "done") return { status: "pending", metas: [pub(ma), pub(mb)] };
+    const [ra, rb] = await Promise.all([loadResult(a), loadResult(b)]);
+    if (!ra || !rb) return { status: "pending", metas: [pub(ma), pub(mb)] };
+    await Promise.all([loadFiles(a, ra), loadFiles(b, rb)]);   // both clips' frames, for the players
+    const ca = cameraOf(ra), cb = cameraOf(rb);
+    if (!ca || !cb || ca === cb) {
+      const what = (c: typeof ca, r: AnalysisResult) => (!c ? (r.view.oblique ? "angled" : "unclear") : c === "side" ? "side-on" : "from behind or in front");
+      return { status: "views", metas: [pub(ma), pub(mb)], message: ca && ca === cb
+        ? `Both clips are ${what(ca, ra)}. Pair a side-on clip with one filmed from behind (or in front of) the bowler.`
+        : `One clip is ${what(ca, ra)} and the other ${what(cb, rb)}: pairing needs one square side-on clip and one square from behind or in front. If a view was read wrongly, correct it in Detection & settings.` };
+    }
+    const [sid, rid] = ca === "side" ? [a, b] : [b, a];
+    let side = ca === "side" ? ra : rb, rear = ca === "side" ? rb : ra;
+    const carried = sharedContacts(side, rear);
+    // each clip that receives a contact is measured again with it, as a fixed marker
+    const remeasure = async (id: string, r: AnalysisResult, set: Partial<Record<"bfc" | "ffc", number>>) => {
+      if (!Object.keys(set).length) return r;
+      const m = metas.get(id)!;
+      const A = await db.get<StageA>("stagea", id);
+      if (!A) return r;
+      const over: Overrides = { ...(m.overrides ?? {}), events: { ...(m.overrides?.events ?? {}), ...set } };
+      try {
+        const { stageB } = await engine();
+        return (await stageB(A, await withAgeStature(m, over))).result as AnalysisResult;
+      } catch (e) {
+        console.warn("two cameras: re-measuring with the other camera's contacts failed", e);
+        return r;
+      }
+    };
+    const original = { side, rear };
+    side = await remeasure(sid, side, carried.side);
+    rear = await remeasure(rid, rear, carried.rear);
+    const pidOf = metas.get(sid)?.player_id ?? metas.get(rid)?.player_id ?? null;
+    const player = pidOf ? await db.get<StoredPlayer>("player", pidOf).catch(() => undefined) : undefined;
+    return { status: "ok", side: { id: sid, meta: pub(metas.get(sid)!), result: side }, rear: { id: rid, meta: pub(metas.get(rid)!), result: rear },
+      view: fuseTwo(side, rear, player ?? null, original), carried };
   },
   /** See a sample analysis right away (precomputed). */
   demo: async (which: SampleName = "club") => {

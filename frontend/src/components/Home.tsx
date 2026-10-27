@@ -317,6 +317,7 @@ function Uploader({ go, disabled, health, players, current, onChoose, onCreate, 
     setHeight(player?.height_cm ? String(Math.round(player.height_cm)) : "");
   }, [player?.id, player?.arm, player?.height_cm]);
   const [slowmo, setSlowmo] = useState("1");
+  const [twoCams, setTwoCams] = useState(false);   // two clips of the same ball, from two cameras
   const [moreOpen, setMoreOpen] = useState(false);
   const optionsSummary = [arm !== "auto" ? `${arm === "right" ? "Right" : "Left"}-arm` : "", height ? `${height} cm` : "",
     slowmo !== "1" ? `${slowmo}× slow motion` : ""].filter(Boolean).join(" · ") || "arm, height, slow motion";
@@ -363,11 +364,19 @@ function Uploader({ go, disabled, health, players, current, onChoose, onCreate, 
     try {
       const opts = { bowling_arm: arm, height_cm: h, slowmo_factor: Number(slowmo), player_id: player?.id ?? null };
       let id = "";
+      const ids: string[] = [];
       for (const [i, f] of files.entries()) {
         ({ id } = await api.upload(f, opts, (p) => setProg((i + p) / files.length)));
+        ids.push(id);
       }
       markReturning();
       if (files.length === 1) { go(`/a/${id}`); return; }
+      // the same ball from two cameras: paired now, shown together once both are analysed
+      if (files.length === 2 && twoCams && MODE === "browser") {
+        await api.pair(ids[0], ids[1]);
+        go(`/two/${ids[0]}/${ids[1]}`);
+        return;
+      }
       // several clips: they're analysed one after another; follow them in the analyses list
       setFiles([]);
       setBusy(false);
@@ -414,6 +423,12 @@ function Uploader({ go, disabled, health, players, current, onChoose, onCreate, 
           : file ? `${(file.size / 1e6).toFixed(1)} MB · choose again to change` : "One delivery per clip, or several clips for a spell · MP4, MOV, WEBM"}</div>
         {MODE === "browser" && <div className="dz-local"><ILock size={13} /> Stays on your device</div>}
       </div>
+      {MODE === "browser" && files.length === 2 && (
+        <label className="pick two-cams-pick">
+          <input type="checkbox" checked={twoCams} onChange={(e) => setTwoCams(e.target.checked)} />
+          <span><b>The same ball from two cameras</b> (one side-on, one behind the stumps): analysed together for the whole action and the full back-health screen</span>
+        </label>
+      )}
       <div className="field" style={{ marginTop: 14 }}>
         <label htmlFor="who-bowling">Who's bowling?</label>
         {creating ? (
@@ -469,7 +484,7 @@ function Uploader({ go, disabled, health, players, current, onChoose, onCreate, 
         ) : (
           <>
             <button type="button" className="btn primary lg block" disabled={!file || disabled} onClick={submit}>
-              {files.length > 1 ? `Analyse ${files.length} deliveries` : "Analyse delivery"}
+              {files.length === 2 && twoCams ? "Analyse with both cameras" : files.length > 1 ? `Analyse ${files.length} deliveries` : "Analyse delivery"}
             </button>
             {MODE === "browser" && !cached && (
               <span className="faint" style={{ fontSize: 12, textAlign: "center" }}>

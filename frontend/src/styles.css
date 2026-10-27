@@ -1234,3 +1234,22 @@ body.pace-measuring { padding-bottom: 150px; }
 .sq-val { display: inline-flex; align-items: center; gap: 6px; }
 .sq-nb { color: #fca5a5; }
 .send-note { flex-basis: 100%; font-size: 12.5px; margin-top: 4px; }
+
+/* two cameras, one ball */
+.two-players { margin-top: 18px; padding: 0; overflow: hidden; }
+.two-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 2px; background: var(--c-line); }
+.two-grid > div { background: var(--c-surface, #111113); min-width: 0; }
+.two-label { font-size: 12px; font-weight: 600; color: var(--c-text-2); padding: 8px 12px; }
+.two-outside .player-stage { opacity: 0.45; }
+.two-players .controls { padding: 10px 14px 0; }
+.two-scrub { width: calc(100% - 28px); margin: 10px 14px 0; display: block; }
+.two-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; margin-top: 18px; }
+.two-group { font-size: 12px; font-weight: 600; color: var(--c-text-2); margin: 4px 0 6px; text-transform: uppercase; letter-spacing: 0.04em; }
+.two-table th, .two-table td { white-space: normal; }
+.two-table th { width: 38%; }
+.two-fixes { margin: 0; padding-left: 18px; display: grid; gap: 10px; }
+@media (max-width: 760px) {
+  .two-grid, .two-cols { grid-template-columns: minmax(0, 1fr); }
+}
+.two-cams-pick { display: flex; gap: 8px; align-items: flex-start; margin-top: 12px; padding-left: 0; font-size: 13px; }
+.two-cams-pick input { margin-top: 3px; }

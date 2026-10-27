@@ -10,9 +10,10 @@ const ReportPage = lazyPage(() => import("./components/ReportPage"));
 const PlayerPage = lazyPage(() => import("./components/PlayerPage"));
 const CameraCheck = lazyPage(() => import("./components/CameraCheck"));
 const SquadPage = lazyPage(() => import("./components/SquadPage"));
+const TwoViewPage = lazyPage(() => import("./components/TwoViewPage"));
 
 type Route = { page: "home" } | { page: "analysis"; id: string; tab?: string } | { page: "compare"; a: string; b: string; overlay?: boolean }
-  | { page: "report"; id: string } | { page: "player"; id: string } | { page: "camera" } | { page: "squad" } | { page: "missing" };
+  | { page: "report"; id: string } | { page: "player"; id: string } | { page: "camera" } | { page: "squad" } | { page: "two"; a: string; b: string } | { page: "missing" };
 
 function parseRoute(): Route {
   const c = window.location.hash.match(/^#\/compare\/([A-Za-z0-9_-]+)\/([A-Za-z0-9_-]+)(\/overlay)?/);
@@ -23,6 +24,8 @@ function parseRoute(): Route {
   if (pl) return { page: "player", id: pl[1] };
   if (/^#\/camera\/?$/.test(window.location.hash)) return { page: "camera" };
   if (/^#\/squad\/?$/.test(window.location.hash)) return { page: "squad" };
+  const two = window.location.hash.match(/^#\/two\/([A-Za-z0-9_-]+)\/([A-Za-z0-9_-]+)$/);
+  if (two) return { page: "two", a: two[1], b: two[2] };
   const m = window.location.hash.match(/^#\/a\/([A-Za-z0-9_-]+?)(?:\/(plan))?$/);
   if (m) return { page: "analysis", id: m[1], tab: m[2] };
   // "#how" etc. are section links of the home page; anything else under "#/" is a link to nothing
@@ -82,6 +85,7 @@ export default function App() {
         : route.page === "report" ? <ReportPage key={route.id} id={route.id} go={go} />
         : route.page === "camera" ? <CameraCheck go={go} />
         : route.page === "squad" ? <SquadPage go={go} />
+        : route.page === "two" ? <TwoViewPage key={`${route.a}-${route.b}`} a={route.a} b={route.b} go={go} />
         : route.page === "missing" ? <Missing go={go} />
         : <Home go={go} />}
       </Suspense>

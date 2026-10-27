@@ -2,7 +2,7 @@ import type { AnalysisResult, EventKey, Insights, PaceRecord } from "../types";
 import { fmt } from "../lib/format";
 import { IArrowRight, ICalendar, IEye } from "./Icons";
 
-function ScoreRing({ score, grade }: { score: number | null | undefined; grade: string | null | undefined }) {
+export function ScoreRing({ score, grade }: { score: number | null | undefined; grade: string | null | undefined }) {
   const R = 50, C = 2 * Math.PI * R;
   const s = score ?? 0;
   const col = s >= 85 ? "#4ade80" : s >= 70 ? "#3ddc97" : s >= 55 ? "#fbbf24" : "#f87171";

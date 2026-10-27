@@ -19,10 +19,11 @@ import PaceCard from "./PaceCard";
 import ClipMaker from "./ClipMaker";
 import CreaseCard from "./CreaseCard";
 import OtherDeliveries from "./OtherDeliveries";
+import PairCard from "./PairCard";
 import PlanPanel from "./PlanPanel";
 import { Verdict } from "./InsightsCard";
 import { setCurrentPlayer } from "../lib/player";
-import { IAlert, IBack, ICheck, IChevronDown, IClock, ICube, IDownload, IFile, IFilm, IInfo, ILock, INext, IPause, IPlay, IPrev, IRefresh, IVideo } from "./Icons";
+import { IAlert, IBack, ICheck, IChevronDown, IClock, IColumns, ICube, IDownload, IFile, IFilm, IInfo, ILock, INext, IPause, IPlay, IPrev, IRefresh, IVideo } from "./Icons";
 import { SiteFooter } from "./Landing";
 import { usePageTitle } from "../lib/title";
 import ShareSummary from "./ShareSummary";
@@ -631,6 +632,15 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
           </div>
         )}
         {MODE === "browser" && <OtherDeliveries id={id} result={result} meta={meta} go={go} flash={flash} />}
+        {MODE === "browser" && meta.pair && (
+          <div className="notice" style={{ marginBottom: 14 }}>
+            <IColumns size={16} />
+            <div>
+              This ball was also filmed by a second camera.{" "}
+              <button type="button" className="link-btn" onClick={() => go(`/two/${id}/${meta.pair}`)}>See both cameras together</button>: the whole action and the full back-health screen.
+            </div>
+          </div>
+        )}
         {ins || insErr
           ? <Verdict result={result} ins={ins} pace={meta.pace} armPending={askArm} onPlan={openPlan} onCoaching={openCoaching} onJump={jumpTo} />
           : <div className="skeleton-box verdict-skel" />}
@@ -683,6 +693,7 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
             </ErrorBoundary>
             <FrameCard result={result} frame={frame} onOpen={() => setTab("frame")} onConfirm={setEvent} busy={busy} />
             <PaceCard id={id} result={result} meta={meta} frame={frame} onSeek={(f) => { setPlaying(false); setFrame(f); }} onMeta={setMeta} flash={flash} />
+            {MODE === "browser" && <PairCard id={id} meta={meta} result={result} go={go} onMeta={setMeta} flash={flash} />}
             {MODE === "browser" && <CreaseCard id={id} result={result} meta={meta} onSeek={(f) => { setPlaying(false); setFrame(f); }} onMeta={setMeta} flash={flash} />}
           </div>
         </div>
