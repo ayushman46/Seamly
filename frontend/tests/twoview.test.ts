@@ -197,3 +197,27 @@ describe("lining up by the movement", () => {
     expect(syncOffset(clip("side_on", 60, BALL), clip("behind", 60, BALL))).toEqual({ offset: 0, score: 0, method: "release" });
   });
 });
+
+describe("QA fixes", () => {
+  const SIDE = ["side_on"], REAR = ["behind", "front_on"];
+  it("doesn't raise a red flag on a value read at a contact carried from the other camera", () => {
+    const side = clip("side_on", 60, BALL, [metric("back_knee_bfc", 138, "risk", SIDE, { event: "bfc" })]);
+    const rear = clip("behind", 60, BALL, [metric("trunk_lateral_br", 30, "good", REAR)]);
+    const plain = twoView(side, rear, { age_group: "adult", style: "fast" });
+    expect(plain.back?.checks.find((c) => c.key === "back_knee")?.status).toBe("flag");
+    const carried = twoView(side, rear, { age_group: "adult", style: "fast" }, undefined, undefined, { side: { bfc: 40 }, rear: {}, from: { bfc: "rear" } });
+    expect(carried.rows.find((r) => r.key === "back_knee_bfc")?.metric.rating).toBe("watch");
+    expect(carried.back?.checks.find((c) => c.key === "back_knee")?.status).toBe("watch");
+  });
+  it("gives the measuring camera's own reason for a check it couldn't make", () => {
+    const side = clip("side_on", 60, BALL, [metric("back_knee_bfc", 150, "good", SIDE)]);
+    const rear = clip("behind", 60, BALL, [metric("trunk_lateral_br", 30, "good", REAR),
+      metric("hip_shoulder_sep_bfc", 5, "unrated", REAR, { note: "Low tracking confidence around this event." })]);
+    const tv = twoView(side, rear, { age_group: "adult", style: "fast" });
+    expect(tv.back?.checks.find((c) => c.key === "mixed_action")?.text).toBe("From behind: low tracking confidence around this event.");
+  });
+  it("says which camera didn't see a foot land", () => {
+    const s = sameBall(clip("side_on", 60, BALL, [], { methods: { bfc: "timing_prior" } }), clip("behind", 60, BALL, [], { methods: { ffc: "timing_prior" } }));
+    expect(s.unseen).toEqual({ side: ["bfc"], rear: ["ffc"] });
+  });
+});

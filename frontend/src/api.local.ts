@@ -776,12 +776,13 @@ export const api = {
   /** Both cameras of a pair together: each clip's analysis, the contacts carried between them (each clip re-measured
    * with them, in memory: nothing stored changes) and the fused measurements, score, coaching and back-health screen. */
   twoView: async (a: string, b: string): Promise<
-    | { status: "pending" | "failed" | "missing"; metas: AnalysisMeta[] }
+    | { status: "pending" | "failed" | "missing" | "unpaired"; metas: AnalysisMeta[] }
     | { status: "views"; metas: AnalysisMeta[]; message: string }
     | { status: "ok"; side: { id: string; meta: AnalysisMeta; result: AnalysisResult; stored: AnalysisResult }; rear: { id: string; meta: AnalysisMeta; result: AnalysisResult; stored: AnalysisResult };
         view: TwoView; carried: SharedContacts; fallback: boolean }> => {
     await loadAll();
     if (!metas.has(a) || !metas.has(b)) return { status: "missing", metas: [a, b].filter((x) => metas.has(x)).map((x) => pub(metas.get(x)!)) };
+    if (metas.get(a)!.pair !== b || metas.get(b)!.pair !== a) return { status: "unpaired", metas: [pub(metas.get(a)!), pub(metas.get(b)!)] };
     await Promise.all([refresh(a), refresh(b)]);
     const ma = requireMeta(a), mb = requireMeta(b);
     if (ma.status === "failed" || mb.status === "failed") return { status: "failed", metas: [pub(ma), pub(mb)] };
@@ -831,7 +832,7 @@ export const api = {
     const player = pidOf ? await db.get<StoredPlayer>("player", pidOf).catch(() => undefined) : undefined;
     // `stored`: the analysis as saved, which the stored body mesh belongs to (the 3D view uses it)
     return { status: "ok", side: { id: sid, meta: pub(metas.get(sid)!), result: side, stored: original.side }, rear: { id: rid, meta: pub(metas.get(rid)!), result: rear, stored: original.rear },
-      view: fuseTwo(side, rear, player ?? null, original, sync), carried: applied, fallback };
+      view: fuseTwo(side, rear, player ?? null, original, sync, applied), carried: applied, fallback };
   },
   /** See a sample analysis right away (precomputed). */
   demo: async (which: SampleName = "club") => {

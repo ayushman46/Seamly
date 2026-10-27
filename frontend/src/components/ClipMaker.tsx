@@ -246,8 +246,9 @@ export default function ClipMaker({ meta, result, ins, fileBase, frame, onFrame,
             ) : (
               <>
                 <p className="muted" style={{ margin: "0 0 12px", fontSize: 13.5 }}>
-                  The delivery in slow motion, the video with its skeleton beside the 3D body, pausing at back-foot contact, front-foot contact
-                  and release with the numbers measured there, ending on the cue. It plays anywhere, without Seamly.
+                  {cams === 2
+                    ? "The delivery in slow motion, both cameras side by side with the 3D body, pausing at back-foot contact, front-foot contact and release with the numbers both cameras measured, ending on the cue. It plays anywhere, without Seamly."
+                    : "The delivery in slow motion, the video with its skeleton beside the 3D body, pausing at back-foot contact, front-foot contact and release with the numbers measured there, ending on the cue. It plays anywhere, without Seamly."}
                 </p>
                 <div className="clip-opts">
                   <div className="row" style={{ gap: 10 }}>

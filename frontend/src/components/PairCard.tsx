@@ -3,7 +3,7 @@ import { api } from "../api";
 import type { AnalysisMeta, AnalysisResult } from "../types";
 import { cameraOf } from "../lib/twoview";
 import { dateTime } from "../lib/format";
-import { IColumns } from "./Icons";
+import { IAlert, IColumns } from "./Icons";
 
 /**
  * "Two cameras": pair this clip with one of the same ball from the other side of the action (side-on with behind or in
@@ -84,11 +84,44 @@ export default function PairCard({ id, meta, result, go, onMeta, flash }: {
             </div>
           ) : (
             <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>
-              No clip filmed {other} yet. Analyse it (choose both videos together and tick “The same ball from two cameras”), then pair them here.
+              No clip filmed {other} yet: analyse it, then pair it here. Next time, choose both videos together and tick “The same ball from two
+              cameras”, and they're paired for you.
             </p>
           )}
         </>
       )}
     </section>
+  );
+}
+
+/** The note at the top of a paired analysis: an invitation when the two clips fit together, or what to fix when they
+ * don't (both read side-on, or one at an angle). */
+export function PairNotice({ id, meta, result, go }: { id: string; meta: AnalysisMeta; result: AnalysisResult; go: (to: string) => void }) {
+  const [partner, setPartner] = useState<AnalysisMeta | null | undefined>(undefined);
+  useEffect(() => {
+    let live = true;
+    if (!meta.pair) { setPartner(undefined); return; }
+    api.list().then((ms) => live && setPartner(ms.find((m) => m.id === meta.pair) ?? null)).catch(() => live && setPartner(null));
+    return () => { live = false; };
+  }, [meta.pair]);
+  if (!meta.pair || partner === undefined) return null;
+  const mine = cameraOf(result);
+  const theirs = !partner || partner.status !== "done" || !partner.view ? null : partner.angled ? null : partner.view === "side_on" ? "side" : "rear";
+  const fits = !!partner && partner.status === "done" && mine !== null && theirs !== null && mine !== theirs;
+  const waiting = !!partner && (partner.status === "queued" || partner.status === "running");
+  return (
+    <div className={`notice ${fits || waiting ? "" : "warn"}`} style={{ marginBottom: 14 }}>
+      {fits || waiting ? <IColumns size={16} /> : <IAlert size={16} />}
+      <div>
+        {!partner ? <>This clip was paired with a second camera's clip that isn't in this browser any more.</>
+          : waiting ? <>This ball was also filmed by a second camera ({partner.name}), still being analysed.{" "}
+              <button type="button" className="link-btn" onClick={() => go(`/two/${id}/${partner.id}`)}>Open both cameras</button>: it fills in when both are done.</>
+          : fits ? <>This ball was also filmed by a second camera.{" "}
+              <button type="button" className="link-btn" onClick={() => go(`/two/${id}/${partner.id}`)}>See both cameras together</button>: the whole action and the full back-health screen.</>
+          : <>This clip is paired with {partner.name}, but the two can't be put together yet: one must be side-on and the other behind or in front
+              of the bowler, both square to the pitch.{" "}
+              <button type="button" className="link-btn" onClick={() => go(`/two/${id}/${partner.id}`)}>See what to fix</button>.</>}
+      </div>
+    </div>
   );
 }

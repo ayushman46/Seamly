@@ -179,7 +179,10 @@ export function sharedContacts(side: AnalysisResult, rear: AnalysisResult, offse
 }
 
 export interface SameBallCheck { label: string; a: number | string; b: number | string; ok: boolean; tol?: number }
-export interface SameBall { verdict: "match" | "unsure" | "mismatch"; checks: SameBallCheck[] }
+export interface SameBall {
+  verdict: "match" | "unsure" | "mismatch"; checks: SameBallCheck[];
+  unseen: Record<Camera, Contact[]>;   // foot contacts each camera didn't see land (so the stride can't be compared)
+}
 
 /** Do the two clips look like the same delivery? The bowling arm must agree. A "match" needs a stride timing (back-foot
  * to front-foot contact, or front-foot contact to release) that both cameras found on the video, agreeing within one
@@ -202,7 +205,8 @@ export function sameBall(side: AnalysisResult, rear: AnalysisResult): SameBall {
     if (isStride && d <= tol) stride++;
   }
   const verdict = armA !== armB || far ? "mismatch" : stride > 0 && checks.every((c) => c.ok) ? "match" : "unsure";
-  return { verdict, checks };
+  const unseen = (r: AnalysisResult) => (["bfc", "ffc"] as const).filter((k) => !FOUND(r.events[k]?.method));
+  return { verdict, checks, unseen: { side: unseen(side), rear: unseen(rear) } };
 }
 
 // how far two readings may differ and still be averaged (about each one's precision): degrees, % of height
@@ -273,8 +277,18 @@ export interface TwoView {
 /** The whole delivery from both cameras: the fused measurements, one score and coaching over all of them, and the
  * back-health screen with every check made on the camera that sees it. */
 export function twoView(side: AnalysisResult, rear: AnalysisResult, player: Pick<Player, "age_group" | "style"> | null,
-  original?: { side: AnalysisResult; rear: AnalysisResult }, sync?: Sync): TwoView {
+  original?: { side: AnalysisResult; rear: AnalysisResult }, sync?: Sync, carried?: SharedContacts): TwoView {
   const rows = fuseMetrics(side, rear);
+  // a value read at a contact carried from the other camera is measured, but a red flag needs that contact confirmed on
+  // its own clip: such a "risk" reads as "watch" (the contact can be a frame out, and the back knee reads a little low)
+  for (const row of rows) {
+    const set = row.from === "rear" ? carried?.rear : row.from === "side" ? carried?.side : undefined;
+    const atCarried = (row.metric.event ?? "").split("-").some((e) => set && e in set);
+    if (atCarried && row.metric.rating === "risk") {
+      row.metric = { ...row.metric, rating: "watch",
+        note: `Measured at a foot contact taken from the ${row.from === "side" ? "camera behind" : "side-on camera"}; confirm the contact on this clip before treating it as a red flag.` };
+    }
+  }
   const metrics = rows.map((r) => r.metric);
   // timing precision follows the slower camera's distinct frame rate
   const fps = Math.min(distinctFps(side), distinctFps(rear));
@@ -289,6 +303,19 @@ export function twoView(side: AnalysisResult, rear: AnalysisResult, player: Pick
     mixed_action: fromOf("hip_shoulder_sep_bfc") ?? fromOf("shoulder_counter_rotation"),
     back_knee: fromOf("back_knee_bfc"),
   };
+  // a check neither camera could make gives the reason from the camera that should make it, not a generic "film from behind"
+  if (back) {
+    const reasonOf: Record<string, [AnalysisResult, string[]]> = {
+      side_bend: [rear, ["trunk_lateral_br"]], mixed_action: [rear, ["hip_shoulder_sep_bfc", "shoulder_counter_rotation"]], back_knee: [side, ["back_knee_bfc"]],
+    };
+    const camWord = (r: AnalysisResult) => (r === side ? "Side-on" : r.view.view === "front_on" ? "From in front" : "From behind");
+    for (const ch of back.checks) {
+      if (ch.status !== "unknown" || !reasonOf[ch.key]) continue;
+      const [r, keys] = reasonOf[ch.key];
+      const note = keys.map((k) => r.metrics.find((m) => m.key === k)?.note).find((n) => !!n);
+      ch.text = `${camWord(r)}: ${note ? note.charAt(0).toLowerCase() + note.slice(1) : "couldn't be measured on this clip."}`;
+    }
+  }
   const sum = summary(ins as unknown as Parameters<typeof summary>[0], pl) as Insights["summary"];
   // both cameras are already here: what's left to unlock is the frame rate
   sum.unlock = fps < 90 ? ["Use slow motion (120–240 fps) on both phones to time release and foot contacts precisely."] : [];

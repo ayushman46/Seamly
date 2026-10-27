@@ -1098,7 +1098,8 @@ button:focus:not(:focus-visible) { outline: none; }
   .verdict .ring .val small { font-size: 8px; margin-top: 2px; letter-spacing: 0.04em; }
   .verdict-headline { font-size: 18px; margin-bottom: 0; }
   .verdict-main { display: contents; }
-  .verdict-fix, .verdict-actions { grid-column: 1 / -1; }
+  .verdict-fix, .verdict-actions, .verdict-note { grid-column: 1 / -1; }
+  .verdict .ring .val small { overflow-wrap: anywhere; }
   .verdict-actions { margin-top: 0; }
   .verdict-facts > div { grid-template-columns: 80px minmax(0, 1fr); }
 }
@@ -1255,3 +1256,5 @@ body.pace-measuring { padding-bottom: 150px; }
 .two-cams-pick { display: flex; gap: 8px; align-items: flex-start; margin-top: 12px; padding-left: 0; font-size: 13px; }
 .two-cams-pick input { margin-top: 3px; }
 .two-3d { margin-top: 18px; }
+.two-table td, .two-table th { vertical-align: top; }
+.two-note { font-size: 12px; font-weight: 400; margin-top: 2px; }

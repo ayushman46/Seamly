@@ -247,7 +247,7 @@ function HistoryCard({ m, go, onDeleted, picked, onPick, player }: { m: Analysis
   const thumb = m.status === "done" && m.thumb_frame !== null ? `url(${api.frameUrl(m.id, m.thumb_frame)})` : undefined;
   const del = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm(`Delete "${m.name}"? This removes the video and results.`)) return;
+    if (!confirm(`Delete "${m.name}"? This removes the video and results.${m.pair ? " It's paired with a second camera's clip of the same ball, which stays (unpaired)." : ""}`)) return;
     try {
       await api.remove(m.id);
       onDeleted();
@@ -280,6 +280,8 @@ function HistoryCard({ m, go, onDeleted, picked, onPick, player }: { m: Analysis
         <div className="hmeta">
           {player && <span className="chip info">{player}</span>}
           {m.view && <span className="chip">{VIEW_LABEL[m.view]}</span>}
+          {m.pair && <button type="button" className="chip accent" onClick={(e) => { e.stopPropagation(); go(`/two/${m.id}/${m.pair}`); }}
+            title="This ball was also filmed by a second camera: open both together">Two cameras ›</button>}
           {m.arm && <span className="chip" title={m.arm_conf != null && m.arm_conf < 0.7 ? "Detected bowling arm, not certain: check it in Detection & settings" : undefined}>
             {m.arm === "right" ? "Right-arm" : "Left-arm"}{m.arm_conf != null && m.arm_conf < 0.7 ? "?" : ""}</span>}
         </div>

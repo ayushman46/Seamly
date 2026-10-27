@@ -1,7 +1,7 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import type { AnalysisMeta, AnalysisResult, EventKey } from "../types";
-import { alignFrame, type Camera, type FusedRow, type SharedContacts, type TwoView } from "../lib/twoview";
+import { alignFrame, sinceRelease, type Camera, type FusedRow, type SharedContacts, type TwoView } from "../lib/twoview";
 import { EVENTS } from "../lib/constants";
 import { fmt, unitLabel } from "../lib/format";
 import { usePageTitle } from "../lib/title";
@@ -22,6 +22,7 @@ type Loaded =
   | { status: "pending"; metas: AnalysisMeta[] }
   | { status: "failed"; metas: AnalysisMeta[] }
   | { status: "missing"; metas: AnalysisMeta[] }
+  | { status: "unpaired"; metas: AnalysisMeta[] }
   | { status: "views"; metas: AnalysisMeta[]; message: string }
   | { status: "ok"; side: Clip; rear: Clip; view: TwoView; carried: SharedContacts; fallback: boolean };
 
@@ -54,14 +55,32 @@ export default function TwoViewPage({ a, b, go }: { a: string; b: string; go: (t
   }, [data]);
 
   const unpair = async () => {
-    try { await api.pair(a, null); go(`/a/${a}`); } catch (e) { setData({ status: "error", message: (e as Error).message }); }
+    try {
+      await api.pair(a, null);
+      setTick((n) => n + 1);   // the page now says they're unpaired, with a way to pair them again
+    } catch (e) { setData({ status: "error", message: (e as Error).message }); }
   };
+  const repair = async () => {
+    try { await api.pair(a, b); setTick((n) => n + 1); } catch (e) { setData({ status: "error", message: (e as Error).message }); }
+  };
+  // a camera view read wrongly: set it here, then the page tries again
+  const setView = async (id: string, view: "behind" | "front_on") => {
+    setData({ status: "loading" });
+    try { await api.recompute(id, { view }); } catch (e) { setData({ status: "error", message: (e as Error).message }); return; }
+    setTick((n) => n + 1);
+  };
+  // focus goes to the page's heading once the results are in (they replace the waiting card)
+  useEffect(() => {
+    if (data.status !== "ok") return;
+    const h = document.querySelector<HTMLElement>("main h1");
+    if (h) { h.tabIndex = -1; h.focus({ preventScroll: true }); }
+  }, [data.status]);
 
   return (
     <>
       <Header go={go} />
       <main className="page two-page" id="main" tabIndex={-1}>
-        <button className="btn ghost sm" style={{ marginBottom: 12 }} onClick={() => go(`/a/${a}`)}><IBack size={15} /> Back to the analysis</button>
+        <button className="btn ghost sm" style={{ marginBottom: 12 }} onClick={() => go("/")}><IBack size={15} /> Your analyses</button>
         {data.status === "loading" ? (
           <>
             <h1 className="an-title">Two cameras</h1>
@@ -87,23 +106,42 @@ export default function TwoViewPage({ a, b, go }: { a: string; b: string; go: (t
               ))}
             </div>
           </>
-        ) : data.status === "failed" || data.status === "missing" ? (
+        ) : data.status === "failed" || data.status === "missing" || data.status === "unpaired" ? (
           <>
             <h1 className="an-title">Two cameras</h1>
-            <div className="notice warn"><IAlert size={16} /> <div>{data.status === "failed"
-              ? "One of the clips couldn't be analysed, so the two can't be put together. Open it for the reason, then analyse it again or pair another clip."
-              : "One of these clips isn't in this browser any more (it was deleted, or the backup it came from didn't include it)."}</div></div>
+            <div className={`notice ${data.status === "unpaired" ? "" : "warn"}`} role="status">
+              {data.status === "unpaired" ? <IInfo size={16} /> : <IAlert size={16} />}
+              <div>{data.status === "failed"
+                ? "One of the clips couldn't be analysed, so the two can't be put together. Open it for the reason, then analyse it again or pair another clip."
+                : data.status === "missing"
+                  ? "One of these clips isn't in this browser any more (it was deleted, or the backup it came from didn't include it). The other clip is unpaired."
+                  : "These two clips aren't paired."}</div>
+            </div>
             <div className="row wrap" style={{ gap: 8, marginTop: 12 }}>
+              {data.status === "unpaired" && <button className="btn sm primary" onClick={repair}>Pair them</button>}
               {data.metas.map((m) => <button key={m.id} className="btn sm" onClick={() => go(`/a/${m.id}`)}>Open {m.name}{m.status === "failed" ? " (couldn't be analysed)" : ""}</button>)}
-              <button className="btn sm ghost" onClick={unpair}>Unpair</button>
+              {data.status === "failed" && <button className="btn sm ghost" onClick={unpair}>Unpair</button>}
             </div>
           </>
         ) : data.status === "views" ? (
           <>
             <h1 className="an-title">Two cameras</h1>
-            <div className="notice warn"><IAlert size={16} /> <div>{data.message}</div></div>
-            <div className="row wrap" style={{ gap: 8, marginTop: 12 }}>
-              {data.metas.map((m) => <button key={m.id} className="btn sm" onClick={() => go(`/a/${m.id}`)}>Open {m.name}</button>)}
+            <div className="notice warn" role="alert"><IAlert size={16} /> <div>{data.message}</div></div>
+            <div className="card card-pad" style={{ marginTop: 12 }}>
+              {data.metas.map((m) => {
+                const read = !m.view ? "not read yet" : `${({ side_on: "side-on", behind: "behind the bowler", front_on: "in front of the bowler" } as const)[m.view]}${m.angled ? ", at an angle" : ""}`;
+                const fixable = !(m.view === "side_on" && !m.angled) && data.metas.some((o) => o.id !== m.id && o.view === "side_on" && !o.angled);
+                return (
+                  <div key={m.id} className="row wrap" style={{ gap: 8, marginBottom: 10 }}>
+                    <span className="grow"><b>{m.name}</b> <span className="faint">· read as {read}</span></span>
+                    {fixable && <>
+                      <button className="btn sm primary" onClick={() => setView(m.id, "behind")}>It was filmed from behind</button>
+                      <button className="btn sm" onClick={() => setView(m.id, "front_on")}>From in front</button>
+                    </>}
+                    <button className="btn sm ghost" onClick={() => go(`/a/${m.id}`)}>Open</button>
+                  </div>
+                );
+              })}
               <button className="btn sm ghost" onClick={unpair}>Unpair</button>
             </div>
           </>
@@ -113,6 +151,26 @@ export default function TwoViewPage({ a, b, go }: { a: string; b: string; go: (t
       </main>
     </>
   );
+}
+
+/** What the same-ball check compared, in plain words: it guards against pairing two different balls. */
+function sameText(same: TwoView["same"], frontOn: boolean): string {
+  const rearCam = frontOn ? "the camera in front" : "the camera behind";
+  const parts: string[] = [];
+  const arm = same.checks.find((c) => c.label === "Bowling arm");
+  if (arm) parts.push(arm.ok ? `Both cameras see a ${arm.a}-arm bowler` : `The side-on camera sees a ${arm.a}-arm bowler and ${rearCam} a ${arm.b}-arm one`);
+  for (const c of same.checks.filter((x) => x.label !== "Bowling arm")) {
+    const what = c.label.charAt(0).toLowerCase() + c.label.slice(1);
+    parts.push(`${what} takes ${c.a} ms side-on and ${c.b} ms on ${rearCam}${c.ok ? ", which agrees" : ", which doesn't agree"}`);
+  }
+  let text = parts.join("; ") + ".";
+  if (same.verdict === "unsure") {
+    const missed = (cam: "side" | "rear") => same.unseen[cam].map((k) => (k === "bfc" ? "back" : "front")).join(" and ");
+    const who = [same.unseen.side.length ? `the side-on camera didn't see the ${missed("side")} foot land` : "",
+      same.unseen.rear.length ? `${rearCam} didn't see the ${missed("rear")} foot land` : ""].filter(Boolean).join(" and ");
+    text += ` To be sure it's the same ball (not two balls of the same spell) Seamly compares the stride's timing, but ${who || "the contacts weren't seen by both"}.`;
+  }
+  return text;
 }
 
 function Ready({ d, go, unpair }: { d: Extract<Loaded, { status: "ok" }>; go: (to: string) => void; unpair: () => void }) {
@@ -150,6 +208,21 @@ function Ready({ d, go, unpair }: { d: Extract<Loaded, { status: "ok" }>; go: (t
     return () => cancelAnimationFrame(raf);
   }, [playing, speed, s, sf0, sf1]);
 
+  // keyboard: space plays and pauses, the arrows step a frame (shift: five), as on the analysis page
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || document.querySelector("[aria-modal=true]")) return;
+      const el = e.target as HTMLElement | null;
+      if (el?.closest?.("input, select, textarea, [contenteditable], [role=menu]")) return;
+      if (el?.closest?.("button, a") && (e.key === " " || e.key === "Enter")) return;
+      if (e.key === " " || e.key === "k") { e.preventDefault(); setPlaying((p) => !p); }
+      else if (e.key === "ArrowRight" || e.key === "l") { e.preventDefault(); setPlaying(false); setFrame((f) => Math.min(sf1, f + (e.shiftKey ? 5 : 1))); }
+      else if (e.key === "ArrowLeft" || e.key === "j") { e.preventDefault(); setPlaying(false); setFrame((f) => Math.max(sf0, f - (e.shiftKey ? 5 : 1))); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [sf0, sf1]);
+
   const name = side.meta.name.replace(/ · ball \d+$/, "");
   const frontOn = r.view.view === "front_on";
   const rearLabel = frontOn ? "In front of the bowler" : "Behind the bowler";
@@ -169,7 +242,7 @@ function Ready({ d, go, unpair }: { d: Extract<Loaded, { status: "ok" }>; go: (t
     const otherCam = x.from === "side" ? (frontOn ? "camera in front" : "camera behind") : "side-on camera";
     return x.unit === "ms"
       ? `the ${otherCam} read ${val(x.other)}; timings come from the camera with more frames a second`
-      : `the ${otherCam} read ${val(x.other)}: too far apart to average, so the camera that measures this better is used`;
+      : `the ${otherCam} read ${val(x.other)}: too far apart to average, so the ${x.from === "rear" ? (frontOn ? "camera in front" : "camera behind") : "side-on camera"}, which measures this better, is used`;
   };
   const carriedText = (["bfc", "ffc"] as const).flatMap((k) => {
     const label = k === "bfc" ? "Back-foot contact" : "Front-foot contact";
@@ -203,9 +276,9 @@ function Ready({ d, go, unpair }: { d: Extract<Loaded, { status: "ok" }>; go: (t
         {same.verdict === "mismatch" ? <IAlert size={16} /> : same.verdict === "match" ? <ICheck size={16} /> : <IInfo size={16} />}
         <div>
           <b>{same.verdict === "match" ? "The same ball, as far as Seamly can tell." : same.verdict === "mismatch" ? "These may not be the same ball." : "Check these are the same ball."}</b>{" "}
-          {same.checks.map((c) => `${c.label}: ${typeof c.a === "number" ? `${c.a} ms side-on, ${c.b} ms ${camName("rear", frontOn)}` : `${c.a} and ${c.b}`}${c.ok ? "" : " (doesn't agree)"}`).join("; ")}.
-          {same.verdict === "unsure" && ` Seamly can only confirm it when both cameras see a foot land; ${frontOn ? "from in front" : "from behind"} the contacts are often too hard to see.`}
+          {sameText(same, frontOn)}
           {same.verdict === "mismatch" && " If it is the same ball, a key moment is off on one clip: check the release frame on each, and the camera view in Detection & settings. Until then the numbers below may mix two moments."}
+          {tv.sync.score < 0.4 && ` The movement in the two clips doesn't line up well (${Math.round(Math.max(0, tv.sync.score) * 100)}% match): check both clips follow the same bowler through the same ball.`}
         </div>
       </div>
 
@@ -219,7 +292,7 @@ function Ready({ d, go, unpair }: { d: Extract<Loaded, { status: "ok" }>; go: (t
               <div className="cue">“{top.drill.cue}”</div>
             </div>
           )}
-          <p className="faint" style={{ fontSize: 12.5, margin: "8px 0 0" }}>
+          <p className="faint verdict-note" style={{ fontSize: 12.5, margin: "8px 0 0" }}>
             One score over both cameras: {tv.rows.length} measurements, each from the camera that sees it{tv.score !== null ? "" : " (not enough rated ones for a score)"}.
           </p>
         </div>
@@ -248,13 +321,16 @@ function Ready({ d, go, unpair }: { d: Extract<Loaded, { status: "ok" }>; go: (t
           <div className="seg" role="group" aria-label="Jump to a key moment">
             {KEY_EVENTS.filter((k) => s.events[k]).map((k) => {
               const e = EVENTS.find((x) => x.key === k)!;
-              return <button key={k} title={e.label} className={s.events[k]!.frame === frame ? "on" : ""} onClick={() => { setPlaying(false); setFrame(s.events[k]!.frame); }}>{e.short}</button>;
+              const on = s.events[k]!.frame === frame;
+              return <button key={k} title={e.label} aria-label={e.label} aria-pressed={on} className={on ? "on" : ""} onClick={() => { setPlaying(false); setFrame(s.events[k]!.frame); }}>{e.short}</button>;
             })}
           </div>
         </div>
         <input type="range" className="two-scrub" min={sf0} max={sf1} value={frame} aria-label="Frame"
+          aria-valuetext={(() => { const t = sinceRelease(s, frame); const ev = evAt(s, frame); return `${ev ? `${ev}, ` : ""}${t === null ? `frame ${frame}` : t === 0 ? "release" : `${Math.abs(Math.round(t * 1000))} ms ${t < 0 ? "before" : "after"} release`}`; })()}
           onChange={(e) => { setPlaying(false); setFrame(Number(e.target.value)); }} />
         <p className="faint" style={{ fontSize: 12, margin: "6px 14px 12px" }}>
+          <span className="sr-only">Space plays and pauses; the arrow keys step a frame. </span>
           {tv.sync.method === "motion"
             ? `Lined up by the movement in both clips (match ${Math.round(tv.sync.score * 100)}%), which put the releases ${Math.abs(Math.round(tv.sync.offset * 1000))} ms apart: one camera found its release a little ${tv.sync.offset < 0 ? "earlier" : "later"} than the other. They play in step at any frame rates.`
             : "Lined up at the release each camera found, in real time, so they play in step at any frame rates."}
@@ -314,10 +390,9 @@ function Ready({ d, go, unpair }: { d: Extract<Loaded, { status: "ok" }>; go: (t
               <tbody>
                 {g.rows.map((x) => (
                   <tr key={x.key}>
-                    <th scope="row">{x.label}</th>
+                    <th scope="row">{x.label}{x.other && <div className="faint two-note">{readings(x)}</div>}</th>
                     <td><b>{val(x.metric)}</b></td>
                     <td><span className={`chip ${RATING_CLS[x.metric.rating] ?? ""}`}>{x.metric.rating === "info" ? "For reference" : x.metric.rating[0].toUpperCase() + x.metric.rating.slice(1)}</span></td>
-                    <td className="faint">{readings(x)}</td>
                   </tr>
                 ))}
               </tbody>
