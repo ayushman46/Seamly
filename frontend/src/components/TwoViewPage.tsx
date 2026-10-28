@@ -185,7 +185,7 @@ function SpeedNotice({ fix, current, frontOn, extra, also, onFix }: {
         {fix.factor > cur
           ? `Its movement matches the other camera's only when its time runs ${fix.ratio}× faster: the phone probably filmed in slow motion and saved it at normal speed.`
           : `Its movement matches the other camera's only when its time runs ${fix.ratio}× slower: its clip speed is ${cur}×, but this phone ${fix.factor > 1 ? "filmed less slowly than that" : "didn't film in slow motion"}.`}
-        {" "}{extra ?? "Until it's fixed the timings are off, the two videos don't play in step, and the same-ball check can't compare them."}
+        {" "}{extra ?? "Until it's fixed the score and measurements below may be off (the key moments are found by timing), the two videos don't play in step, and the same-ball check can't compare them."}
         {also && <> {also}</>}
         <div className="row wrap" style={{ gap: 8, marginTop: 8 }}>
           <button type="button" className="btn sm primary" onClick={onFix}>Set its clip speed to {fix.factor}×</button>

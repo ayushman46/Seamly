@@ -1108,13 +1108,13 @@ button:focus:not(:focus-visible) { outline: none; }
 }
 @media (max-width: 560px) {
   .verdict { grid-template-columns: 64px minmax(0, 1fr); gap: 14px 16px; padding: 18px; align-items: start; }
-  .verdict .ring { width: 64px; height: 64px; }
+  .verdict .ring { width: 64px; height: 64px; margin-bottom: 16px; }
   .verdict .ring .val b { font-size: 20px; }
-  .verdict .ring .val small { font-size: 8px; margin-top: 2px; letter-spacing: 0.04em; }
+  /* the grade goes under the ring: inside a 64 px ring "Developing" or "Needs work" runs over the stroke */
+  .verdict .ring .val small { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: 5px; font-size: 9px; letter-spacing: 0.02em; white-space: nowrap; }
   .verdict-headline { font-size: 18px; margin-bottom: 0; }
   .verdict-main { display: contents; }
   .verdict-fix, .verdict-actions, .verdict-note { grid-column: 1 / -1; }
-  .verdict .ring .val small { overflow-wrap: anywhere; }
   .verdict-actions { margin-top: 0; }
   .verdict-facts > div { grid-template-columns: 80px minmax(0, 1fr); }
 }
