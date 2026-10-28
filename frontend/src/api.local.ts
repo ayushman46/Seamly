@@ -445,6 +445,12 @@ function cleanCrease(c: unknown): CreaseRecord | null {
   if (!q || !(pt(q.line?.a) && pt(q.line?.b) && isNum(q.frame) && isNum(q.behind_cm) && isNum(q.band_cm) && ["legal", "no_ball", "close"].includes(q.verdict))) return null;
   return { line: { a: [q.line.a[0], q.line.a[1]], b: [q.line.b[0], q.line.b[1]] }, frame: Math.round(q.frame), behind_cm: q.behind_cm, band_cm: q.band_cm, verdict: q.verdict };
 }
+/** Two cameras: a clip measured again with the other camera's foot contacts, kept while the page is open (a re-measure
+ * takes seconds on a phone, and the same clip, settings and contacts give the same result). Keyed by the clip, when it
+ * last changed and the exact settings used; the oldest go first. */
+const remeasured = new Map<string, AnalysisResult>();
+const REMEASURED_MAX = 6;
+
 /** The no-ball check made again on a recomputed analysis (height, markers, view): gone if it no longer applies. */
 function recheckCrease(c: CreaseRecord | null | undefined, r: AnalysisResult): CreaseRecord | null {
   if (!c || r.view.view !== "side_on" || r.view.oblique) return null;
@@ -821,12 +827,19 @@ export const api = {
       const set = carried[cam];
       if (!Object.keys(set).length) return r;
       const m = metas.get(id)!;
-      const A = await db.get<StageA>("stagea", id);
-      if (!A) { fallback = true; return r; }
       const over: Overrides = { ...(m.overrides ?? {}), events: { ...(m.overrides?.events ?? {}), ...set } };
       try {
-        const { stageB } = await engine();
-        const nr = (await stageB(A, await withAgeStature(m, over))).result as AnalysisResult;
+        const input = await withAgeStature(m, over);
+        const key = `${id}|${m.updated}|${JSON.stringify(input)}`;
+        let nr = remeasured.get(key);
+        if (!nr) {
+          const A = await db.get<StageA>("stagea", id);
+          if (!A) { fallback = true; return r; }
+          const { stageB } = await engine();
+          nr = (await stageB(A, input)).result as AnalysisResult;
+          remeasured.set(key, nr);
+          while (remeasured.size > REMEASURED_MAX) remeasured.delete(remeasured.keys().next().value!);
+        }
         if (cameraOf(nr) !== cam) { fallback = true; return r; }
         applied[cam] = set;
         return nr;
