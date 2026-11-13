@@ -1280,6 +1280,8 @@ body.pace-measuring { padding-bottom: 150px; }
 .session-pair { font-size: 12.5px; margin: 4px 0 0 14px; }
 
 /* bio-mech replay: the broadcast-style 3D sequence, over the page */
+@font-face { font-family: "Barlow Semi Condensed"; font-weight: 500; font-style: normal; font-display: swap; src: url("./assets/fonts/barlow-semi-condensed-latin-500-normal.woff2") format("woff2"); }
+@font-face { font-family: "Barlow Semi Condensed"; font-weight: 600; font-style: normal; font-display: swap; src: url("./assets/fonts/barlow-semi-condensed-latin-600-normal.woff2") format("woff2"); }
 @font-face { font-family: "Barlow Condensed"; font-weight: 500; font-style: normal; font-display: swap; src: url("./assets/fonts/barlow-condensed-latin-500-normal.woff2") format("woff2"); }
 @font-face { font-family: "Barlow Condensed"; font-weight: 600; font-style: normal; font-display: swap; src: url("./assets/fonts/barlow-condensed-latin-600-normal.woff2") format("woff2"); }
 @font-face { font-family: "Barlow Condensed"; font-weight: 700; font-style: normal; font-display: swap; src: url("./assets/fonts/barlow-condensed-latin-700-normal.woff2") format("woff2"); }

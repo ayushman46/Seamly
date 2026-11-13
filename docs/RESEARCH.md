@@ -314,10 +314,13 @@ an arm-speed ribbon and a moving camera. What was looked at, and what was chosen
 - **No product to licence or copy.** Searches for the graphic's maker turned up no public product or licence; skeletal
   tracking in broadcast (Hawk-Eye's Skeletrack) needs many calibrated cameras. Seamly already has the hard part from one
   phone: 17 joints in 3D per frame, the key moments and the measurements.
-- **The skeleton model.** Anatomical skeleton models found were paid, attribution-only or behind sign-ins, and a rigged
-  model would need retargeting. The bones are instead built in code from simple shapes (lathe-turned long bones, tube
-  ribs, a stacked spine, a skull with dark hollows) and placed between the measured joints every frame: no file, no
-  licence, about 10 KB of code, and the pose is exactly the one measured.
+- **The skeleton model.** The reference graphic's skeleton is recognisably OpenSim's (toes, fingers, the same bone
+  shapes): the full-body musculoskeletal model of Rajagopal et al. (2016), distributed with OpenSim
+  (github.com/opensim-org/opensim-models) and on SimTK under the "MIT Use Agreement". Its 81 bone meshes are merged
+  into 16 body segments by `frontend/tools/build_skeleton.py` (1.1 MB, kept for offline use), each in its own frame
+  with its origin at the joint it hangs from. Every frame each segment is turned so its length lies along the measured
+  bone and its hinge axis across the plane the limb bends in; the trunk is bent between the pelvis and the chest. A
+  simpler skeleton built in code from basic shapes stands in if the file can't be loaded.
 - **Travel.** The analysis keeps the pelvis in place, so the run through the crease is rebuilt by holding the planted
   foot still (back foot from its contact, then the front foot). On the club sample the planted ankles slide under
   12 cm across their phases.
@@ -325,7 +328,9 @@ an arm-speed ribbon and a moving camera. What was looked at, and what was chosen
   screen's rate whatever the clip's.
 - **One canvas.** The 3D scene, the video and all titles are drawn into one canvas, so the saved video is exactly what
   is on screen (MediaRecorder, MP4 where the browser can).
-- **Font.** Barlow Condensed (SIL Open Font License), bundled: three small files.
+- **Fonts.** Barlow Condensed and Barlow Semi Condensed (SIL Open Font License), bundled: five small files.
+- **Sequence.** Matched to the reference shot by shot: video with the arm's fan, dissolve at the gather, stops with
+  callouts, a full turn round the frozen release with the whole ribbon, video out.
 
 Honesty rules kept from the rest of the app: callouts show only what the clip measured from a camera that sees it, with
 metres only when the bowler's height was entered; the ribbon is relative speed; the picture says "3D body estimated

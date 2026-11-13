@@ -3,7 +3,7 @@ import * as THREE from "three";
 import { api } from "../api";
 import type { AnalysisResult } from "../types";
 import { J, armSpeed, replayScript, replayState, sampleJoints, sceneJoints, sides, speedColor, LANDING_X, LANDING_Z, type Callout, type V3 } from "../lib/biomech";
-import { BoneBody } from "../lib/bones";
+import { BoneBody, SimpleBody, loadBones, type Body, type BoneData, type Limb } from "../lib/bones";
 import { clipExt, clipMime } from "../lib/clip";
 import { IDownload, IPause, IPlay, IRefresh, IUpload, IX } from "./Icons";
 
@@ -14,6 +14,7 @@ import { IDownload, IPause, IPlay, IRefresh, IUpload, IX } from "./Icons";
  */
 
 const FONT = `"Barlow Condensed", "Roboto Condensed", "Arial Narrow", Inter, -apple-system, sans-serif`;
+const FONT_SEMI = `"Barlow Semi Condensed", "Barlow Condensed", "Roboto Condensed", Inter, -apple-system, sans-serif`;
 const SUB = 4;   // ribbon samples per video frame
 const COCO_LIMBS: [number, number, "b" | "f" | "t"][] = [[5, 7, "t"], [7, 9, "t"], [6, 8, "t"], [8, 10, "t"], [5, 6, "t"], [5, 11, "t"], [6, 12, "t"],
   [11, 12, "t"], [11, 13, "t"], [13, 15, "t"], [12, 14, "t"], [14, 16, "t"]];
@@ -66,17 +67,15 @@ function buildPitch(scene: THREE.Scene, landX: number) {
     line(2.64, 0.05, 0, bowl);                                         // bowling crease
     line(3.9, 0.05, 0, pop);                                           // popping crease
     for (const x of [-1.32, 1.32]) line(0.05, 2.44, x, pop + dir * 1.22);   // return creases
-    const wood = new THREE.MeshStandardMaterial({ color: 0xe2c98f, roughness: 0.5 });
-    for (const x of [-0.114, 0, 0.114]) {
-      const s = new THREE.Mesh(new THREE.CylinderGeometry(0.019, 0.019, 0.711, 12), wood);
+    const wood = new THREE.MeshStandardMaterial({ color: 0xe9dfc6, roughness: 0.6 }), cap = new THREE.MeshStandardMaterial({ color: 0xd9a520, roughness: 0.45 });
+    for (const x of [-0.05, 0, 0.05]) {
+      const s = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, 0.711, 14), wood);
       s.position.set(x, 0.355, bowl); s.castShadow = true;
       scene.add(s);
     }
-    for (const x of [-0.057, 0.057]) {
-      const b = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.11, 8), wood);
-      b.rotation.z = Math.PI / 2; b.position.set(x, 0.72, bowl);
-      scene.add(b);
-    }
+    const top = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.022, 0.05), cap);
+    top.position.set(0, 0.722, bowl); top.castShadow = true;
+    scene.add(top);
   }
   // the line the bowler runs along, and where the front foot lands
   const run = new THREE.Mesh(new THREE.PlaneGeometry(0.02, 9), new THREE.MeshBasicMaterial({ color: 0xf59e0b, transparent: true, opacity: 0.32 }));
@@ -101,6 +100,9 @@ export default function BioReplay({ id, result, name, onClose }: { id: string; r
   const [shown, setShown] = useState(0);          // the time on the scrub bar (updated a few times a second)
   const [caption, setCaption] = useState("");     // what a screen reader hears: the phase and its numbers
   const [failed, setFailed] = useState(false);
+  // the real bone surfaces; null if they couldn't be loaded (the simple skeleton stands in)
+  const [bones, setBones] = useState<BoneData | null | undefined>(undefined);
+  useEffect(() => { let live = true; loadBones(`${import.meta.env.BASE_URL}skeleton/bones.bin`).then((b) => live && setBones(b), () => live && setBones(null)); return () => { live = false; }; }, []);
   const [rec, setRec] = useState<"idle" | "recording" | "done">("idle");
   const [clip, setClip] = useState<{ url: string; file: File } | null>(null);
   const recRef = useRef<{ rec: MediaRecorder; chunks: Blob[] } | null>(null);
@@ -131,6 +133,7 @@ export default function BioReplay({ id, result, name, onClose }: { id: string; r
   useEffect(() => () => { if (clip) URL.revokeObjectURL(clip.url); }, [clip]);
 
   useEffect(() => {
+    if (bones === undefined) return;   // the bones are still loading
     const out = canvasRef.current!;
     const ctx = out.getContext("2d")!;
     let renderer: THREE.WebGLRenderer;
@@ -145,7 +148,7 @@ export default function BioReplay({ id, result, name, onClose }: { id: string; r
     const sky = skyTexture();
     scene.background = sky;
     scene.fog = new THREE.Fog(0x0b1424, 26, 95);
-    const camera = new THREE.PerspectiveCamera(portrait ? 38 : 30, W / H, 0.1, 300);
+    const camera = new THREE.PerspectiveCamera(portrait ? 44 : 36, W / H, 0.1, 300);
     scene.add(new THREE.HemisphereLight(0xf2f5ff, 0x2a4a30, 1.45));
     const sun = new THREE.DirectionalLight(0xfff6e6, 2.4);
     sun.castShadow = true;
@@ -156,52 +159,48 @@ export default function BioReplay({ id, result, name, onClose }: { id: string; r
     const right = result.bowling_arm.arm === "right";
     const S = sides(right);
     buildPitch(scene, LANDING_X * (right ? -1 : 1));
-    const body = new BoneBody();
+    const body: Body = bones ? new BoneBody(bones) : new SimpleBody();
     scene.add(body.group);
 
     // the ball in the hand, and the ribbon the bowling arm sweeps (built once, revealed as the action plays)
-    const ball = new THREE.Mesh(new THREE.SphereGeometry(0.037, 16, 12), new THREE.MeshStandardMaterial({ color: 0xc81e2c, roughness: 0.45 }));
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(0.043, 18, 14), new THREE.MeshStandardMaterial({ color: 0xc81e2c, roughness: 0.45 }));
     ball.castShadow = true;
     scene.add(ball);
     const T = frames.length, br = script.br, t0 = script.trailFrom;
     const nS = Math.max(2, (br - t0) * SUB + 1);
     const top = Math.max(1e-6, ...speeds.slice(t0, br + 1));
-    const pos = new Float32Array(nS * 2 * 3), col = new Float32Array(nS * 2 * 3), edge = new Float32Array(nS * 3), edgeCol = new Float32Array(nS * 3);
+    // three rows of points per sample: the shoulder (nearly clear), most of the way out, and the hand (the bright rim)
+    const pos = new Float32Array(nS * 3 * 3), col = new Float32Array(nS * 3 * 4);
     const spoke: number[] = [], spokeCol: number[] = [];
     const tmp: V3[] = frames[0].map(() => [0, 0, 0]);
     const hand = (P: V3[]): V3 => {
       const e = P[S.elbow], w = P[S.wrist], d = Math.hypot(w[0] - e[0], w[1] - e[1], w[2] - e[2]) || 1;
       return [w[0] + ((w[0] - e[0]) / d) * 0.13, w[1] + ((w[1] - e[1]) / d) * 0.13, w[2] + ((w[2] - e[2]) / d) * 0.13];
     };
+    const mix = (a2: V3, b2: V3, u: number): V3 => [a2[0] + (b2[0] - a2[0]) * u, a2[1] + (b2[1] - a2[1]) * u, a2[2] + (b2[2] - a2[2]) * u];
     for (let i = 0; i < nS; i++) {
       const tf = Math.min(br, t0 + i / SUB);
       const P = sampleJoints(frames, tf, tmp);
       const o = hand(P), sh = P[S.shoulder];
-      const inner: V3 = [sh[0] + (o[0] - sh[0]) * 0.52, sh[1] + (o[1] - sh[1]) * 0.52, sh[2] + (o[2] - sh[2]) * 0.52];
       const k = Math.floor(tf), u = tf - k;
       const sp = (speeds[k] * (1 - u) + speeds[Math.min(T - 1, k + 1)] * u) / top;
       const c = speedColor(sp);
-      pos.set(inner, i * 6); pos.set(o, i * 6 + 3);
-      col.set([c[0] * 0.7, c[1] * 0.7, c[2] * 0.7], i * 6); col.set(c, i * 6 + 3);
-      edge.set(o, i * 3); edgeCol.set(c, i * 3);
-      if (i % 2 === 0) { spoke.push(...inner, ...o); spokeCol.push(...c, ...c); }
+      pos.set(mix(sh, o, 0.15), i * 9); pos.set(mix(sh, o, 0.92), i * 9 + 3); pos.set(o, i * 9 + 6);
+      col.set([c[0], c[1], c[2], 0.03], i * 12); col.set([c[0], c[1], c[2], 0.55], i * 12 + 4); col.set([Math.min(1, c[0] * 1.15 + 0.08), Math.min(1, c[1] * 1.15 + 0.08), Math.min(1, c[2] * 1.15 + 0.08), 1], i * 12 + 8);
+      if (i % 2 === 0) { spoke.push(...mix(sh, o, 0.22), ...o); spokeCol.push(Math.min(1, c[0] + 0.3), Math.min(1, c[1] + 0.3), Math.min(1, c[2] + 0.3), 0.15, Math.min(1, c[0] + 0.35), Math.min(1, c[1] + 0.35), Math.min(1, c[2] + 0.35), 1); }
     }
     const index: number[] = [];
-    for (let i = 0; i < nS - 1; i++) index.push(i * 2, i * 2 + 1, i * 2 + 2, i * 2 + 1, i * 2 + 3, i * 2 + 2);
+    for (let i = 0; i < nS - 1; i++) for (const r of [0, 1]) { const a2 = i * 3 + r, b2 = a2 + 3; index.push(a2, a2 + 1, b2, a2 + 1, b2 + 1, b2); }
     const ribbonG = new THREE.BufferGeometry();
     ribbonG.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-    ribbonG.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    ribbonG.setAttribute("color", new THREE.BufferAttribute(col, 4));
     ribbonG.setIndex(index);
-    const ribbon = new THREE.Mesh(ribbonG, new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false }));
+    const ribbon = new THREE.Mesh(ribbonG, new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, side: THREE.DoubleSide, depthWrite: false }));
     const spokeG = new THREE.BufferGeometry();
     spokeG.setAttribute("position", new THREE.Float32BufferAttribute(spoke, 3));
-    spokeG.setAttribute("color", new THREE.Float32BufferAttribute(spokeCol, 3));
-    const spokes = new THREE.LineSegments(spokeG, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.85 }));
-    const edgeG = new THREE.BufferGeometry();
-    edgeG.setAttribute("position", new THREE.BufferAttribute(edge, 3));
-    edgeG.setAttribute("color", new THREE.BufferAttribute(edgeCol, 3));
-    const rim = new THREE.Line(edgeG, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.95 }));
-    for (const o of [ribbon, spokes, rim]) { o.frustumCulled = false; o.renderOrder = 5; scene.add(o); }
+    spokeG.setAttribute("color", new THREE.Float32BufferAttribute(spokeCol, 4));
+    const spokes = new THREE.LineSegments(spokeG, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false }));
+    for (const o of [ribbon, spokes]) { o.frustumCulled = false; o.renderOrder = 5; scene.add(o); }
     // the ball's flight after release: the hand's direction at release, at a bowler's pace (the speed isn't measured here)
     const pA = hand(sampleJoints(frames, Math.max(0, br - 0.5), tmp)), pB = hand(sampleJoints(frames, br, tmp));
     const dir = new THREE.Vector3(pB[0] - pA[0], Math.min(0, pB[1] - pA[1]) * 0.3, Math.min(-0.05, pB[2] - pA[2])).normalize();
@@ -232,8 +231,9 @@ export default function BioReplay({ id, result, name, onClose }: { id: string; r
       return [x / n, y / n] as [number, number];
     });
 
-    const k = portrait ? 1.38 : (W / 1280) * 1.22;          // sizes are for a 1280-wide picture
+    const k = portrait ? 1.4 : (W / 1280) * 1.3;          // sizes are for a 1280-wide picture
     const font = (px: number, w = 600) => `${w} ${Math.round(px * k)}px ${FONT}`;
+    const semi = (px: number, w = 600) => `${w} ${Math.round(px * k)}px ${FONT_SEMI}`;
     const spaced = (px: number) => { try { (ctx as CanvasRenderingContext2D & { letterSpacing: string }).letterSpacing = `${px * k}px`; } catch { /* older browsers: unspaced */ } };
     const v3 = new THREE.Vector3();
     const project = (p: V3 | THREE.Vector3): [number, number, boolean] => {
@@ -303,35 +303,37 @@ export default function BioReplay({ id, result, name, onClose }: { id: string; r
         if (c.graphic === "height") { const h = hand(P); m[0] = h[0]; m[1] = h[1] * 0.62; m[2] = h[2]; }
         if (c.graphic === "stride") m[1] = 0.05;
         const [ax, ay] = project(m);
-        ctx.font = font(21, 700);
+        ctx.font = semi(25, 600);
         const tw = ctx.measureText(c.title).width;
-        ctx.font = font(13.5, 500);
-        const bw = Math.max(tw, ctx.measureText(c.detail).width) + 26 * k, bh = 56 * k;
-        let bx = c.side > 0 ? ax + 34 * k : ax - 34 * k - bw, by = ay - bh - 6 * k;
-        bx = Math.max(10 * k, Math.min(W - bw - 10 * k, bx));
-        by = Math.max(54 * k, Math.min(H - bh - 70 * k, by));
-        for (let n = 0; n < 8 && placed.some(([px, py, pw, ph]) => bx < px + pw + 8 && px < bx + bw + 8 && by < py + ph + 8 && py < by + bh + 8); n++) by += bh + 10 * k;
+        ctx.font = semi(15, 500);
+        const bw = Math.max(tw, ctx.measureText(c.detail).width) + 28 * k, bh = 64 * k, gap = 7 * k;
+        let bx = c.side > 0 ? ax + 30 * k + gap : ax - 30 * k - gap - bw, by = ay - bh - 4 * k;
+        bx = Math.max(12 * k + gap, Math.min(W - bw - 12 * k, bx));
+        by = Math.max(60 * k, Math.min(H - bh - 84 * k, by));
+        for (let n = 0; n < 8 && placed.some(([px, py, pw, ph]) => bx < px + pw + 14 && px < bx + bw + 14 && by < py + ph + 8 && py < by + bh + 8); n++) by += bh + 10 * k;
         placed.push([bx, by, bw, bh]);
         ctx.save();
         ctx.globalAlpha = a;
-        // leader: from the joint to the bar on the box's near side
-        const lx = c.side > 0 || bx > ax ? bx : bx + bw;
-        ctx.strokeStyle = "rgba(240,244,250,0.95)"; ctx.lineWidth = 1.6 * k;
-        ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(lx, ay); ctx.lineTo(lx, by + bh / 2); ctx.stroke();
-        ctx.beginPath(); ctx.arc(ax, ay, 3.2 * k, 0, Math.PI * 2); ctx.fillStyle = "#f4f6fa"; ctx.fill();
-        ctx.fillStyle = "rgba(14,18,24,0.9)";
-        ctx.fillRect(bx, by, bw, bh);
-        ctx.fillStyle = "#f4f6fa"; ctx.fillRect(lx === bx ? bx : bx + bw - 2.5 * k, by, 2.5 * k, bh);
+        // the leader: from the joint across to a white bar standing beside the box
+        const left = bx > ax, barX = left ? bx - gap : bx + bw + gap;
+        ctx.strokeStyle = "rgba(244,246,250,0.96)"; ctx.lineCap = "round";
+        ctx.lineWidth = 1.8 * k;
+        ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(barX, ay); ctx.stroke();
+        ctx.lineWidth = 3.2 * k;
+        ctx.beginPath(); ctx.moveTo(barX, Math.min(by, ay)); ctx.lineTo(barX, Math.max(by + bh, ay)); ctx.stroke();
+        ctx.beginPath(); ctx.arc(ax, ay, 3.4 * k, 0, Math.PI * 2); ctx.fillStyle = "#f4f6fa"; ctx.fill();
+        ctx.fillStyle = "rgba(24,28,32,0.88)";
+        ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 5 * k); ctx.fill();
         ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
-        ctx.font = font(21, 700); ctx.fillStyle = "#ffffff";
-        ctx.fillText(c.title, bx + 13 * k, by + 25 * k);
-        ctx.font = font(13.5, 500); ctx.fillStyle = "rgba(226,232,240,0.86)";
-        ctx.fillText(c.detail, bx + 13 * k, by + 44 * k);
+        ctx.font = semi(25, 600); ctx.fillStyle = "#ffffff";
+        ctx.fillText(c.title, bx + 14 * k, by + 29 * k);
+        ctx.font = semi(15, 500); ctx.fillStyle = "rgba(226,232,240,0.9)";
+        ctx.fillText(c.detail, bx + 14 * k, by + 51 * k);
         ctx.restore();
       }
     };
 
-    const drawVideo = (tf: number, alpha: number) => {
+    const drawVideo = (tf: number, alpha: number, ribbon2d: boolean) => {
       const t = Math.max(0, Math.min(T - 1, Math.round(tf)));
       const im = imgs.get(f0 + t);
       ctx.save();
@@ -341,6 +343,23 @@ export default function BioReplay({ id, result, name, onClose }: { id: string; r
       const ox = Math.min(0, Math.max(W - vw * s, W / 2 - cx * s)), oy = Math.min(0, Math.max(H - vh * s, H / 2 - cy * s));
       const fx = vw * s < W ? (W - vw * s) / 2 : ox, fy = vh * s < H ? (H - vh * s) / 2 : oy;
       if (im && im.complete && im.naturalWidth) ctx.drawImage(im, fx, fy, vw * s, vh * s);
+      // the arm's speed over the picture: the fan the bowling arm has swept so far
+      if (ribbon2d) {
+        const [iS, , iW] = bow, from = Math.max(0, t0);
+        for (let q = from; q < Math.min(t, br); q++) {
+          if (Math.min(kc[q][iS], kc[q][iW], kc[q + 1][iS], kc[q + 1][iW]) < 0.2) continue;
+          const c = speedColor(speeds[q] / top), rgb = `${Math.round(c[0] * 255)},${Math.round(c[1] * 255)},${Math.round(c[2] * 255)}`;
+          const X = (p: number[]) => p[0] * s + fx, Y = (p: number[]) => p[1] * s + fy;
+          const g = ctx.createLinearGradient(X(kp[q][iS]), Y(kp[q][iS]), X(kp[q][iW]), Y(kp[q][iW]));
+          g.addColorStop(0.1, `rgba(${rgb},0.04)`); g.addColorStop(1, `rgba(${rgb},0.6)`);
+          ctx.fillStyle = g;
+          ctx.beginPath(); ctx.moveTo(X(kp[q][iS]), Y(kp[q][iS])); ctx.lineTo(X(kp[q][iW]), Y(kp[q][iW])); ctx.lineTo(X(kp[q + 1][iW]), Y(kp[q + 1][iW])); ctx.lineTo(X(kp[q + 1][iS]), Y(kp[q + 1][iS])); ctx.closePath(); ctx.fill();
+          ctx.strokeStyle = `rgba(${rgb},0.95)`; ctx.lineWidth = 3 * k;
+          ctx.beginPath(); ctx.moveTo(X(kp[q][iW]), Y(kp[q][iW])); ctx.lineTo(X(kp[q + 1][iW]), Y(kp[q + 1][iW])); ctx.stroke();
+          ctx.strokeStyle = `rgba(${rgb},0.55)`; ctx.lineWidth = 1.2 * k;
+          ctx.beginPath(); ctx.moveTo((X(kp[q][iS]) + X(kp[q][iW])) / 2, (Y(kp[q][iS]) + Y(kp[q][iW])) / 2); ctx.lineTo(X(kp[q][iW]), Y(kp[q][iW])); ctx.stroke();
+        }
+      }
       // the tracked body over the picture
       ctx.lineCap = "round"; ctx.lineWidth = 3 * k;
       for (const [a2, b2] of COCO_LIMBS) {
@@ -357,33 +376,54 @@ export default function BioReplay({ id, result, name, onClose }: { id: string; r
       ctx.restore();
     };
 
-    const drawHud = (title: string, scene3d: number) => {
+    const drawHud = (title: string, sub: string, scene3d: number) => {
       ctx.save();
       ctx.textBaseline = "middle"; ctx.textAlign = "left";
       if (title) {
-        ctx.globalAlpha = Math.max(0.0, scene3d);
-        ctx.fillStyle = "#ec4899"; ctx.fillRect(12 * k, 14 * k, 4 * k, 28 * k);
-        ctx.font = font(19, 700); spaced(1.6); ctx.fillStyle = "#ffffff";
-        ctx.fillText(title.toUpperCase(), 26 * k, 29 * k);
+        ctx.globalAlpha = scene3d;
+        ctx.font = font(21, 600); spaced(1.4);
+        const tw = ctx.measureText(title.toUpperCase()).width;
+        ctx.fillStyle = "rgba(20,24,28,0.6)";
+        ctx.beginPath(); ctx.roundRect(10 * k, 9 * k, tw + 30 * k, 36 * k, 4 * k); ctx.fill();
+        ctx.fillStyle = "#ec4899"; ctx.fillRect(10 * k, 9 * k, 3.5 * k, 36 * k);
+        ctx.fillStyle = "#ffffff";
+        ctx.fillText(title.toUpperCase(), 23 * k, 28 * k);
+        if (sub) { spaced(0); ctx.font = semi(12.5, 500); ctx.fillStyle = "rgba(226,232,240,0.85)"; ctx.fillText(sub, 12 * k, 58 * k); }
       }
       ctx.globalAlpha = scene3d;
-      ctx.font = font(18, 700); spaced(0.8); ctx.fillStyle = "#ffffff";
-      ctx.fillText("ARM SPEED", 40 * k, H - 76 * k);
-      const g = ctx.createLinearGradient(40 * k, 0, 200 * k, 0);
+      ctx.font = font(23, 600); spaced(0.6); ctx.fillStyle = "#ffffff";
+      ctx.fillText("ARM SPEED", 36 * k, H - 88 * k);
+      const x0 = 36 * k, x1 = 218 * k;
+      const g = ctx.createLinearGradient(x0, 0, x1, 0);
       for (let i = 0; i <= 8; i++) { const c = speedColor(i / 8); g.addColorStop(i / 8, `rgb(${Math.round(c[0] * 255)},${Math.round(c[1] * 255)},${Math.round(c[2] * 255)})`); }
-      ctx.fillStyle = g; ctx.fillRect(40 * k, H - 52 * k, 160 * k, 5 * k);
-      ctx.font = font(11, 600); spaced(0);
-      ctx.fillStyle = "#7fb0ff"; ctx.fillText("slow", 40 * k, H - 38 * k);
-      ctx.fillStyle = "#ff8f87"; ctx.textAlign = "right"; ctx.fillText("fast", 200 * k, H - 38 * k);
-      ctx.font = font(11, 500); ctx.fillStyle = "rgba(226,232,240,0.5)";
-      ctx.fillText("3D body estimated from the video · pitch drawn for scale", W - 14 * k, H - 14 * k);
+      ctx.fillStyle = g; ctx.fillRect(x0, H - 62 * k, x1 - x0, 6 * k);
+      ctx.font = semi(12, 500); spaced(0);
+      ctx.fillStyle = "#7fb0ff"; ctx.fillText("slow", x0, H - 44 * k);
+      ctx.fillStyle = "#ff8f87"; ctx.textAlign = "right"; ctx.fillText("fast", x1, H - 44 * k);
+      ctx.font = semi(10.5, 500); ctx.fillStyle = "rgba(226,232,240,0.45)";
+      if (!portrait) ctx.fillText("3D body estimated from the video · pitch drawn for scale", W - 12 * k, H - 10 * k);   // on a phone the note under the picture says it
       ctx.globalAlpha = 1;
-      ctx.textAlign = "center"; ctx.font = font(13, 700); spaced(2.4); ctx.fillStyle = "rgba(255,255,255,0.72)";
-      ctx.fillText("SEAMLY BIO MECH", W / 2, H - 22 * k);
+      ctx.textAlign = "center"; ctx.font = font(16, 600); spaced(2.2); ctx.fillStyle = "rgba(255,255,255,0.78)";
+      ctx.fillText("SEAMLY BIO MECH", W / 2, H - 20 * k);
       spaced(0);
       ctx.restore();
     };
 
+    // the bones a callout is about light up: pale blue, or green when it reads well
+    let tinted = "";
+    const tintFor = (list: Callout[]) => {
+      const limbs = new Set<Limb>();
+      let good = false;
+      for (const c of list) for (const l of c.limbs) {
+        const frontRight = !right;   // the front leg is the one opposite the bowling arm
+        limbs.add(l === "leg_front" ? (frontRight ? "leg_r" : "leg_l") : l === "leg_back" ? (frontRight ? "leg_l" : "leg_r") : l === "arm" ? (right ? "arm_r" : "arm_l") : "trunk");
+        good ||= c.good;
+      }
+      const key = [...limbs].sort().join() + good;
+      if (key === tinted) return;
+      tinted = key;
+      body.tint([...limbs], limbs.size ? (good ? 0x4ade80 : 0xb4c8ea) : null);
+    };
     const P: V3[] = frames[0].map(() => [0, 0, 0]);
     let raf = 0, last = performance.now(), lastShown = -1, lastCaption = "";
     const frame = (now: number) => {
@@ -403,6 +443,7 @@ export default function BioReplay({ id, result, name, onClose }: { id: string; r
       if (st.video < 1) {
         sampleJoints(frames, st.tf, P);
         body.update(P);
+        tintFor(st.callout > 0.08 ? st.segment.callouts : []);
         // the camera circles the hips; a drag adds to the shot's angle
         const az = ((st.shot.az + user.current.az) * Math.PI) / 180, el = (Math.max(3, Math.min(70, st.shot.el + user.current.el)) * Math.PI) / 180;
         const tx = P[0][0], ty = portrait ? 1.0 : 0.98, tz = P[0][2] - 0.25;
@@ -411,10 +452,9 @@ export default function BioReplay({ id, result, name, onClose }: { id: string; r
         sun.position.set(tx + 3.5, 9, tz + 4.5); sun.target.position.set(tx, 0, tz); sun.target.updateMatrixWorld();
         // the ribbon so far, and the ball: in the hand until release, then away down the pitch
         const shownTrail = st.segment.trail ? Math.max(0, Math.min(nS, Math.floor((st.tf - t0) * SUB) + 1)) : 0;
-        ribbon.visible = spokes.visible = rim.visible = shownTrail > 1;
-        ribbonG.setDrawRange(0, Math.max(0, shownTrail - 1) * 6);
+        ribbon.visible = spokes.visible = shownTrail > 1;
+        ribbonG.setDrawRange(0, Math.max(0, shownTrail - 1) * 12);
         spokeG.setDrawRange(0, Math.ceil(shownTrail / 2) * 2);
-        edgeG.setDrawRange(0, shownTrail);
         const h = hand(P);
         if (st.tf <= br) { ball.visible = true; ball.position.set(h[0], h[1], h[2]); }
         else {
@@ -427,15 +467,15 @@ export default function BioReplay({ id, result, name, onClose }: { id: string; r
         ctx.drawImage(renderer.domElement, 0, 0, W, H);
         if (st.callout > 0) drawCallouts(st.segment.callouts, P, st.callout);
       }
-      if (st.video > 0) drawVideo(st.tf, st.video);
-      drawHud(st.title, 1 - st.video);
+      if (st.video > 0) drawVideo(st.tf, st.video, st.segment.trail);
+      drawHud(st.title, st.sub, 1 - st.video);
       if (Math.abs(time.current - lastShown) > 0.1 || !playingRef.current) { lastShown = time.current; setShown(time.current); }
       const cap = st.video >= 1 ? "The video" : [st.title, ...(st.callout > 0.5 ? st.segment.callouts.map((c) => `${c.title}: ${c.detail}`) : [])].filter(Boolean).join(". ");
       if (cap !== lastCaption) { lastCaption = cap; setCaption(cap); }
     };
     const start = () => { last = performance.now(); raf = requestAnimationFrame(frame); };
     // the condensed face is loaded before the first title is drawn (the canvas doesn't wait for fonts by itself)
-    (document.fonts?.load ? Promise.race([document.fonts.load(`700 20px "Barlow Condensed"`), new Promise((r) => setTimeout(r, 1200))]) : Promise.resolve()).then(start, start);
+    (document.fonts?.load ? Promise.race([Promise.all([document.fonts.load(`600 20px "Barlow Condensed"`), document.fonts.load(`600 20px "Barlow Semi Condensed"`), document.fonts.load(`500 20px "Barlow Semi Condensed"`)]), new Promise((r) => setTimeout(r, 1500))]) : Promise.resolve()).then(start, start);
 
     return () => {
       cancelAnimationFrame(raf);
@@ -454,7 +494,7 @@ export default function BioReplay({ id, result, name, onClose }: { id: string; r
       renderer.forceContextLoss();
       imgs.forEach((im) => { im.src = ""; });
     };
-  }, [id, result, frames, speeds, script, W, H, portrait]);
+  }, [id, result, frames, speeds, script, W, H, portrait, bones]);
 
   // drag on the picture to look round the bowler; double-click puts the camera back
   const drag = useRef<{ x: number; y: number } | null>(null);
@@ -527,7 +567,7 @@ export default function BioReplay({ id, result, name, onClose }: { id: string; r
             )}
             <p className="faint bio-note">
               Drag the picture to look round the bowler (double-click to reset). The 3D body is estimated from the video and its run through the crease
-              is rebuilt from the foot contacts; the numbers shown are the ones this clip measured.
+              is rebuilt from the foot contacts; the pitch is drawn for scale; the numbers shown are the ones this clip measured (≈ marks a 3D estimate). Bone shapes: OpenSim full-body model (Rajagopal et al. 2016).
             </p>
           </>
         )}

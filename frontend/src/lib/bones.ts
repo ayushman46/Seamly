@@ -3,10 +3,19 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 import { J, type V3 } from "./biomech";
 
 /**
- * A bone skeleton drawn from the 17 joints of the analysis: skull, spine, rib cage, pelvis and the long bones, all
- * built here from simple shapes (no model file to download or license). Each bone is placed between its two joints
- * every frame, so the skeleton takes exactly the pose that was measured.
+ * The skeleton of the replay, posed on the 17 joints of the analysis every frame. BoneBody uses real bone surfaces
+ * (the OpenSim full-body model of Rajagopal et al. 2016, MIT Use Agreement: public/skeleton); SimpleBody is built
+ * here from simple shapes and stands in if that file can't be loaded.
  */
+
+export type Limb = "leg_r" | "leg_l" | "arm_r" | "arm_l" | "trunk";
+export interface Body {
+  readonly group: THREE.Group;
+  update(P: V3[]): void;
+  /** Colour some limbs (the ones a callout is about), or give them back their bone colour. */
+  tint(limbs: Limb[], color: number | null): void;
+  dispose(): void;
+}
 
 const BONE = 0xf3eddc;
 
@@ -122,7 +131,7 @@ function skull(): [THREE.BufferGeometry, THREE.BufferGeometry] {
 
 const v = (p: V3) => new THREE.Vector3(p[0], p[1], p[2]);
 
-export class BoneBody {
+export class SimpleBody implements Body {
   readonly group = new THREE.Group();
   private mat = new THREE.MeshStandardMaterial({ color: BONE, roughness: 0.62, metalness: 0.02, emissive: 0x3a3426, emissiveIntensity: 0.7 });
   private dark = new THREE.MeshStandardMaterial({ color: 0x15130f, roughness: 0.9 });
@@ -267,9 +276,187 @@ export class BoneBody {
     this.spine.instanceMatrix.needsUpdate = true;
   }
 
+  tint() { /* one material: no highlights on the simple skeleton */ }
+
   dispose() {
     this.group.traverse((o) => { const g = (o as THREE.Mesh).geometry; g?.dispose(); });
     this.long.dispose(); this.shin.dispose(); this.fore.dispose();
     this.mat.dispose(); this.dark.dispose();
+  }
+}
+
+// ---------- the real bones ----------
+
+interface SegInfo { v: number; t: number; pos: number; idx: number; tip?: V3; toes?: V3; hip_r?: V3; back?: V3; shoulder_r?: V3; neck?: V3; top?: V3; min: V3; max: V3 }
+export interface BoneData { segments: Record<string, SegInfo>; buffer: ArrayBuffer; base: number }
+
+/** Load the bone file (see tools/build_skeleton.py for its layout). */
+export async function loadBones(url: string): Promise<BoneData> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`bones: ${res.status}`);
+  const buffer = await res.arrayBuffer();
+  const n = new DataView(buffer).getUint32(0, true);
+  const header = JSON.parse(new TextDecoder().decode(new Uint8Array(buffer, 4, n))) as { segments: Record<string, SegInfo> };
+  return { segments: header.segments, buffer, base: 4 + n };
+}
+
+const LIMB_OF: Record<string, Limb> = { femur_r: "leg_r", shin_r: "leg_r", foot_r: "leg_r", femur_l: "leg_l", shin_l: "leg_l", foot_l: "leg_l",
+  humerus_r: "arm_r", forearm_r: "arm_r", hand_r: "arm_r", humerus_l: "arm_l", forearm_l: "arm_l", hand_l: "arm_l", pelvis: "trunk", trunk: "trunk", head: "trunk" };
+const BONE_REAL = 0xe9e3d2;
+
+/** The OpenSim skeleton. Every segment is in its own frame (x forward, y up, z to the body's right), origin at the
+ * joint it hangs from; each frame it gets the rotation that puts its length along the measured bone and its hinge
+ * axis across the plane the limb bends in. The trunk is bent between the pelvis and the chest. */
+export class BoneBody implements Body {
+  readonly group = new THREE.Group();
+  private mesh: Record<string, THREE.Mesh> = {};
+  private info: Record<string, SegInfo>;
+  private rest: Record<string, THREE.Matrix4> = {};     // the inverse of each limb segment's own basis (length, hinge)
+  private trunkRest: Float32Array;
+  private prevZ: Record<string, THREE.Vector3> = {};
+
+  constructor(data: BoneData) {
+    this.info = data.segments;
+    for (const [name, s] of Object.entries(data.segments)) {
+      const g = new THREE.BufferGeometry();
+      const pos = new Float32Array(data.buffer.slice(data.base + s.pos, data.base + s.pos + s.v * 12));
+      g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+      g.setIndex(new THREE.BufferAttribute(new Uint32Array(data.buffer.slice(data.base + s.idx, data.base + s.idx + s.t * 12)), 1));
+      g.computeVertexNormals();
+      const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: BONE_REAL, roughness: 0.55, metalness: 0.02, emissive: 0x3a362c, emissiveIntensity: 0.55 }));
+      m.castShadow = true; m.frustumCulled = false; m.matrixAutoUpdate = false;
+      this.group.add(m);
+      this.mesh[name] = m;
+      if (s.tip) {
+        // the segment's own basis: y from the far joint to its origin, z its hinge axis
+        const y = new THREE.Vector3(-s.tip[0], -s.tip[1], -s.tip[2]).normalize();
+        const z = new THREE.Vector3(0, 0, 1); z.addScaledVector(y, -z.dot(y)).normalize();
+        const x = new THREE.Vector3().crossVectors(y, z);
+        this.rest[name] = new THREE.Matrix4().makeBasis(x, y, z).transpose();
+      }
+    }
+    this.trunkRest = (this.mesh.trunk.geometry.attributes.position.array as Float32Array).slice();
+  }
+
+  tint(limbs: Limb[], color: number | null) {
+    for (const [name, m] of Object.entries(this.mesh)) {
+      const mat = m.material as THREE.MeshStandardMaterial;
+      mat.color.setHex(color !== null && limbs.includes(LIMB_OF[name]) ? color : BONE_REAL);
+    }
+  }
+
+  /** A limb segment from joint a to joint b, its hinge axis along `hinge` (kept from flipping between frames). */
+  private limb(name: string, a: THREE.Vector3, b: THREE.Vector3, hinge: THREE.Vector3, out?: THREE.Matrix4): number {
+    const s = this.info[name], len = Math.hypot(...(s.tip as V3));
+    const y = new THREE.Vector3().subVectors(a, b);
+    const scale = Math.max(1e-3, y.length()) / len;
+    y.normalize();
+    const z = new THREE.Vector3().copy(hinge); z.addScaledVector(y, -z.dot(y));
+    if (z.lengthSq() < 1e-8) z.copy(this.prevZ[name] ?? new THREE.Vector3(1, 0, 0)).addScaledVector(y, -(this.prevZ[name] ?? new THREE.Vector3(1, 0, 0)).dot(y));
+    z.normalize();
+    (this.prevZ[name] ??= new THREE.Vector3()).copy(z);
+    const x = new THREE.Vector3().crossVectors(y, z);
+    const m = new THREE.Matrix4().makeBasis(x, y, z).multiply(this.rest[name]);
+    m.scale(new THREE.Vector3(scale, scale, scale)).setPosition(a);
+    this.mesh[name].matrix.copy(m);
+    out?.copy(m);
+    return scale;
+  }
+
+  update(P: V3[]) {
+    const p = P.map(v);
+    const hipR = p[J.rHip], hipL = p[J.lHip], shR = p[J.rShoulder], shL = p[J.lShoulder];
+    // the pelvis: right along the hips, up towards the spine
+    const right = new THREE.Vector3().subVectors(hipR, hipL);
+    const hipW = Math.max(0.1, right.length());
+    right.normalize();
+    const up = new THREE.Vector3().subVectors(p[J.spine], p[J.pelvis]); up.addScaledVector(right, -up.dot(right)).normalize();
+    const fwd = new THREE.Vector3().crossVectors(up, right).normalize();
+    const pelvisS = Math.max(0.85, Math.min(1.12, hipW / (2 * (this.info.pelvis.hip_r as V3)[2])));
+    const mid = new THREE.Vector3().addVectors(hipR, hipL).multiplyScalar(0.5);
+    const Rp = new THREE.Matrix4().makeBasis(fwd, up, right);
+    this.mesh.pelvis.matrix.copy(Rp).scale(new THREE.Vector3(pelvisS, pelvisS, pelvisS)).setPosition(mid);
+    const fwdFlat = new THREE.Vector3(fwd.x, 0, fwd.z); if (fwdFlat.lengthSq() < 1e-6) fwdFlat.set(0, 0, -1); fwdFlat.normalize();
+
+    // legs: the knee's hinge is across the plane the leg bends in (the body's right when the leg is straight)
+    for (const [side, hip, knee, ankle] of [["r", hipR, p[J.rKnee], p[J.rAnkle]], ["l", hipL, p[J.lKnee], p[J.lAnkle]]] as const) {
+      const thigh = new THREE.Vector3().subVectors(knee, hip).normalize(), shin = new THREE.Vector3().subVectors(ankle, knee).normalize();
+      const hinge = new THREE.Vector3().crossVectors(shin, thigh).addScaledVector(right, 0.3);
+      // the foot: its sole on the ground when the ankle is low, hanging from the shin in the air
+      const foot = this.info[`foot_${side}`], shinLen = Math.hypot(...(this.info[`shin_${side}`].tip as V3));
+      const fs = Math.max(0.85, Math.min(1.25, knee.distanceTo(ankle) / shinLen));
+      const sole = -foot.min[1] * fs;
+      const air = Math.min(1, Math.max(0, (ankle.y - 0.13) / 0.18));
+      const a2 = new THREE.Vector3().copy(ankle);
+      if (ankle.y < 0.2) a2.y = Math.max(sole + 0.004, ankle.y - (ankle.y - sole) * (1 - air));
+      this.limb(`femur_${side}`, hip, knee, hinge);
+      this.limb(`shin_${side}`, knee, a2, hinge);
+      const shin2 = new THREE.Vector3().subVectors(a2, knee).normalize();
+      const fx = new THREE.Vector3().copy(fwdFlat).multiplyScalar(1 - 0.5 * air).addScaledVector(shin2, 0.8 * air);
+      if (air < 1) fx.y *= air;
+      fx.normalize();
+      const fz = new THREE.Vector3().copy(hinge); fz.addScaledVector(fx, -fz.dot(fx)).normalize();
+      const fy = new THREE.Vector3().crossVectors(fz, fx);
+      this.mesh[`foot_${side}`].matrix.makeBasis(fx, fy, fz).scale(new THREE.Vector3(fs, fs, fs)).setPosition(a2);
+    }
+
+    // the trunk: bent between the pelvis (its lumbar end) and the chest (shoulders on the measured shoulders)
+    const T = this.info.trunk, sh = T.shoulder_r as V3, back = this.info.pelvis.back as V3;
+    const lumbar = new THREE.Vector3(back[0], back[1], back[2]).multiplyScalar(pelvisS).applyMatrix4(Rp).add(mid);
+    const shMid = new THREE.Vector3().addVectors(shR, shL).multiplyScalar(0.5);
+    const cUp = new THREE.Vector3().subVectors(p[J.thorax], p[J.spine]).normalize();
+    const cRight = new THREE.Vector3().subVectors(shR, shL);
+    const shW = Math.max(0.2, cRight.length());
+    cRight.addScaledVector(cUp, -cRight.dot(cUp)).normalize();
+    const cFwd = new THREE.Vector3().crossVectors(cUp, cRight).normalize();
+    const sy = Math.max(0.75, Math.min(1.35, shMid.distanceTo(lumbar) / sh[1]));
+    const sw = Math.max(0.8, Math.min(1.3, shW / (2 * sh[2])));
+    const sc = new THREE.Vector3(sw, sy, sw);
+    const Rc = new THREE.Matrix4().makeBasis(cFwd, cUp, cRight);
+    const chestO = new THREE.Vector3(sh[0] * sw, sh[1] * sy, 0).applyMatrix4(Rc).multiplyScalar(-1).add(shMid);
+    const Mc = new THREE.Matrix4().copy(Rc).scale(sc).setPosition(chestO);
+    const lUp = new THREE.Vector3().subVectors(p[J.spine], lumbar); lUp.addScaledVector(right, -lUp.dot(right)).normalize();
+    const Ml = new THREE.Matrix4().makeBasis(new THREE.Vector3().crossVectors(lUp, right).normalize(), lUp, right).scale(sc).setPosition(lumbar);
+    const rest = this.trunkRest, attr = this.mesh.trunk.geometry.attributes.position as THREE.BufferAttribute, out = attr.array as Float32Array;
+    const a = Ml.elements, c = Mc.elements;
+    for (let i = 0; i < rest.length; i += 3) {
+      const x = rest[i], y = rest[i + 1], z = rest[i + 2];
+      const u = Math.min(1, Math.max(0, (y - 0.02) / 0.2)), w = u * u * (3 - 2 * u);
+      const lx = a[0] * x + a[4] * y + a[8] * z + a[12], ly = a[1] * x + a[5] * y + a[9] * z + a[13], lz = a[2] * x + a[6] * y + a[10] * z + a[14];
+      const cx = c[0] * x + c[4] * y + c[8] * z + c[12], cy = c[1] * x + c[5] * y + c[9] * z + c[13], cz = c[2] * x + c[6] * y + c[10] * z + c[14];
+      out[i] = lx + (cx - lx) * w; out[i + 1] = ly + (cy - ly) * w; out[i + 2] = lz + (cz - lz) * w;
+    }
+    attr.needsUpdate = true;
+    this.mesh.trunk.geometry.computeVertexNormals();
+    this.mesh.trunk.matrix.identity();
+
+    // arms: the elbow's hinge across the plane the arm bends in (the chest's right when it is straight); the hand follows
+    for (const [side, shd, el, wr] of [["r", shR, p[J.rElbow], p[J.rWrist]], ["l", shL, p[J.lElbow], p[J.lWrist]]] as const) {
+      const upper = new THREE.Vector3().subVectors(el, shd).normalize(), fore = new THREE.Vector3().subVectors(wr, el).normalize();
+      const hinge = new THREE.Vector3().crossVectors(upper, fore).addScaledVector(cRight, 0.3);
+      this.limb(`humerus_${side}`, shd, el, hinge);
+      const m = new THREE.Matrix4();
+      const s = this.limb(`forearm_${side}`, el, wr, hinge, m);
+      // the hand keeps the forearm's turn, at the wrist
+      const hs = Math.max(0.9, Math.min(1.2, s));
+      const e = m.elements, k = hs / s;
+      this.mesh[`hand_${side}`].matrix.set(e[0] * k, e[4] * k, e[8] * k, wr.x, e[1] * k, e[5] * k, e[9] * k, wr.y, e[2] * k, e[6] * k, e[10] * k, wr.z, 0, 0, 0, 1);
+    }
+
+    // the skull: on top of the neck, facing where the nose joint is
+    const neck = T.neck as V3;
+    const base = new THREE.Vector3(neck[0], neck[1], neck[2]).applyMatrix4(Mc);
+    const hUp = new THREE.Vector3().subVectors(p[J.head], p[J.thorax]).normalize();
+    const hF = new THREE.Vector3().subVectors(p[J.nose], new THREE.Vector3().addVectors(p[J.head], p[J.thorax]).multiplyScalar(0.5));
+    hF.addScaledVector(hUp, -hF.dot(hUp));
+    if (hF.length() < 0.02) hF.copy(cFwd).addScaledVector(hUp, -cFwd.dot(hUp));
+    hF.normalize();
+    const hR = new THREE.Vector3().crossVectors(hF, hUp).normalize();
+    const hs = Math.max(0.9, Math.min(1.15, sy));
+    this.mesh.head.matrix.makeBasis(hF, hUp, hR).scale(new THREE.Vector3(hs, hs, hs)).setPosition(base);
+  }
+
+  dispose() {
+    for (const m of Object.values(this.mesh)) { m.geometry.dispose(); (m.material as THREE.Material).dispose(); }
   }
 }

@@ -132,6 +132,8 @@ export interface Callout {
   anchor: number[];       // joints whose mean the leader line points at
   graphic: "knee_front" | "knee_back" | "stride" | "height" | "trunk" | "none";
   side: 1 | -1;           // which side of the anchor the box sits on
+  limbs: ("leg_front" | "leg_back" | "arm" | "trunk")[];   // the bones to light up while it shows
+  good: boolean;          // lit green (reads well) or pale blue
 }
 
 const usable = (m: Metric | undefined): m is Metric => !!m && m.value !== null && m.reliability === "measured" && m.rating !== "unrated";
@@ -160,7 +162,8 @@ export function calloutsAt(result: AnalysisResult, event: "bfc" | "ffc" | "br"):
     const x = m(key), w = WORDS[key];
     if (!x || !w) return;
     const title = x.rating === "good" ? w.good : x.rating === "watch" ? w.watch : x.rating === "risk" ? w.risk : w.info;
-    out.push({ key, title, detail: `${w.name} ${detail(x.value!)}`, anchor, graphic, side });
+    const limbs: Callout["limbs"] = graphic === "knee_front" ? ["leg_front"] : graphic === "knee_back" ? ["leg_back"] : graphic === "stride" ? ["leg_front", "leg_back"] : [];
+    out.push({ key, title, detail: `${w.name} ${detail(x.value!)}`, anchor, graphic, side, limbs, good: false });
   };
   if (event === "bfc") {
     add("back_knee_bfc", deg, [s.backKnee], "knee_back", 1);
@@ -183,6 +186,8 @@ export interface Segment {
   dur: number;                 // seconds on screen
   from: number; to: number;    // fractional frames (index into the analysis window) at the start and the end
   title: string;
+  sub: string;                 // a small line under the title
+  orbit: boolean;              // the camera goes right round the bowler, rising and falling
   callouts: Callout[];
   shot: Shot | null;           // where the camera is (3D segments)
   fade: number;                // video segments: seconds of cross-fade with the 3D scene at the 3D end of the segment
@@ -190,7 +195,23 @@ export interface Segment {
 }
 export interface Script { segments: Segment[]; total: number; br: number; trailFrom: number }
 
-/** The whole replay: video in, the four phases with their stops, two more looks from other angles, video out. */
+/** The lowest the back knee gets between back-foot and front-foot contact, from the 3D body (an estimate, marked ≈):
+ * the frame and the angle, or null when the stride is too short to say or the series isn't there. */
+export function backLegDip(result: AnalysisResult): { t: number; angle: number } | null {
+  const k = result.series?.knee_back, f0 = result.frames.start;
+  const bfc = result.events.bfc?.frame, ffc = result.events.ffc?.frame;
+  if (!k || bfc == null || ffc == null || ffc - bfc < 3) return null;
+  let best: { t: number; angle: number } | null = null;
+  for (let t = bfc - f0 + 1; t < ffc - f0; t++) {
+    const v = k[t];
+    if (v === null || v === undefined || !Number.isFinite(v)) continue;
+    if (!best || v < best.angle) best = { t, angle: v };
+  }
+  return best;
+}
+
+/** The whole replay, in the order a broadcast shows it: the video through the delivery, a dissolve into the 3D scene
+ * at the gather, a stop at each key moment with its numbers, a turn right round the bowler at release, the video out. */
 export function replayScript(result: AnalysisResult): Script {
   const T = result.skeleton3d.joints.length, f0 = result.frames.start;
   const fps = Math.max(1, result.fps_real || result.fps);
@@ -198,7 +219,6 @@ export function replayScript(result: AnalysisResult): Script {
   const br = at("br") ?? Math.round(T * 0.6);
   const ffc = Math.min(at("ffc") ?? br, br), bfc = Math.min(at("bfc") ?? ffc, ffc);
   const start = Math.max(0, bfc - Math.round(0.45 * fps));        // the gather: a little before the back foot lands
-  const end = Math.min(T - 1, br + Math.round(0.4 * fps));
   const realS = (a: number, b: number) => Math.max(0, b - a) / fps;
   const right = result.bowling_arm.arm === "right";
   // the camera starts where the video's camera was: beside the pitch for a side-on clip (on the bowler's open side),
@@ -208,35 +228,43 @@ export function replayScript(result: AnalysisResult): Script {
   const shot = (az: number, el: number, dist: number, drift = 0): Shot => ({ az, el, dist, drift });
   const slow = (a: number, b: number, rate: number) => Math.max(0.5, realS(a, b) / rate);
   const seg = (s: Partial<Segment> & Pick<Segment, "kind" | "dur" | "from" | "to">): Segment =>
-    ({ title: "", callouts: [], shot: null, fade: 0, trail: true, ...s });
+    ({ title: "", sub: "", orbit: false, callouts: [], shot: null, fade: 0, trail: true, ...s });
+  const cam = (off: number, el: number, dist: number, drift = 0) => shot(base + off * open, el, dist * 0.86, drift * open);
   const segments: Segment[] = [];
-  // 1. the video, up to the gather (or its first frame, held, when the clip starts there), then it dissolves into 3D
-  const lead = Math.max(0, start - Math.round(0.6 * fps));
-  segments.push(seg({ kind: "video", dur: Math.min(2.6, Math.max(1.6, realS(lead, start) / 0.5 + 0.7)), from: lead, to: start, fade: 0.7, trail: false }));
-  // the camera works round the bowler from behind the action towards the front, never far from the video's own view,
-  // so each stop shows the plane its numbers were measured in
-  const cam = (off: number, el: number, dist: number, drift = 0) => shot(base + off * open, el, dist, drift * open);
-  segments.push(seg({ kind: "hold", dur: 0.8, from: start, to: start, title: "Gather", shot: cam(-38, 11, 5.6, 4) }));
-  // 2. into back-foot contact
-  if (bfc > start) segments.push(seg({ kind: "play", dur: slow(start, bfc, 0.22), from: start, to: bfc, title: "Gather", shot: cam(-30, 10, 5.3) }));
+  // 1. the video, through the delivery to just after release, the arm's speed drawn over it
+  const out = Math.min(T - 1, br + Math.round(0.12 * fps));
+  segments.push(seg({ kind: "video", dur: Math.min(3.2, Math.max(1.6, realS(0, out) / 0.45)), from: 0, to: out }));
+  // 2. back at the gather, the video fades and the skeleton stands in the bowler's place
+  segments.push(seg({ kind: "video", dur: 0.9, from: start, to: start, fade: 0.9, trail: false }));
+  segments.push(seg({ kind: "hold", dur: 1.4, from: start, to: start, title: "Gather", shot: cam(-34, 8, 4.7, 3), trail: false }));
+  // 3. back-foot contact
+  if (bfc > start) segments.push(seg({ kind: "play", dur: slow(start, bfc, 0.2), from: start, to: bfc, title: "Gather", shot: cam(-28, 8, 4.6) }));
   const cB = calloutsAt(result, "bfc");
-  segments.push(seg({ kind: "hold", dur: cB.length ? 3.0 : 1.3, from: bfc, to: bfc, title: "Back foot contact", callouts: cB, shot: cam(-24, 9, 5.0, 4) }));
-  // 3. front-foot contact
-  if (ffc > bfc) segments.push(seg({ kind: "play", dur: slow(bfc, ffc, 0.16), from: bfc, to: ffc, title: "Delivery stride", shot: cam(-6, 9, 5.2) }));
-  const cF = calloutsAt(result, "ffc");
-  segments.push(seg({ kind: "hold", dur: cF.length ? 3.2 : 1.3, from: ffc, to: ffc, title: "Front foot contact", callouts: cF, shot: cam(4, 10, 5.0, 4) }));
-  // 4. release
-  if (br > ffc) segments.push(seg({ kind: "play", dur: slow(ffc, br, 0.12), from: ffc, to: br, title: "Release", shot: cam(20, 9, 5.4) }));
-  const cR = calloutsAt(result, "br");
-  segments.push(seg({ kind: "hold", dur: cR.length ? 3.8 : 1.5, from: br, to: br, title: "Release", callouts: cR, shot: cam(28, 9, 5.5, 4) }));
-  if (end > br) segments.push(seg({ kind: "play", dur: slow(br, end, 0.3), from: br, to: end, title: "Follow-through", shot: cam(48, 12, 6.0) }));
-  // 5. twice more, straight through: from behind the bowler's arm, then from high in front
-  for (const [off, el, dist] of [[-95, 15, 6.0], [112, 26, 5.8]] as const) {
-    segments.push(seg({ kind: "play", dur: slow(start, end, 0.3), from: start, to: end, title: "Replay", shot: cam(off, el, dist, 8) }));
+  segments.push(seg({ kind: "hold", dur: cB.length ? 3.0 : 1.3, from: bfc, to: bfc, title: "Back foot contact", callouts: cB, shot: cam(-22, 7, 4.4, 3) }));
+  // 4. the back leg through the stride, at its deepest bend
+  const dip = backLegDip(result);
+  let from = bfc;
+  if (dip && dip.t > bfc && dip.t < ffc) {
+    const s = sides(right), firm = dip.angle >= 150;
+    segments.push(seg({ kind: "play", dur: slow(bfc, dip.t, 0.16), from: bfc, to: dip.t, title: "Back leg", shot: cam(-14, 7, 4.5) }));
+    segments.push(seg({ kind: "hold", dur: 2.6, from: dip.t, to: dip.t, title: "Back leg", shot: cam(-10, 7, 4.4, 3),
+      callouts: [{ key: "back_knee_min", title: firm ? "Back leg holds firm" : dip.angle >= 130 ? "Back leg bends" : "Back leg collapses",
+        detail: `Back knee ≈${Math.round(dip.angle)}° (3D estimate)`, anchor: [s.backKnee], graphic: "none", side: 1, limbs: ["leg_back"], good: firm }] }));
+    from = dip.t;
   }
-  // 6. back to the video at release, out through the follow-through
-  segments.push(seg({ kind: "video", dur: Math.max(1.2, realS(br, T - 1) / 0.5), from: br, to: T - 1, fade: -0.7, trail: false }));
-  return { segments, total: segments.reduce((a, s) => a + s.dur, 0), br, trailFrom: Math.max(0, bfc - Math.round(0.3 * fps)) };
+  // 5. front-foot contact
+  if (ffc > from) segments.push(seg({ kind: "play", dur: slow(from, ffc, 0.16), from, to: ffc, title: "Delivery stride", shot: cam(-2, 7, 4.6) }));
+  const cF = calloutsAt(result, "ffc");
+  segments.push(seg({ kind: "hold", dur: cF.length ? 3.2 : 1.3, from: ffc, to: ffc, title: "Front foot contact", callouts: cF, shot: cam(6, 8, 4.5, 3) }));
+  // 6. release
+  if (br > ffc) segments.push(seg({ kind: "play", dur: slow(ffc, br, 0.12), from: ffc, to: br, title: "Release", shot: cam(18, 7, 5.0) }));
+  const cR = calloutsAt(result, "br");
+  segments.push(seg({ kind: "hold", dur: cR.length ? 3.8 : 1.5, from: br, to: br, title: "Release", callouts: cR, shot: cam(24, 7, 5.1, 3) }));
+  // 7. right round the bowler at release, the whole ribbon in view
+  segments.push(seg({ kind: "hold", dur: 6.5, from: br, to: br, title: "Skeleton, 3D", sub: "drag to look round", orbit: true, shot: cam(35, 16, 5.4, 52) }));
+  // 8. back to the video at release, out through the follow-through
+  segments.push(seg({ kind: "video", dur: Math.max(1.2, realS(br, T - 1) / 0.5), from: br, to: T - 1, fade: -0.6, trail: false }));
+  return { segments, total: segments.reduce((a, s) => a + s.dur, 0), br, trailFrom: start };
 }
 
 const ease = (u: number) => (u <= 0 ? 0 : u >= 1 ? 1 : u * u * (3 - 2 * u));
@@ -248,7 +276,7 @@ export interface ReplayState {
   video: number;             // how much of the picture is the video (1) or the 3D scene (0)
   shot: Shot;                // the camera, already blended from the last segment's
   callout: number;           // the callouts' opacity (0–1)
-  title: string;
+  title: string; sub: string;
 }
 
 /** What is on screen `time` seconds into the replay. */
@@ -264,10 +292,14 @@ export function replayState(script: Script, time: number): ReplayState {
   // the camera: this segment's shot, turning slowly, reached from where the previous 3D segment's camera ended
   const shots = script.segments.map((x) => x.shot);
   const near = (i: number, dir: 1 | -1) => { for (let k = i; k >= 0 && k < shots.length; k += dir) if (shots[k]) return k; return -1; };
-  const cur = s.shot ? index : near(index, s.fade > 0 ? 1 : -1);
+  // a video segment borrows the camera of the 3D segment it fades to or from (the next one, at the very start)
+  let cur = s.shot ? index : near(index, s.fade > 0 ? 1 : -1);
+  if (cur < 0) cur = near(index, 1);
   const own = shots[cur] ?? { az: 0, el: 10, dist: 6, drift: 0 };
-  const inCur = cur === index ? local : cur > index ? 0 : script.segments[cur].dur;
+  const inCur = cur === index ? local : cur > index || cur < 0 ? 0 : script.segments[cur].dur;
   let shot: Shot = { ...own, az: own.az + own.drift * inCur };
+  // going right round: the camera rises over the bowler and comes back down, a little closer in the middle
+  if (script.segments[cur]?.orbit) { const w = Math.sin(Math.PI * Math.min(1, inCur / script.segments[cur].dur)); shot.el = own.el + 26 * w * Math.sin(2 * Math.PI * inCur / script.segments[cur].dur + 0.6) ** 2; shot.dist = own.dist - 0.5 * w; }
   const prev = cur === index ? near(index - 1, -1) : -1;
   // a replay starts the action again: the camera cuts to its new place instead of flying there
   const cut = index > 0 && s.kind === "play" && s.from < script.segments[index - 1].to;
@@ -277,5 +309,5 @@ export function replayState(script: Script, time: number): ReplayState {
     shot = { az: pEnd.az + (shot.az - pEnd.az) * k, el: pEnd.el + (shot.el - pEnd.el) * k, dist: pEnd.dist + (shot.dist - pEnd.dist) * k, drift: own.drift };
   }
   const callout = s.kind === "hold" && s.callouts.length ? Math.min(ease(local / 0.5), ease((s.dur - local) / 0.35)) : 0;
-  return { index, segment: s, tf, u, video, shot, callout, title: s.title };
+  return { index, segment: s, tf, u, video, shot, callout, title: s.title, sub: s.sub };
 }

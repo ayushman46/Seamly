@@ -1,0 +1,8 @@
+bones.bin: bone surface geometry of the full-body musculoskeletal model by
+Rajagopal, A., Dembia, C.L., DeMers, M.S., Delp, D.D., Hicks, J.L., Delp, S.L. (2016),
+"Full-body musculoskeletal model for muscle-driven simulation of human gait",
+IEEE Transactions on Biomedical Engineering. https://simtk.org/projects/full_body
+Distributed with OpenSim (https://github.com/opensim-org/opensim-models) and on SimTK under the
+"MIT Use Agreement". Converted to a compact binary by frontend/tools/build_skeleton.py; the
+geometry itself is unchanged apart from merging each body segment's bones and mirroring the
+left femur for the right side.

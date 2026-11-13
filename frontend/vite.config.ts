@@ -16,7 +16,7 @@ const dropOrtWasm: Plugin = {
 // Offline use (at the nets, with no signal): a service worker keeps the app's own files once visited. The analysis
 // models are already kept in Cache Storage by the app (lib/modelCache.ts). Generated at build time with the list of
 // files to keep, so every lazy chunk (engine, 3D viewer, worker) is there, not only the ones already opened.
-const PUBLIC_SHELL = ["favicon.svg", "favicon-32.png", "apple-touch-icon.png", "icon-192.png", "icon-512.png", "site.webmanifest"];
+const PUBLIC_SHELL = ["favicon.svg", "favicon-32.png", "apple-touch-icon.png", "icon-192.png", "icon-512.png", "site.webmanifest", "skeleton/bones.bin"];
 function serviceWorker(): Plugin {
   let base = "/";
   return {

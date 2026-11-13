@@ -1,7 +1,7 @@
 /** Bio-mech replay (lib/biomech.ts): the body's travel, the arm's speed, the callouts and the timeline. */
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "fs";
-import { armSpeed, calloutsAt, replayScript, replayState, sampleJoints, sceneJoints, sides, speedColor, travel, LANDING_Z } from "../src/lib/biomech";
+import { armSpeed, backLegDip, calloutsAt, replayScript, replayState, sampleJoints, sceneJoints, sides, speedColor, travel, LANDING_Z } from "../src/lib/biomech";
 import type { AnalysisResult } from "../src/types";
 
 const club = JSON.parse(readFileSync(new URL("../public/samples/club/bundle.json", import.meta.url), "utf8")).result as AnalysisResult;
@@ -65,15 +65,29 @@ describe("callouts", () => {
 
 describe("the timeline", () => {
   const sc = replayScript(club);
-  it("goes video, the three stops in order, two replays, video", () => {
-    expect(sc.segments[0].kind).toBe("video");
+  it("goes video, a dissolve, the stops in order, a turn round the bowler, video", () => {
+    expect(sc.segments[0]).toMatchObject({ kind: "video", from: 0, trail: true });      // the delivery, the arm's speed drawn over it
+    expect(sc.segments[1]).toMatchObject({ kind: "video", fade: 0.9 });                  // back at the gather, fading into 3D
     expect(sc.segments[sc.segments.length - 1].kind).toBe("video");
     const holds = sc.segments.filter((s) => s.kind === "hold" && s.callouts.length).map((s) => s.title);
-    expect(holds).toEqual(["Back foot contact", "Front foot contact", "Release"]);
-    expect(sc.segments.filter((s) => s.title === "Replay")).toHaveLength(2);
-    expect(sc.total).toBeGreaterThan(15);
+    expect(holds).toEqual(["Back foot contact", "Back leg", "Front foot contact", "Release"]);
+    const orbit = sc.segments.filter((s) => s.orbit);
+    expect(orbit).toHaveLength(1);
+    expect(orbit[0]).toMatchObject({ title: "Skeleton, 3D", from: sc.br, to: sc.br });
+    expect(Math.abs(orbit[0].shot!.drift * orbit[0].dur)).toBeGreaterThan(300);         // nearly a full turn
+    expect(sc.total).toBeGreaterThan(18);
     expect(sc.total).toBeLessThan(45);
     expect(sc.total).toBeCloseTo(sc.segments.reduce((a, s) => a + s.dur, 0), 6);
+  });
+  it("shows the back leg's deepest bend as a 3D estimate, lit green only when it holds firm", () => {
+    const dip = backLegDip(club)!;
+    expect(dip.t).toBeGreaterThan(at("bfc"));
+    expect(dip.t).toBeLessThan(at("ffc"));
+    const c = sc.segments.find((s) => s.title === "Back leg" && s.kind === "hold")!.callouts[0];
+    expect(c.detail).toBe(`Back knee ≈${Math.round(dip.angle)}° (3D estimate)`);
+    expect(c.good).toBe(dip.angle >= 150);
+    expect(c.limbs).toEqual(["leg_back"]);
+    expect(backLegDip({ ...club, series: {} } as unknown as AnalysisResult)).toBeNull();
   });
   it("starts and ends on the video and never shows a frame outside the clip", () => {
     expect(replayState(sc, 0).video).toBe(1);
@@ -99,14 +113,14 @@ describe("the timeline", () => {
       }
       acc += s.dur;
     }
-    // no jump in the camera from one moment to the next, except the cuts to the two replays
+    // no jump in the camera from one moment to the next (the turn round the bowler is 52° a second: 1° a step)
     let jumps = 0, prev = replayState(sc, 0);
     for (let t = 0.02; t <= sc.total; t += 0.02) {
       const st = replayState(sc, t);
       if (st.video < 1 && prev.video < 1 && Math.abs(st.shot.az - prev.shot.az) > 6) jumps++;
       prev = st;
     }
-    expect(jumps).toBeLessThanOrEqual(3);
+    expect(jumps).toBe(0);
   });
   it("still makes a replay when contacts are missing", () => {
     const bare = { ...club, events: { ...club.events, bfc: null, ffc: null } } as unknown as AnalysisResult;
