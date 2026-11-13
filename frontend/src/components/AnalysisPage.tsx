@@ -30,6 +30,7 @@ import ShareSummary from "./ShareSummary";
 
 // three.js is large: the 3D viewer loads as its own chunk so the player and metrics appear first
 const Viewer3D = lazyPage(() => import("./Viewer3D"));
+const BioReplay = lazyPage(() => import("./BioReplay"));
 
 const STAGES = [
   ["probe", "Reading your video", "Checking the frame rate and looking for camera cuts."],
@@ -316,6 +317,8 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
 
   const [frame, setFrame] = useState(result.events.br?.frame ?? f0);
   const [playing, setPlaying] = useState(false);
+  const [bio, setBio] = useState(false);   // the 3D bio-mech replay, over the page
+  const bioBtn = useRef<HTMLButtonElement>(null);
   const [speed, setSpeed] = useState(0.25);
   const [loop, setLoop] = useState(true);
   const [tab, setTab] = useState<Tab>(initialTab ?? "coach");
@@ -594,6 +597,7 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
             )}
             <button className="btn" onClick={() => go(`/r/${id}`)}><IFile size={15} /> Report</button>
             <ShareSummary meta={meta} result={result} ins={ins} fileBase={fileBase} />
+            <button ref={bioBtn} className="btn" onClick={() => { setPlaying(false); setBio(true); }} title="The delivery replayed in 3D, broadcast style: a skeleton on the pitch, the arm's speed, and the numbers at each key moment"><ICube size={15} /> 3D replay</button>
             <ClipMaker meta={meta} result={result} ins={ins} fileBase={fileBase} frame={frame}
               onFrame={(f) => { setPlaying(false); setFrame(f); }} players={() => [...(playerRef.current?.querySelectorAll<HTMLCanvasElement>(".player-stage canvas") ?? [])]} />
             <div className="rel" ref={menuRef} onBlur={(e) => { if (!menuRef.current?.contains(e.relatedTarget as Node | null)) setMenu(false); }}>
@@ -730,6 +734,11 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
           </div>
         </div>
       </main>
+      {bio && result && meta && (
+        <Suspense fallback={null}>
+          <BioReplay id={id} result={result} name={meta.name ?? "delivery"} onClose={() => { setBio(false); requestAnimationFrame(() => bioBtn.current?.focus({ preventScroll: true })); }} />
+        </Suspense>
+      )}
       <SiteFooter compact />
       <div className="sr-only" role="status" aria-live="polite">{toast?.text ?? (busy ? "Updating the results…" : "")}</div>
       {toast && <div className={`toast ${toast.error ? "error" : ""}`} aria-hidden="true">{toast.text}</div>}

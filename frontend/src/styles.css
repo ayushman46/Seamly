@@ -1278,3 +1278,19 @@ body.pace-measuring { padding-bottom: 150px; }
 .hmeta .chip.accent { position: relative; z-index: 1; cursor: pointer; }
 @media (max-width: 560px) { .two-table th { width: 58%; } }
 .session-pair { font-size: 12.5px; margin: 4px 0 0 14px; }
+
+/* bio-mech replay: the broadcast-style 3D sequence, over the page */
+@font-face { font-family: "Barlow Condensed"; font-weight: 500; font-style: normal; font-display: swap; src: url("./assets/fonts/barlow-condensed-latin-500-normal.woff2") format("woff2"); }
+@font-face { font-family: "Barlow Condensed"; font-weight: 600; font-style: normal; font-display: swap; src: url("./assets/fonts/barlow-condensed-latin-600-normal.woff2") format("woff2"); }
+@font-face { font-family: "Barlow Condensed"; font-weight: 700; font-style: normal; font-display: swap; src: url("./assets/fonts/barlow-condensed-latin-700-normal.woff2") format("woff2"); }
+.bio-overlay { position: fixed; inset: 0; z-index: 70; background: rgba(2, 4, 8, 0.9); display: grid; place-items: center; padding: 12px; overflow: auto; }
+.bio-sheet { width: min(1180px, 100%, calc((100vh - 190px) * 16 / 9)); min-width: min(320px, 100%); }
+.bio-sheet.portrait { width: min(560px, 100%, calc((100vh - 220px) * 3 / 4)); }
+.bio-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.bio-head h2 { margin: 0; font-family: var(--font-display); font-size: var(--fs-lg); letter-spacing: -0.01em; }
+.bio-canvas { display: block; width: 100%; height: auto; border-radius: 12px; border: 1px solid var(--c-line); background: #05070f; touch-action: none; cursor: grab; }
+.bio-canvas:active { cursor: grabbing; }
+.bio-bar { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.bio-bar input[type=range] { flex: 1; min-width: 0; }
+.bio-saved { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; font-size: 13px; }
+.bio-note { font-size: 12px; margin: 10px 0 0; line-height: 1.5; }
