@@ -239,6 +239,30 @@ wrist's rise time (20–80% of its climb), snapped to the factors phones use (60
 Matching the movement alone gave false alarms on two of the four real pairs (a wrist's rise is one bump, and one bump
 still looks like another stretched), so it is only used to confirm.
 
+## 9b. 3D replay: tested on seven real clips (2026-11-14)
+
+The replay was run end to end on the bundled club clip and six more real clips (two Pexels net sessions at 100 and
+240 fps, a Pexels portrait phone clip, a Wikimedia Commons club clip, two broadcast clips kept locally), from side-on,
+behind and in front, right- and left-arm. All ran without errors. What the audit measured, and what it changed:
+
+| Check | Before | After |
+|---|---|---|
+| Back knee at back-foot contact, skeleton against the measured callout (side-on) | 127° shown for 166° measured | 166° (the legs are re-solved to the knee angles measured on the video) |
+| Front knee at landing / at release, skeleton against callout | 8° out | within 1° |
+| "Back leg" stop | "collapses ≈126°" from the 3D estimate, contradicting the 166° measured four frames earlier | 169°, "holds firm", from the measured knees |
+| Release height, skeleton against callout (six clips) | 4–15 points low | within 1 point on five; one broadcast clip still 14 low (its 110% is beyond the skeleton's reach, so one of the two is wrong there) |
+| Planted foot slide, side-on | 18 mm back foot, 10 mm front foot | same |
+| Arm ribbon on fast run-ins | smeared up to 3 m along the pitch | carried with the bowler: a clean fan |
+| Bound too short to time (0.08 s, three frames) | reported as a 4 cm jump | not reported (needs 0.12 s and three frames in the air) |
+| Bone-twist flips between frames | none (worst turn 0.61 of a full cosine) | none |
+
+Jump clearance by clip: 0.17 m (broadcast, 30 fps, 0.22 s in the air), 0.07 m (100 fps net), 0.37 m (240 fps net,
+0.47 s in the air); none on clips that start too late to show the bound. The kinetic chain was timed on the 240 fps
+clip only: hips, then trunk, then arm and hand, in order; at 25–60 fps it shows the bars but gives no verdict.
+
+Not checked, because there is nothing to check it against: jump clearance and length against a measured jump, the
+kinetic chain's timing against motion capture, and the assumed run-in on clips from behind.
+
 ## 10. Still to do
 
 - Lab validation against marker-based motion capture (real bodies, real knees): the synthetic body can't say whether

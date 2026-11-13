@@ -87,7 +87,10 @@ function buildPitch(scene: THREE.Scene, landX: number) {
   scene.add(ring);
 }
 
-export default function BioReplay({ id, result, name, onClose }: { id: string; result: AnalysisResult; name: string; onClose: () => void }) {
+export default function BioReplay({ id, result, name, others = [], onClose }: {
+  id: string; result: AnalysisResult; name: string; onClose: () => void;
+  others?: { id: string; name: string }[];   // other analyses that can stand in the scene as a ghost, to compare
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -99,6 +102,20 @@ export default function BioReplay({ id, result, name, onClose }: { id: string; r
   const time = useRef(0);
   const playingRef = useRef(true);
   const user = useRef({ az: 0, el: 0 });
+  // a fixed camera chosen by the viewer, instead of the directed sequence's
+  const [view, setView] = useState<"director" | "side" | "behind" | "batter" | "top">("director");
+  const viewRef = useRef(view);
+  viewRef.current = view;
+  // another delivery in the same scene: a second skeleton, in step from its own release, landing on the same spot
+  const [ghostId, setGhostId] = useState("");
+  const [ghost, setGhost] = useState<{ result: AnalysisResult; name: string } | null>(null);
+  useEffect(() => {
+    let live = true;
+    if (!ghostId) { setGhost(null); return; }
+    api.get(ghostId).then((g) => { if (live && g.result) setGhost({ result: g.result, name: others.find((o) => o.id === ghostId)?.name ?? "other delivery" }); }).catch(() => live && setGhost(null));
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ghostId]);
   const [playing, setPlaying] = useState(true);
   const [shown, setShown] = useState(0);          // the time on the scrub bar (updated a few times a second)
   const [caption, setCaption] = useState("");     // what a screen reader hears: the phase and its numbers
@@ -183,6 +200,14 @@ export default function BioReplay({ id, result, name, onClose }: { id: string; r
       return { body: b, label: g.label, head: frames[g.frame][J.head] };
     }) : [];
     const chain = kineticChain(result);
+    // the delivery being compared: its own motion, on its own clock from release
+    const rival = ghost && bones ? (() => {
+      const m2 = buildMotion(ghost.result), b = new BoneBody(bones, 0xffb54a);
+      const f2 = Math.max(1, ghost.result.fps_real || ghost.result.fps);
+      const br2 = Math.max(0, Math.min(m2.joints.length - 1, (ghost.result.events.br?.frame ?? ghost.result.frames.start) - ghost.result.frames.start));
+      scene.add(b.group);
+      return { body: b, m: m2, fps: f2, br: br2, tracks: [0, 1, 2, 3].map((l) => m2.hinges.map((h) => h[l])), P: m2.joints[0].map(() => [0, 0, 0] as V3) };
+    })() : null;
 
     // soft dark patches on the ground under each foot and the body, darker the nearer the ground (they tie the feet down)
     const blobTex = (() => {
@@ -204,7 +229,12 @@ export default function BioReplay({ id, result, name, onClose }: { id: string; r
     ball.castShadow = true;
     scene.add(ball);
     const T = frames.length, br = script.br, t0 = script.trailFrom;
-    const nS = Math.max(2, (br - t0) * SUB + 1);
+    // (a slow-motion clip has many frames in the swing: fewer samples a frame keep the ribbon to a few hundred)
+    const perFrame = Math.max(1, Math.min(SUB, Math.round(480 / Math.max(1, br - t0))));
+    const nS = Math.max(2, (br - t0) * perFrame + 1);
+    // the ribbon mostly travels with the bowler (three-quarters of the way), so a fast run-in doesn't smear the arm's
+    // circle out along the pitch; at release it is exactly where the arm was
+    const CARRY = 0.75, pelBr = frames[br][0];
     const top = Math.max(1e-6, ...speeds.slice(t0, br + 1));
     // three rows of points per sample: the shoulder (nearly clear), most of the way out, and the hand (the bright rim)
     const pos = new Float32Array(nS * 3 * 3), col = new Float32Array(nS * 3 * 4);
@@ -216,9 +246,10 @@ export default function BioReplay({ id, result, name, onClose }: { id: string; r
     };
     const mix = (a2: V3, b2: V3, u: number): V3 => [a2[0] + (b2[0] - a2[0]) * u, a2[1] + (b2[1] - a2[1]) * u, a2[2] + (b2[2] - a2[2]) * u];
     for (let i = 0; i < nS; i++) {
-      const tf = Math.min(br, t0 + i / SUB);
+      const tf = Math.min(br, t0 + i / perFrame);
       const P = sampleJoints(frames, tf, tmp);
-      const o = hand(P), sh = P[S.shoulder];
+      const cx = CARRY * (P[0][0] - pelBr[0]), cz = CARRY * (P[0][2] - pelBr[2]);
+      const o0 = hand(P), o: V3 = [o0[0] - cx, o0[1], o0[2] - cz], sh: V3 = [P[S.shoulder][0] - cx, P[S.shoulder][1], P[S.shoulder][2] - cz];
       const k = Math.floor(tf), u = tf - k;
       const sp = (speeds[k] * (1 - u) + speeds[Math.min(T - 1, k + 1)] * u) / top;
       const c = speedColor(sp);
@@ -565,14 +596,23 @@ export default function BioReplay({ id, result, name, onClose }: { id: string; r
         });
         tintFor(st.callout > 0.08 ? st.segment.callouts : []);
         // the camera circles the hips; a drag adds to the shot's angle
-        const az = ((st.shot.az + user.current.az) * Math.PI) / 180, el = (Math.max(3, Math.min(70, st.shot.el + user.current.el)) * Math.PI) / 180;
+        const open = right ? -1 : 1, vw2 = viewRef.current;
+        // the viewer's camera: beside the bowler, behind the arm, from above, or where the batter stands (a long lens down the pitch)
+        const fixed = vw2 === "side" ? { az: 90 * open, el: 5, dist: 5.2, fov: 0 } : vw2 === "behind" ? { az: 8 * open, el: 12, dist: 6, fov: 0 }
+          : vw2 === "top" ? { az: 0.1, el: 82, dist: 7.5, fov: 0 } : vw2 === "batter" ? { az: 180 - 2 * open, el: 3.2, dist: 17.5, fov: 9 } : null;
+        const fov = fixed?.fov || (portrait ? 44 : 36);
+        if (Math.abs(camera.fov - fov) > 0.01) { camera.fov = fov; camera.updateProjectionMatrix(); }
+        const sh0 = fixed ?? st.shot;
+        const az = ((sh0.az + user.current.az) * Math.PI) / 180, el = (Math.max(2, Math.min(86, sh0.el + user.current.el)) * Math.PI) / 180;
         const fc = sampleTrack(motion.focus, st.tf);
         const tx = fc[0], ty = portrait ? 1.0 : 0.98, tz = fc[2] - 0.25;
-        camera.position.set(tx + st.shot.dist * Math.sin(az) * Math.cos(el), ty + st.shot.dist * Math.sin(el), tz + st.shot.dist * Math.cos(az) * Math.cos(el));
+        camera.position.set(tx + sh0.dist * Math.sin(az) * Math.cos(el), ty + sh0.dist * Math.sin(el), tz + sh0.dist * Math.cos(az) * Math.cos(el));
         camera.lookAt(tx, ty, tz);
         sun.position.set(tx + 3.5, 9, tz + 4.5); sun.target.position.set(tx, 0, tz); sun.target.updateMatrixWorld();
         // the ribbon so far, and the ball: in the hand until release, then away down the pitch
-        const shownTrail = st.segment.trail ? Math.max(0, Math.min(nS, Math.floor((st.tf - t0) * SUB) + 1)) : 0;
+        const shownTrail = st.segment.trail ? Math.max(0, Math.min(nS, Math.floor((st.tf - t0) * perFrame) + 1)) : 0;
+        const now = Math.min(st.tf, br), pj = now === st.tf ? P[0] : frames[br][0];
+        for (const o of [ribbon, spokes]) o.position.set(CARRY * (pj[0] - pelBr[0]), 0, CARRY * (pj[2] - pelBr[2]));
         ribbon.visible = spokes.visible = shownTrail > 1;
         ribbonG.setDrawRange(0, Math.max(0, shownTrail - 1) * 12);
         spokeG.setDrawRange(0, Math.ceil(shownTrail / 2) * 2);
@@ -585,6 +625,13 @@ export default function BioReplay({ id, result, name, onClose }: { id: string; r
         }
         const strobe = st.segment.strobe ? Math.min(1, (st.u * st.segment.dur) / 1.4) * Math.min(1, ((1 - st.u) * st.segment.dur) / 0.5) : 0;
         ghosts.forEach((g) => g.body.fade(strobe * 0.34));
+        if (rival) {
+          // the same moment relative to release, in real time
+          const t2 = rival.br + ((st.tf - br) / fps) * rival.fps;
+          const inside = t2 >= 0 && t2 <= rival.m.joints.length - 1;
+          if (inside) rival.body.update(sampleJoints(rival.m.joints, t2, rival.P), rival.tracks.map((tr) => sampleTrack(tr, t2)));
+          rival.body.fade(inside ? 0.55 * (1 - strobe) : 0);
+        }
         renderer.render(scene, camera);
         ctx.globalAlpha = 1;
         ctx.drawImage(renderer.domElement, 0, 0, W, H);
@@ -607,7 +654,7 @@ export default function BioReplay({ id, result, name, onClose }: { id: string; r
       const r = recRef.current;
       if (r && r.rec.state !== "inactive") { r.rec.ondataavailable = null; r.rec.onstop = null; r.rec.stop(); }
       recRef.current = null;
-      body.dispose(); ghosts.forEach((g) => g.body.dispose());
+      body.dispose(); ghosts.forEach((g) => g.body.dispose()); rival?.body.dispose();
       scene.traverse((o) => {
         const m = o as THREE.Mesh;
         m.geometry?.dispose();
@@ -619,7 +666,7 @@ export default function BioReplay({ id, result, name, onClose }: { id: string; r
       renderer.forceContextLoss();
       imgs.forEach((im) => { im.src = ""; });
     };
-  }, [id, result, motion, frames, speeds, script, W, H, portrait, bones]);
+  }, [id, result, motion, frames, speeds, script, W, H, portrait, bones, ghost]);
 
   // drag on the picture to look round the bowler; double-click puts the camera back
   const drag = useRef<{ x: number; y: number } | null>(null);
@@ -651,6 +698,7 @@ export default function BioReplay({ id, result, name, onClose }: { id: string; r
     };
     recRef.current = { rec: r, chunks };
     time.current = 0; user.current = { az: 0, el: 0 };
+    setView("director");
     setClip(null); setRec("recording"); setPlaying(true);
     r.start(500);
   };
@@ -682,6 +730,24 @@ export default function BioReplay({ id, result, name, onClose }: { id: string; r
               {rec === "recording"
                 ? <button type="button" className="btn sm" onClick={stopRecording}>Recording… {Math.round((shown / script.total) * 100)}% · Cancel</button>
                 : mime && <button type="button" className="btn sm" onClick={record} title="Plays the replay through once and saves it as a video">{rec === "done" ? "Save again" : "Save as video"}</button>}
+            </div>
+            <div className="bio-tools">
+              <div className="seg" role="group" aria-label="Camera">
+                {([["director", "Director"], ["side", "Side"], ["behind", "Behind"], ["batter", "Batter's eye"], ["top", "Top"]] as const).map(([v, label]) => (
+                  <button key={v} type="button" className={view === v ? "on" : ""} aria-pressed={view === v} disabled={rec === "recording"}
+                    onClick={() => { user.current = { az: 0, el: 0 }; setView(v); }}>{label}</button>
+                ))}
+              </div>
+              {others.length > 0 && (
+                <label className="bio-ghost">
+                  <span>Compare in 3D</span>
+                  <select className="input" value={ghostId} onChange={(e) => setGhostId(e.target.value)} disabled={rec === "recording"}>
+                    <option value="">No ghost</option>
+                    {others.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+                  </select>
+                </label>
+              )}
+              {ghost && <span className="chip"><span className="dot" style={{ background: "#ffb54a" }} /> Ghost: {ghost.name}, in step from release</span>}
             </div>
             {rec === "done" && clip && (
               <div className="bio-saved" role="status">

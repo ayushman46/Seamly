@@ -1296,3 +1296,6 @@ body.pace-measuring { padding-bottom: 150px; }
 .bio-bar input[type=range] { flex: 1; min-width: 0; }
 .bio-saved { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; font-size: 13px; }
 .bio-note { font-size: 12px; margin: 10px 0 0; line-height: 1.5; }
+.bio-tools { display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap; margin-top: 10px; }
+.bio-ghost { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--c-text-2); }
+.bio-ghost select { max-width: 220px; padding: 5px 8px; font-size: 13px; }

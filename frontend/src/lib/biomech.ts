@@ -55,6 +55,7 @@ export interface Motion {
   focus: V3[];                     // where the camera looks: the hips, eased
   flight: Flight | null;           // the bound into back-foot contact, when the clip shows it
   speed: number;                   // the run-in speed used for the travel (m/s)
+  kneesMeasured: boolean;          // the skeleton's knees follow the angles measured on the video (a square side-on camera)
   assumed: boolean;                // the camera can't see along the pitch (behind or in front): the run-in and the
                                    // stride's length are assumed, and the legs are re-solved over the planted feet
 }
@@ -81,7 +82,7 @@ export function findFlight(result: AnalysisResult): Omit<Flight, "length" | "cle
   for (let t = bfc - 1; t >= lo; t--) if (y[t] <= m + 0.035 && y[t] < other[t]) { takeoff = t; break; }
   if (takeoff < 0) return null;
   const seconds = (bfc - takeoff - 0.5) / fps;   // the foot leaves between that frame and the next
-  if (seconds < 0.07 || seconds > 0.75) return null;
+  if (seconds < 0.12 || bfc - takeoff < 3 || seconds > 0.75) return null;   // under three frames or 0.12 s isn't a bound that can be timed
   return { takeoff, land: bfc, apex: Math.round((takeoff + bfc) / 2), seconds, height: (G * seconds * seconds) / 8 };
 }
 
@@ -133,6 +134,52 @@ export function buildMotion(result: AnalysisResult): Motion {
     return out;
   });
 
+  // 1b. A side-on camera measures the knee angles on the video itself (that is where the callouts' numbers come from);
+  // the 3D estimate of a knee can be tens of degrees off. So there each leg is re-solved to the measured angle: the
+  // ankle stays on its line from the hip, at the distance that knee angle gives, and the knee bends the way it did.
+  let kneesMeasured = false;
+  if (result.view.view === "side_on" && !result.view.oblique && result.keypoints2d?.xy?.length === T) {
+    const kp = result.keypoints2d.xy, kc = result.keypoints2d.conf;
+    const legs: [number, number, number, number, number, number][] = [[J.rHip, J.rKnee, J.rAnkle, 12, 14, 16], [J.lHip, J.lKnee, J.lAnkle, 11, 13, 15]];
+    let done = 0;
+    for (const [hip, knee, ankle, ch, ck, ca] of legs) {
+      // the angle at the knee in the picture, where all three points are tracked; gaps are bridged from their ends
+      const th: (number | null)[] = kp.map((fr, t) => {
+        if (Math.min(kc[t][ch], kc[t][ck], kc[t][ca]) < 0.35) return null;
+        const u = [fr[ch][0] - fr[ck][0], fr[ch][1] - fr[ck][1]], w = [fr[ca][0] - fr[ck][0], fr[ca][1] - fr[ck][1]];
+        const l = Math.hypot(u[0], u[1]) * Math.hypot(w[0], w[1]);
+        return l > 1e-6 ? (Math.acos(Math.max(-1, Math.min(1, (u[0] * w[0] + u[1] * w[1]) / l))) * 180) / Math.PI : null;
+      });
+      if (th.filter((v) => v !== null).length < 0.6 * T) continue;
+      const filled = th.map((v, t) => {
+        if (v !== null) return v;
+        let a = t - 1, b = t + 1;
+        while (a >= 0 && th[a] === null) a--;
+        while (b < T && th[b] === null) b++;
+        return a < 0 ? (th[b] as number) : b >= T ? (th[a] as number) : (th[a] as number) + (((th[b] as number) - (th[a] as number)) * (t - a)) / (b - a);
+      });
+      const angle = gaussian(filled, 0.02 * fps);
+      const l1 = len[knee], l2 = len[ankle];
+      for (let t = 0; t < T; t++) {
+        const H = rel[t][hip], K = rel[t][knee], A = rel[t][ankle];
+        const n: V3 = [A[0] - H[0], A[1] - H[1], A[2] - H[2]], nl = Math.hypot(n[0], n[1], n[2]) || 1;
+        n[0] /= nl; n[1] /= nl; n[2] /= nl;
+        const c = Math.cos((Math.min(179.5, Math.max(40, angle[t])) * Math.PI) / 180);
+        const d = Math.sqrt(Math.max(1e-6, l1 * l1 + l2 * l2 - 2 * l1 * l2 * c));
+        const a = (l1 * l1 - l2 * l2 + d * d) / (2 * d), h = Math.sqrt(Math.max(0, l1 * l1 - a * a));
+        let k: V3 = [K[0] - H[0], K[1] - H[1], K[2] - H[2]];
+        const dot = k[0] * n[0] + k[1] * n[1] + k[2] * n[2];
+        k = [k[0] - n[0] * dot, k[1] - n[1] * dot, k[2] - n[2] * dot];
+        let kl = Math.hypot(k[0], k[1], k[2]);
+        if (kl < 0.015) { k = [0 - n[0] * -n[2], 0 - n[1] * -n[2], -1 - n[2] * -n[2]]; kl = Math.hypot(k[0], k[1], k[2]) || 1; }   // straight: a knee bends forwards
+        rel[t][knee] = [H[0] + n[0] * a + (k[0] / kl) * h, H[1] + n[1] * a + (k[1] / kl) * h, H[2] + n[2] * a + (k[2] / kl) * h];
+        rel[t][ankle] = [H[0] + n[0] * d, H[1] + n[1] * d, H[2] + n[2] * d];
+      }
+      done++;
+    }
+    kneesMeasured = done === 2;
+  }
+
   // 3. the hips' height: the planted foot's ankle at ankle height; in the bound, the arc of the flight
   const fl = findFlight(result);
   const planted = (t: number) => (t >= bfc && t < ffc ? s.backAnkle : t >= ffc && t <= ft ? s.frontAnkle
@@ -146,6 +193,43 @@ export function buildMotion(result: AnalysisResult): Motion {
   }
   // no foot goes into the ground (the foot named as planted isn't always the lower one in the 3D estimate)
   rootY = rootY.map((y, t) => Math.max(y, ANKLE - 0.015 - Math.min(rel[t][s.backAnkle][1], rel[t][s.frontAnkle][1])));
+
+  // 3b. The release height is measured on the video; the 3D estimate often has the hand lower (a bent arm, too much
+  // lean). Round release the bowling arm is swung up about the shoulder until the wrist is at the measured height,
+  // and if the arm alone can't reach, the trunk is stood up about the hips by what is missing. The change fades
+  // out either side of release, so the swing stays the measured swing.
+  const rh = result.metrics?.find((q) => q.key === "release_height_pct");
+  if (rh && rh.value !== null && rh.reliability === "measured" && rh.rating !== "unrated") {
+    const target = (rh.value / 100) * result.skeleton.stature_m;
+    const err = target - (rel[br][s.wrist][1] + rootY[br]);
+    const sg = Math.max(1.5, 0.07 * fps);
+    /** Turn `joints` about `pivot` so that `tip` rises by dy (as far as its length allows), in its own vertical plane. */
+    const lift = (fr: V3[], pivot: number, tip: number, joints: number[], dy: number): number => {
+      const O = fr[pivot], v: V3 = [fr[tip][0] - O[0], fr[tip][1] - O[1], fr[tip][2] - O[2]], L = Math.hypot(v[0], v[1], v[2]);
+      if (L < 1e-4) return dy;
+      const y1 = Math.max(-0.995 * L, Math.min(0.995 * L, v[1] + dy));
+      const h0 = Math.hypot(v[0], v[2]), h1 = Math.sqrt(Math.max(0, L * L - y1 * y1));
+      const hx = h0 > 1e-4 ? v[0] / h0 : 0, hz = h0 > 1e-4 ? v[2] / h0 : -1;
+      const a0 = Math.atan2(v[1], h0), a1 = Math.atan2(y1, h1), da = a1 - a0, c = Math.cos(da), sn = Math.sin(da);
+      for (const j of joints) {
+        const q: V3 = [fr[j][0] - O[0], fr[j][1] - O[1], fr[j][2] - O[2]];
+        const along = q[0] * hx + q[2] * hz, side: [number, number] = [q[0] - along * hx, q[2] - along * hz];
+        const a2 = along * c - q[1] * sn, y2 = along * sn + q[1] * c;   // a turn in the (along, up) plane
+        fr[j] = [O[0] + a2 * hx + side[0], O[1] + y2, O[2] + a2 * hz + side[1]];
+      }
+      return v[1] + dy - y1;   // what couldn't be reached
+    };
+    const upper = [J.spine, J.thorax, J.nose, J.head, J.lShoulder, J.lElbow, J.lWrist, J.rShoulder, J.rElbow, J.rWrist];
+    if (Math.abs(err) > 0.01) for (let t = Math.max(0, Math.floor(br - 3 * sg)); t <= Math.min(T - 1, Math.ceil(br + 3 * sg)); t++) {
+      const want = rel[t][s.wrist][1] + err * Math.exp(-0.5 * ((t - br) / sg) ** 2);
+      // the arm first, then the trunk for what the arm can't reach, then the arm again on the stood-up trunk
+      for (let pass = 0; pass < 3; pass++) {
+        const left = lift(rel[t], s.shoulder, s.wrist, [s.elbow, s.wrist], want - rel[t][s.wrist][1]);
+        if (left <= 0.005) break;
+        lift(rel[t], J.pelvis, J.thorax, upper, left);
+      }
+    }
+  }
 
   // 2. the run through the crease
   const maxStep = 10 / fps;
@@ -254,7 +338,7 @@ export function buildMotion(result: AnalysisResult): Motion {
     for (let t = fl.takeoff + 1; t < fl.land; t++) { const low = Math.min(joints[t][s.backAnkle][1], joints[t][s.frontAnkle][1]) - ANKLE; if (low > c) { c = low; apex = t; } }
     flight = { ...fl, apex, clearance: c, length: d };
   }
-  const out: Motion = { joints, hinges, focus, flight, speed, assumed };
+  const out: Motion = { joints, hinges, focus, flight, speed, assumed, kneesMeasured };
   motions.set(result, out);
   return out;
 }
@@ -430,16 +514,17 @@ export function kineticChain(result: AnalysisResult): Chain {
   return { names: ["Hips", "Trunk", "Arm", "Hand"], speed: raw.map((v, i) => v.map((x) => Math.max(0, Math.min(1, x / Math.max(1e-6, top[i]))))), top, peak, timed, ordered };
 }
 
-/** The lowest the back knee gets between back-foot and front-foot contact, from the 3D body (an estimate, marked ≈):
- * the frame and the angle, or null when the stride is too short to say or the series isn't there. */
+/** The lowest the back knee gets between back-foot and front-foot contact, on the skeleton whose knees follow the
+ * angles measured on the video (so a square side-on camera only): the frame and the angle, or null. */
 export function backLegDip(result: AnalysisResult): { t: number; angle: number } | null {
-  const k = result.series?.knee_back, f0 = result.frames.start;
+  const m = buildMotion(result), f0 = result.frames.start;
   const bfc = result.events.bfc?.frame, ffc = result.events.ffc?.frame;
-  if (!k || bfc == null || ffc == null || ffc - bfc < 3) return null;
+  if (!m.kneesMeasured || bfc == null || ffc == null || ffc - bfc < 3) return null;
+  const s = sides(result.bowling_arm.arm === "right");
   let best: { t: number; angle: number } | null = null;
   for (let t = bfc - f0 + 1; t < ffc - f0; t++) {
-    const v = k[t];
-    if (v === null || v === undefined || !Number.isFinite(v)) continue;
+    const P = m.joints[t], u = [0, 1, 2].map((k) => P[s.backHip][k] - P[s.backKnee][k]), w = [0, 1, 2].map((k) => P[s.backAnkle][k] - P[s.backKnee][k]);
+    const v = (Math.acos(Math.max(-1, Math.min(1, (u[0] * w[0] + u[1] * w[1] + u[2] * w[2]) / (Math.hypot(...u) * Math.hypot(...w))))) * 180) / Math.PI;
     if (!best || v < best.angle) best = { t, angle: v };
   }
   return best;
@@ -493,13 +578,12 @@ export function replayScript(result: AnalysisResult): Script {
   // 4. the back leg through the stride, at its deepest bend
   const dip = backLegDip(result);
   from = bfc;
-  // (only where the camera sees the knee bend: side-on)
-  if (dip && dip.t > bfc && dip.t < ffc && result.view.view === "side_on") {
-    const s = sides(right), firm = dip.angle >= 150;
+  if (dip && dip.t > bfc && dip.t < ffc) {
+    const s = sides(right), firm = dip.angle >= 146;   // the same line the back-knee measurement uses for a red flag
     segments.push(seg({ kind: "play", dur: slow(bfc, dip.t, 0.16), from: bfc, to: dip.t, title: "Back leg", shot: cam(-14, 7, 4.5) }));
     segments.push(seg({ kind: "hold", dur: 2.6, from: dip.t, to: dip.t, title: "Back leg", shot: cam(-10, 7, 4.4, 3),
-      callouts: [{ key: "back_knee_min", title: firm ? "Back leg holds firm" : dip.angle >= 130 ? "Back leg bends" : "Back leg collapses",
-        detail: `Back knee ≈${Math.round(dip.angle)}° (3D estimate)`, anchor: [s.backKnee], graphic: "none", side: 1, limbs: ["leg_back"], good: firm }] }));
+      callouts: [{ key: "back_knee_min", title: firm ? "Back leg holds firm" : dip.angle >= 125 ? "Back leg bends" : "Back leg collapses",
+        detail: `Back knee bends to ${Math.round(dip.angle)}°`, anchor: [s.backKnee], graphic: "none", side: 1, limbs: ["leg_back"], good: firm }] }));
     from = dip.t;
   }
   // 5. front-foot contact

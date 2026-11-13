@@ -104,15 +104,15 @@ describe("the timeline", () => {
     expect(sc.total).toBeLessThan(45);
     expect(sc.total).toBeCloseTo(sc.segments.reduce((a, s) => a + s.dur, 0), 6);
   });
-  it("shows the back leg's deepest bend as a 3D estimate, lit green only when it holds firm", () => {
+  it("shows the back leg's deepest bend, lit green only when it holds firm", () => {
     const dip = backLegDip(club)!;
     expect(dip.t).toBeGreaterThan(at("bfc"));
     expect(dip.t).toBeLessThan(at("ffc"));
     const c = sc.segments.find((s) => s.title === "Back leg" && s.kind === "hold")!.callouts[0];
-    expect(c.detail).toBe(`Back knee ≈${Math.round(dip.angle)}° (3D estimate)`);
-    expect(c.good).toBe(dip.angle >= 150);
+    expect(c.detail).toBe(`Back knee bends to ${Math.round(dip.angle)}°`);   // from the knees measured on the video
+    expect(c.good).toBe(dip.angle >= 146);
     expect(c.limbs).toEqual(["leg_back"]);
-    expect(backLegDip({ ...club, series: {} } as unknown as AnalysisResult)).toBeNull();
+    expect(backLegDip({ ...club, keypoints2d: undefined } as unknown as AnalysisResult)).toBeNull();   // no measured knees: no such stop
     // a camera behind doesn't see the knee bend: no such stop
     expect(replayScript({ ...club, view: { ...club.view, view: "behind" } } as AnalysisResult).segments.some((x) => x.title === "Back leg")).toBe(false);
   });
@@ -168,7 +168,7 @@ describe("the bound", () => {
       return q;
     }));
     const ev = (f: number) => ({ frame: club.frames.start + f, time: 0, confidence: 0.9, method: "detected" });
-    return { ...club, fps, fps_real: fps, skeleton3d: { ...club.skeleton3d, joints }, events: { ...club.events, bfc: ev(bfc), ffc: ev(36), br: ev(39), ft: ev(41) } } as unknown as AnalysisResult;
+    return { ...club, fps, fps_real: fps, keypoints2d: undefined, skeleton3d: { ...club.skeleton3d, joints }, events: { ...club.events, bfc: ev(bfc), ffc: ev(36), br: ev(39), ft: ev(41) } } as unknown as AnalysisResult;
   }
   it("times the flight from take-off to back-foot contact and gets the rise from gravity", () => {
     const f = findFlight(bound(18))!;                    // 18 frames at 60 fps: the foot leaves between frames 12 and 13
@@ -247,5 +247,38 @@ describe("a camera behind or in front of the bowler", () => {
     for (const j of [2, 5]) for (let t = at("bfc"); t <= at("br"); t++) expect(Math.abs(len(t, j) - len(0, j))).toBeLessThan(0.012);   // thighs
     for (const j of [3, 6]) for (let t = at("bfc"); t <= at("br"); t++) expect(len(t, j)).toBeLessThan(len(0, j) + 0.03);                // shins never stretch
     for (const fr of P) for (const q of fr) expect(Number.isFinite(q[0] + q[1] + q[2])).toBe(true);
+  });
+});
+
+describe("the skeleton agrees with what was measured", () => {
+  const angle = (P: number[][], a: number, b: number, c: number) => {
+    const u = [0, 1, 2].map((k) => P[a][k] - P[b][k]), w = [0, 1, 2].map((k) => P[c][k] - P[b][k]);
+    return (Math.acos((u[0] * w[0] + u[1] * w[1] + u[2] * w[2]) / (Math.hypot(...u) * Math.hypot(...w))) * 180) / Math.PI;
+  };
+  const m = buildMotion(club), s = sides(club.bowling_arm.arm === "right"), val = (k: string) => club.metrics.find((x) => x.key === k)!.value!;
+  it("bends its knees to the angles measured on the video (side-on), not the looser 3D estimate", () => {
+    expect(m.kneesMeasured).toBe(true);
+    expect(angle(m.joints[at("bfc")], s.backHip, s.backKnee, s.backAnkle)).toBeCloseTo(val("back_knee_bfc"), -0.5);   // within about 1.5°
+    expect(angle(m.joints[at("ffc")], s.frontHip, s.frontKnee, s.frontAnkle)).toBeCloseTo(val("front_knee_ffc"), -0.5);
+    expect(angle(m.joints[at("br")], s.frontHip, s.frontKnee, s.frontAnkle)).toBeCloseTo(val("front_knee_br"), -0.5);
+    // the raw 3D estimate had the back knee about 40° more bent than the video shows
+    const raw = club.skeleton3d.joints[at("bfc")];
+    expect(Math.abs(angle(raw, s.backHip, s.backKnee, s.backAnkle) - val("back_knee_bfc"))).toBeGreaterThan(20);
+    // from behind the knees aren't measured: they are left to the estimate (and the leg solve)
+    expect(buildMotion({ ...club, view: { ...club.view, view: "behind" } } as AnalysisResult).kneesMeasured).toBe(false);
+  });
+  it("puts the bowling wrist at the measured release height, and fades the change out away from release", () => {
+    const h = (val("release_height_pct") / 100) * club.skeleton.stature_m;
+    expect(m.joints[at("br")][s.wrist][1]).toBeCloseTo(h, 1);
+    // a clip whose 3D arm is 7 cm low at release is lifted to the measurement
+    const low = { ...club, metrics: club.metrics.map((x) => (x.key === "release_height_pct" ? { ...x, value: x.value! + 4 } : x)) } as AnalysisResult;
+    const m2 = buildMotion(low), h2 = ((val("release_height_pct") + 4) / 100) * club.skeleton.stature_m;
+    expect(m2.joints[at("br")][s.wrist][1]).toBeCloseTo(h2, 1);
+    expect(Math.abs(m2.joints[0][s.wrist][1] - m.joints[0][s.wrist][1])).toBeLessThan(0.02);   // nothing changed early in the clip
+    const parents = club.skeleton3d.parents;
+    for (const j of [s.elbow, s.wrist]) {
+      const l = (P: number[][]) => Math.hypot(P[j][0] - P[parents[j]][0], P[j][1] - P[parents[j]][1], P[j][2] - P[parents[j]][2]);
+      expect(l(m2.joints[at("br")])).toBeCloseTo(l(m.joints[0]), 2);   // the arm is turned, not stretched
+    }
   });
 });

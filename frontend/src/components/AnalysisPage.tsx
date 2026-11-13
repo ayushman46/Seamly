@@ -736,7 +736,7 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
       </main>
       {bio && result && meta && (
         <Suspense fallback={null}>
-          <BioReplay id={id} result={result} name={meta.name ?? "delivery"} onClose={() => { setBio(false); requestAnimationFrame(() => bioBtn.current?.focus({ preventScroll: true })); }} />
+          <BioReplay id={id} result={result} name={meta.name ?? "delivery"} others={others.map((m) => ({ id: m.id, name: m.name ?? "delivery" }))} onClose={() => { setBio(false); requestAnimationFrame(() => bioBtn.current?.focus({ preventScroll: true })); }} />
         </Suspense>
       )}
       <SiteFooter compact />
