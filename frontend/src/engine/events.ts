@@ -444,17 +444,32 @@ export function classifyView(forwardCam: number[], kp?: Arr3 | null, _kc?: Arr2 
       return hipw / Math.max(torso, 1);
     }));
   }
+  // Behind or in front: seen from behind, the bowler's right shoulder is on the right of the picture; from in front,
+  // on the left. That order (in torso lengths, over the run-up, or the whole clip without one) was right on all 13
+  // real behind/front clips tested, including broadcast ones where the 3D direction of travel (weak depth) was not;
+  // the 3D direction still decides when the shoulders are too close to call.
+  let order: number | null = null;
+  if (kp && kp.length) {
+    const ts = runup && runup.length ? runup : kp.map((_, i) => i);
+    order = npMedian(ts.map((t) => {
+      const p = kp[t];
+      const torso = norm2((p[5][0] + p[6][0]) / 2 - (p[11][0] + p[12][0]) / 2, (p[5][1] + p[6][1]) / 2 - (p[11][1] + p[12][1]) / 2);
+      return (p[6][0] - p[5][0]) / Math.max(torso, 1);
+    }));
+  }
+  const sure = order !== null && Math.abs(order) > 0.2;
+  const behind = sure ? order! > 0 : f[2] >= 0, behindStrict = sure ? order! > 0 : f[2] > 0;
   let view: ViewInfo["view"];
   if (strideX != null && (strideX > 0.7 || strideX < 0.4)) {
     // behind/front-on clips measure 0.03-0.3, side-on 1.0-1.1 (an oblique ~35-45 deg view lands in between)
-    view = strideX > 0.7 ? "side_on" : f[2] >= 0 ? "behind" : "front_on";
+    view = strideX > 0.7 ? "side_on" : behind ? "behind" : "front_on";
   } else if (ratio !== null) {
     // the 2D ratio is the more reliable cue (depth from monocular lifting is weak)
     if (ratio < 0.28) view = "side_on";
-    else if (ratio > 0.42) view = f[2] >= 0 ? "behind" : "front_on";
-    else view = ang > 55 ? "side_on" : f[2] >= 0 ? "behind" : "front_on";
+    else if (ratio > 0.42) view = behind ? "behind" : "front_on";
+    else view = ang > 55 ? "side_on" : behind ? "behind" : "front_on";
   } else {
-    view = ang > 55 ? "side_on" : f[2] > 0 ? "behind" : "front_on";
+    view = ang > 55 ? "side_on" : behindStrict ? "behind" : "front_on";
   }
   const out: ViewInfo = { view, angle_to_optical_axis_deg: round(ang, 1),
     hip_width_ratio: ratio === null ? null : round(ratio, 3) };

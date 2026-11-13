@@ -385,19 +385,31 @@ def classify_view(forward_cam: np.ndarray, kp: np.ndarray | None = None, kc: np.
         torso = np.linalg.norm((kp[runup, 5] + kp[runup, 6]) / 2 - (kp[runup, 11] + kp[runup, 12]) / 2, axis=1)
         ratio = float(np.median(hipw / np.maximum(torso, 1)))
     extra = {} if stride_x is None else {"stride_across": round(stride_x, 2)}
+    # Behind or in front: seen from behind, the bowler's right shoulder is on the right of the picture; from in front,
+    # on the left. That order (in torso lengths, over the run-up, or the whole clip without one) was right on all 13
+    # real behind/front clips tested, including broadcast ones where the 3D direction of travel (weak depth) was not;
+    # the 3D direction still decides when the shoulders are too close to call.
+    order = None
+    if kp is not None and len(kp):
+        ts = runup if runup is not None and len(runup) else np.arange(len(kp))
+        torso = np.linalg.norm((kp[ts, 5] + kp[ts, 6]) / 2 - (kp[ts, 11] + kp[ts, 12]) / 2, axis=1)
+        order = float(np.median((kp[ts, 6, 0] - kp[ts, 5, 0]) / np.maximum(torso, 1)))
+    sure = order is not None and abs(order) > 0.2
+    behind = order > 0 if sure else f[2] >= 0
+    behind_strict = order > 0 if sure else f[2] > 0
     if stride_x is not None and (stride_x > 0.7 or stride_x < 0.4):
         # behind/front-on clips measure 0.03-0.3, side-on 1.0-1.1 (an oblique ~35-45 deg view lands in between)
-        view = "side_on" if stride_x > 0.7 else ("behind" if f[2] >= 0 else "front_on")
+        view = "side_on" if stride_x > 0.7 else ("behind" if behind else "front_on")
     elif ratio is not None:
         # the 2D ratio is the more reliable cue (depth from monocular lifting is weak)
         if ratio < 0.28:
             view = "side_on"
         elif ratio > 0.42:
-            view = "behind" if f[2] >= 0 else "front_on"
+            view = "behind" if behind else "front_on"
         else:
-            view = "side_on" if ang > 55 else ("behind" if f[2] >= 0 else "front_on")
+            view = "side_on" if ang > 55 else ("behind" if behind else "front_on")
     else:
-        view = "side_on" if ang > 55 else ("behind" if f[2] > 0 else "front_on")
+        view = "side_on" if ang > 55 else ("behind" if behind_strict else "front_on")
     # An oblique camera (well off the line of the pitch, or high in the stands) shows up as the two 2D cues
     # contradicting each other, or both sitting in their in-between bands so only the weak 3D direction decided.
     # Plane-specific measurements aren't trustworthy then.

@@ -31,6 +31,7 @@ import ShareSummary from "./ShareSummary";
 // three.js is large: the 3D viewer loads as its own chunk so the player and metrics appear first
 const Viewer3D = lazyPage(() => import("./Viewer3D"));
 const BioReplay = lazyPage(() => import("./BioReplay"));
+import { concerns } from "../lib/sanity";
 
 const STAGES = [
   ["probe", "Reading your video", "Checking the frame rate and looking for camera cuts."],
@@ -318,6 +319,7 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
   const [frame, setFrame] = useState(result.events.br?.frame ?? f0);
   const [playing, setPlaying] = useState(false);
   const [bio, setBio] = useState(false);   // the 3D bio-mech replay, over the page
+  const doubts = useMemo(() => (result ? concerns(result) : []), [result]);
   const bioBtn = useRef<HTMLButtonElement>(null);
   const [speed, setSpeed] = useState(0.25);
   const [loop, setLoop] = useState(true);
@@ -597,7 +599,8 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
             )}
             <button className="btn" onClick={() => go(`/r/${id}`)}><IFile size={15} /> Report</button>
             <ShareSummary meta={meta} result={result} ins={ins} fileBase={fileBase} />
-            <button ref={bioBtn} className="btn" onClick={() => { setPlaying(false); setBio(true); }} title="The delivery replayed in 3D, broadcast style: a skeleton on the pitch, the arm's speed, and the numbers at each key moment"><ICube size={15} /> 3D replay</button>
+            <button ref={bioBtn} className="btn" onClick={() => { setPlaying(false); setBio(true); }} disabled={doubts.some((c) => c.level === "block")}
+              title={doubts.some((c) => c.level === "block") ? "Not available: this analysis didn't find a usable delivery (see the note above)" : "The delivery replayed in 3D, broadcast style: a skeleton on the pitch, the arm's speed, and the numbers at each key moment"}><ICube size={15} /> 3D replay</button>
             <ClipMaker meta={meta} result={result} ins={ins} fileBase={fileBase} frame={frame}
               onFrame={(f) => { setPlaying(false); setFrame(f); }} players={() => [...(playerRef.current?.querySelectorAll<HTMLCanvasElement>(".player-stage canvas") ?? [])]} />
             <div className="rel" ref={menuRef} onBlur={(e) => { if (!menuRef.current?.contains(e.relatedTarget as Node | null)) setMenu(false); }}>
@@ -636,6 +639,12 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
           </div>
         )}
         {MODE === "browser" && <OtherDeliveries id={id} result={result} meta={meta} go={go} flash={flash} />}
+        {doubts.map((c) => (
+          <div key={c.key} className={`notice ${c.level === "block" ? "error" : "warn"}`} role={c.level === "block" ? "alert" : "status"} style={{ marginBottom: 14 }}>
+            <IAlert size={16} />
+            <div><b>{c.level === "block" ? "This analysis can't be trusted." : "Check this analysis."}</b> {c.text}</div>
+          </div>
+        ))}
         {MODE === "browser" && <PairNotice id={id} meta={meta} result={result} go={go} />}
         {ins || insErr
           ? <Verdict result={result} ins={ins} pace={meta.pace} armPending={askArm} onPlan={openPlan} onCoaching={openCoaching} onJump={jumpTo} />

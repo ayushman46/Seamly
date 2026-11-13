@@ -263,12 +263,52 @@ clip only: hips, then trunk, then arm and hand, in order; at 25–60 fps it show
 Not checked, because there is nothing to check it against: jump clearance and length against a measured jump, the
 kinetic chain's timing against motion capture, and the assumed run-in on clips from behind.
 
+## 9c. International match footage (2026-11-14)
+
+Ten deliveries by ten bowlers, cut from the official bcci.tv match highlights of two 2026 internationals (India v
+Afghanistan, only Test, day 1; India v New Zealand, 1st ODI): the broadcast camera high behind the bowler, 1080p,
+25 fps, each a single shot of 1–3 s. Clips are kept locally and not redistributed. Run in full Chrome; every key
+moment was then checked by eye against the frames, and the bowling arm against the bowler's known arm.
+
+| Bowler | Usable? | Camera read | Arm read (true) | Release frame by eye | Release height | Side-bend |
+|---|---|---|---|---|---|---|
+| Zia-ur-Rehman | yes | behind | left (left) | right | 98% | 65° |
+| Saleem Safi | yes | behind | right (right) | right, ball leaves next frame | 80% | 32° |
+| AFG seamer ("Malik") | yes | behind | right (right) | right, ball leaves next frame | 114% | 27° |
+| Kharoti (spin) | yes | behind | left (left) | within a frame | 108% | 35° |
+| Mohammed Siraj | yes, clip starts at back-foot contact | behind | right (right) | right | 88% | 39° |
+| Harshit Rana | yes | in front, **wrong** (fixed: now behind) | right (right) | right | 82% | 51° |
+| Ravindra Jadeja (spin) | yes | behind | right, **wrong** (left); 20% sure, and the page asks | right | 117% | 7° |
+| Kuldeep Yadav (spin) | yes | behind | left (left) | within a frame | 86% | 18° |
+| Azmatullah | **no**: followed the batter's swing | – | – | – | – | – |
+| Prasidh Krishna | **no**: took an arm turn in the gather for the delivery, 3-frame window | – | – | – | – | – |
+
+What this shows, and what was done:
+
+- **Key moments are reliable on broadcast footage** when the bowler is found: release within one frame on all eight.
+- **Two of ten were not analyses of the delivery at all** and were still presented with a score. They are now caught:
+  an analysis whose key moments sit on top of each other, or whose "release" has the hand at chest height with a
+  low release height, is marked "can't be trusted" and its 3D replay is locked (`lib/sanity.ts`). The same two clips
+  analysed correctly in a different browser build: tiny decoding differences tip the bowler-finding step, which is
+  the next thing to harden.
+- **Behind or in front** is now decided by which side of the picture the right shoulder is on (right on all 13 real
+  behind/front clips, including the one the 3D direction of travel got wrong), in both engines.
+- **The bowling arm** was wrong once in eight (a 2–2 split of the cues, 20% confidence); the page already asks the
+  user to confirm the arm when it is unsure.
+- **Magnitudes from this camera are not trustworthy.** Release heights of 80–88% of height for international seamers
+  are too low (they release well above their own height), and side-bends of 51° and 65° are too high: the broadcast
+  camera looks down on the bowler from high behind, which shortens heights and turns forward lean into apparent
+  side-bend, and the camera's height isn't estimated. From this camera the numbers are good for timing and for
+  comparing the same bowler ball to ball, not as absolute values.
+
 ## 10. Still to do
 
 - Lab validation against marker-based motion capture (real bodies, real knees): the synthetic body can't say whether
   the detector's knee placement on a bent knee differs on people.
 - Two real phones on the same balls (a side-on and a behind-the-stumps phone through a net session): the pair
   features are measured on rendered pairs and on real clips of different balls, not yet on one real ball filmed twice.
+- The bowler-finding step on broadcast footage (a batter's swing or an arm turn in the gather can win); and the
+  camera's height, so heights and side-bend from a high broadcast camera can be corrected.
 - A radar-gun session for ball speed.
 - Spinners: a release rule for slower arms.
 - Left/right label consistency in the browser's pose model at 60+ fps side-on, and front/back from behind (both seen
