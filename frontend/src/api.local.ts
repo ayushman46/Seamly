@@ -487,10 +487,16 @@ export const SAMPLES = {
     name: "Example: club match, side-on" },
   synthetic: { url: `${import.meta.env.BASE_URL}samples/synthetic-side-on.mp4`, dir: `${import.meta.env.BASE_URL}samples/synthetic/`, id: "5e7a5a3d1e02",
     name: "Example: 3D test bowler, 60 fps" },
+  // real clips under licences that allow them to be shown here (credits: SAMPLE_CREDITS, the footer, the README)
+  clubFront: { url: `${import.meta.env.BASE_URL}samples/club-front-on.mp4`, dir: `${import.meta.env.BASE_URL}samples/club-front/`, id: "c1ab5a3d1e03",
+    name: "Example: club match, from in front" },
+  netsBehind: { url: `${import.meta.env.BASE_URL}samples/nets-behind-60fps.mp4`, dir: `${import.meta.env.BASE_URL}samples/nets-behind/`, id: "9e755a3d1e06",
+    name: "Example: nets, from behind, 60 fps" },
 };
+
 export type SampleName = keyof typeof SAMPLES;
 // bump when the bundled sample analyses are regenerated, so a browser that imported an older copy gets the new one
-const SAMPLE_VERSION = 15;
+const SAMPLE_VERSION = 16;
 
 /** A link to one of the built-in examples opens anywhere: import it on first use (the ids are fixed). */
 const sampleImports = new Map<string, Promise<unknown>>();   // the report asks for an analysis and its insights at once

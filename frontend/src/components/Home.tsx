@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MODE, api } from "../api";
+import type { SampleName } from "../api.local";
 import type { AnalysisMeta, Player } from "../types";
 import { AGE_LABEL, STYLE_LABEL, getCurrentPlayer, setCurrentPlayer } from "../lib/player";
 import PlayerForm from "./PlayerForm";
@@ -17,7 +18,7 @@ const MAX_CLIPS = 12;   // a spell or two from one nets session
 const TYPICAL_CM: Record<string, number> = { u11: 138, u13: 149, u15: 161, u17: 170, u19: 175, adult: 180 };
 const RETURNING_KEY = "seamly-returning";   // remembers whether this browser has data, so the first paint picks the right layout
 type Health = { ok: boolean; device: string; missing_models: string[] };
-type Sample = "club" | "synthetic";
+type Sample = SampleName;
 
 function readReturning(): boolean {
   try { return localStorage.getItem(RETURNING_KEY) === "1"; } catch { return false; }
@@ -501,6 +502,10 @@ function Uploader({ go, disabled, health, players, current, onChoose, onCreate, 
               <span className="faint"> · </span>
               <button type="button" className="link-btn" disabled={disabled || demoBusy !== null} onClick={() => onDemo("synthetic")}>
                 {demoBusy === "synthetic" ? "Opening…" : "3D test bowler"}</button>
+              {([["netsBehind", "nets from behind"], ["clubFront", "club match from in front"]] as const).map(([k, label]) => (
+                <span key={k}><span className="faint"> · </span>
+                  <button type="button" className="link-btn" disabled={disabled || demoBusy !== null} onClick={() => onDemo(k)}>{demoBusy === k ? "Opening…" : label}</button></span>
+              ))}
             </div>
           </>
         )}

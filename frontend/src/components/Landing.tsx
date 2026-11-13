@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { MODE } from "../api";
+import { SAMPLE_CREDITS } from "../lib/sampleCredits";
 import { Wordmark } from "./Brand";
 import { REPO_URL } from "./Header";
 import { IArrowRight, IChevronDown } from "./Icons";
@@ -295,8 +296,12 @@ export function SiteFooter({ compact = false }: { compact?: boolean }) {
         <p className="footer-credits">
           {DISCLAIMER} Pose: <a href="https://github.com/ultralytics/ultralytics" target="_blank" rel="noreferrer">YOLO11</a> (AGPL-3.0).
           3D: <a href="https://github.com/Walter0807/MotionBERT" target="_blank" rel="noreferrer">MotionBERT</a> and <a href="https://github.com/naver/anny" target="_blank" rel="noreferrer">Anny</a> (NAVER LABS Europe).
-          Example clip: “Epping Foresters CC v Great Totham CC” by Acabashi, <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noreferrer">CC BY-SA 4.0</a>,
-          via <a href="https://commons.wikimedia.org/wiki/File:Epping_Foresters_CC_v_Great_Totham_CC_at_Epping,_Essex,_England_Video_1.webm" target="_blank" rel="noreferrer">Wikimedia Commons</a>.
+          3D replay bones: <a href="https://simtk.org/projects/full_body" target="_blank" rel="noreferrer">OpenSim full-body model</a> (Rajagopal et al. 2016).
+          Example clips:{" "}
+          {Object.values(SAMPLE_CREDITS).filter((c): c is NonNullable<typeof c> => !!c).map((c, i) => (
+            <span key={c.source}>{i > 0 && "; "}{c.label}: <a href={c.source} target="_blank" rel="noreferrer">{c.by}</a>,{" "}
+              <a href={c.licenceUrl} target="_blank" rel="noreferrer">{c.licence}</a> ({c.changes})</span>
+          ))}.
         </p>
       </div>
     </footer>
