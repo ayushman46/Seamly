@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { api } from "../api";
 import type { AnalysisResult } from "../types";
-import { J, armSpeed, replayScript, replayState, sampleJoints, sceneJoints, sides, speedColor, LANDING_X, LANDING_Z, type Callout, type V3 } from "../lib/biomech";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
+import { J, armSpeed, buildMotion, gaussian, kineticChain, replayScript, replayState, sampleJoints, sampleTrack, sides, speedColor, LANDING_X, LANDING_Z, type Callout, type V3 } from "../lib/biomech";
 import { BoneBody, SimpleBody, loadBones, type Body, type BoneData, type Limb } from "../lib/bones";
 import { clipExt, clipMime } from "../lib/clip";
 import { IDownload, IPause, IPlay, IRefresh, IUpload, IX } from "./Icons";
@@ -15,7 +16,7 @@ import { IDownload, IPause, IPlay, IRefresh, IUpload, IX } from "./Icons";
 
 const FONT = `"Barlow Condensed", "Roboto Condensed", "Arial Narrow", Inter, -apple-system, sans-serif`;
 const FONT_SEMI = `"Barlow Semi Condensed", "Barlow Condensed", "Roboto Condensed", Inter, -apple-system, sans-serif`;
-const SUB = 4;   // ribbon samples per video frame
+const SUB = 8;   // ribbon samples per video frame
 const COCO_LIMBS: [number, number, "b" | "f" | "t"][] = [[5, 7, "t"], [7, 9, "t"], [6, 8, "t"], [8, 10, "t"], [5, 6, "t"], [5, 11, "t"], [6, 12, "t"],
   [11, 12, "t"], [11, 13, "t"], [13, 15, "t"], [12, 14, "t"], [14, 16, "t"]];
 
@@ -91,8 +92,10 @@ export default function BioReplay({ id, result, name, onClose }: { id: string; r
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const script = useMemo(() => replayScript(result), [result]);
-  const frames = useMemo(() => sceneJoints(result), [result]);
-  const speeds = useMemo(() => armSpeed(result), [result]);
+  const motion = useMemo(() => buildMotion(result), [result]);
+  const frames = motion.joints;
+  // the arm's speed, eased over time so the ribbon's colour flows
+  const speeds = useMemo(() => gaussian(armSpeed(result), 0.02 * Math.max(1, result.fps_real || result.fps)), [result]);
   const time = useRef(0);
   const playingRef = useRef(true);
   const user = useRef({ az: 0, el: 0 });
@@ -107,7 +110,9 @@ export default function BioReplay({ id, result, name, onClose }: { id: string; r
   const [clip, setClip] = useState<{ url: string; file: File } | null>(null);
   const recRef = useRef<{ rec: MediaRecorder; chunks: Blob[] } | null>(null);
   const portrait = useMemo(() => typeof window !== "undefined" && window.innerWidth < window.innerHeight * 0.8, []);
-  const [W, H] = portrait ? [720, 960] : [1280, 720];
+  // full HD on a screen that can show it; the picture's own sizes all scale with it
+  const big = useMemo(() => typeof window !== "undefined" && window.innerWidth * (window.devicePixelRatio || 1) >= 1500, []);
+  const [W, H] = portrait ? (big ? [1080, 1440] : [720, 960]) : big ? [1920, 1080] : [1280, 720];
   const mime = useMemo(() => clipMime(false), []);
   playingRef.current = playing;
 
@@ -144,15 +149,23 @@ export default function BioReplay({ id, result, name, onClose }: { id: string; r
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.NeutralToneMapping;   // keeps the grass, the pitch and the ribbon's colours true
+    renderer.toneMappingExposure = 1.0;
     const scene = new THREE.Scene();
     const sky = skyTexture();
     scene.background = sky;
     scene.fog = new THREE.Fog(0x0b1424, 26, 95);
+    // soft light from all round (a small studio environment), so the bones have gentle highlights instead of flat shading
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    const envTex = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    scene.environment = envTex;
+    scene.environmentIntensity = 0.3;
     const camera = new THREE.PerspectiveCamera(portrait ? 44 : 36, W / H, 0.1, 300);
-    scene.add(new THREE.HemisphereLight(0xf2f5ff, 0x2a4a30, 1.45));
+    scene.add(new THREE.HemisphereLight(0xf2f5ff, 0x2a4a30, 1.2));
     const sun = new THREE.DirectionalLight(0xfff6e6, 2.4);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(1024, 1024);
+    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.radius = 5;
     Object.assign(sun.shadow.camera, { left: -3, right: 3, top: 3, bottom: -3, near: 1, far: 30 });
     sun.shadow.bias = -0.0015;
     scene.add(sun, sun.target);
@@ -161,6 +174,30 @@ export default function BioReplay({ id, result, name, onClose }: { id: string; r
     buildPitch(scene, LANDING_X * (right ? -1 : 1));
     const body: Body = bones ? new BoneBody(bones) : new SimpleBody();
     scene.add(body.group);
+    // the action strobe: the body at its earlier key moments, left standing where it was
+    const ghosts = bones ? script.ghosts.map((g) => {
+      const b = new BoneBody(bones, 0x9cc8ff);
+      b.update(frames[g.frame], motion.hinges[g.frame]);
+      b.fade(0);
+      scene.add(b.group);
+      return { body: b, label: g.label, head: frames[g.frame][J.head] };
+    }) : [];
+    const chain = kineticChain(result);
+
+    // soft dark patches on the ground under each foot and the body, darker the nearer the ground (they tie the feet down)
+    const blobTex = (() => {
+      const c = document.createElement("canvas"); c.width = c.height = 128;
+      const g = c.getContext("2d")!, gr = g.createRadialGradient(64, 64, 4, 64, 64, 62);
+      gr.addColorStop(0, "rgba(0,0,0,0.75)"); gr.addColorStop(0.5, "rgba(0,0,0,0.32)"); gr.addColorStop(1, "rgba(0,0,0,0)");
+      g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
+      return new THREE.CanvasTexture(c);
+    })();
+    const blobs = [0.2, 0.2, 0.62].map((r) => {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(2 * r, 2 * r), new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false, opacity: 0.6 }));
+      m.rotation.x = -Math.PI / 2; m.renderOrder = 2;
+      scene.add(m);
+      return m;
+    });
 
     // the ball in the hand, and the ribbon the bowling arm sweeps (built once, revealed as the action plays)
     const ball = new THREE.Mesh(new THREE.SphereGeometry(0.043, 18, 14), new THREE.MeshStandardMaterial({ color: 0xc81e2c, roughness: 0.45 }));
@@ -186,7 +223,8 @@ export default function BioReplay({ id, result, name, onClose }: { id: string; r
       const sp = (speeds[k] * (1 - u) + speeds[Math.min(T - 1, k + 1)] * u) / top;
       const c = speedColor(sp);
       pos.set(mix(sh, o, 0.15), i * 9); pos.set(mix(sh, o, 0.92), i * 9 + 3); pos.set(o, i * 9 + 6);
-      col.set([c[0], c[1], c[2], 0.03], i * 12); col.set([c[0], c[1], c[2], 0.55], i * 12 + 4); col.set([Math.min(1, c[0] * 1.15 + 0.08), Math.min(1, c[1] * 1.15 + 0.08), Math.min(1, c[2] * 1.15 + 0.08), 1], i * 12 + 8);
+      const age = 0.35 + 0.65 * Math.min(1, i / (0.35 * nS));   // the swing's start is fainter
+      col.set([c[0], c[1], c[2], 0.03 * age], i * 12); col.set([c[0], c[1], c[2], 0.55 * age], i * 12 + 4); col.set([Math.min(1, c[0] * 1.15 + 0.08), Math.min(1, c[1] * 1.15 + 0.08), Math.min(1, c[2] * 1.15 + 0.08), age], i * 12 + 8);
       if (i % 2 === 0) { spoke.push(...mix(sh, o, 0.22), ...o); spokeCol.push(Math.min(1, c[0] + 0.3), Math.min(1, c[1] + 0.3), Math.min(1, c[2] + 0.3), 0.15, Math.min(1, c[0] + 0.35), Math.min(1, c[1] + 0.35), Math.min(1, c[2] + 0.35), 1); }
     }
     const index: number[] = [];
@@ -195,11 +233,11 @@ export default function BioReplay({ id, result, name, onClose }: { id: string; r
     ribbonG.setAttribute("position", new THREE.BufferAttribute(pos, 3));
     ribbonG.setAttribute("color", new THREE.BufferAttribute(col, 4));
     ribbonG.setIndex(index);
-    const ribbon = new THREE.Mesh(ribbonG, new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, side: THREE.DoubleSide, depthWrite: false }));
+    const ribbon = new THREE.Mesh(ribbonG, new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, side: THREE.DoubleSide, depthWrite: false, toneMapped: false }));
     const spokeG = new THREE.BufferGeometry();
     spokeG.setAttribute("position", new THREE.Float32BufferAttribute(spoke, 3));
     spokeG.setAttribute("color", new THREE.Float32BufferAttribute(spokeCol, 4));
-    const spokes = new THREE.LineSegments(spokeG, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false }));
+    const spokes = new THREE.LineSegments(spokeG, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, toneMapped: false }));
     for (const o of [ribbon, spokes]) { o.frustumCulled = false; o.renderOrder = 5; scene.add(o); }
     // the ball's flight after release: the hand's direction at release, at a bowler's pace (the speed isn't measured here)
     const pA = hand(sampleJoints(frames, Math.max(0, br - 0.5), tmp)), pB = hand(sampleJoints(frames, br, tmp));
@@ -282,6 +320,16 @@ export default function BioReplay({ id, result, name, onClose }: { id: string; r
         ctx.lineWidth = 2.5 * k; path(ring); ctx.stroke();
         const [tx, ty] = project(h);
         ctx.beginPath(); ctx.moveTo(tx - 13 * k, ty); ctx.lineTo(tx + 13 * k, ty); ctx.stroke();
+      } else if (c.graphic === "clearance") {
+        // a pole from the ground up to the lower foot: how far the bowler is off the ground
+        const f = P[J.rAnkle][1] < P[J.lAnkle][1] ? P[J.rAnkle] : P[J.lAnkle], top: V3 = [f[0], Math.max(0.05, f[1] - 0.07), f[2]], g: V3 = [f[0], 0.01, f[2]];
+        ctx.strokeStyle = "rgba(236,240,248,0.96)"; ctx.lineWidth = 4 * k;
+        path([g, [g[0], g[1] + (top[1] - g[1]) * a, g[2]]]); ctx.stroke();
+        const ring: V3[] = [];
+        for (let i = 0; i <= 28; i++) ring.push([g[0] + 0.17 * Math.cos((i / 28) * 2 * Math.PI), 0.01, g[2] + 0.17 * Math.sin((i / 28) * 2 * Math.PI)]);
+        ctx.lineWidth = 2.5 * k; path(ring); ctx.stroke();
+        const [tx, ty] = project(top);
+        ctx.beginPath(); ctx.moveTo(tx - 15 * k, ty); ctx.lineTo(tx + 15 * k, ty); ctx.stroke();
       } else if (c.graphic === "trunk") {
         const pel = P[J.pelvis], th = P[J.thorax], len = Math.hypot(...sub(th, pel));
         const upP: V3 = [pel[0], pel[1] + len, pel[2]];
@@ -313,15 +361,21 @@ export default function BioReplay({ id, result, name, onClose }: { id: string; r
         for (let n = 0; n < 8 && placed.some(([px, py, pw, ph]) => bx < px + pw + 14 && px < bx + bw + 14 && by < py + ph + 8 && py < by + bh + 8); n++) by += bh + 10 * k;
         placed.push([bx, by, bw, bh]);
         ctx.save();
-        ctx.globalAlpha = a;
-        // the leader: from the joint across to a white bar standing beside the box
-        const left = bx > ax, barX = left ? bx - gap : bx + bw + gap;
+        // it arrives: the leader draws out from the joint, then the box eases in beside it
+        const lead = Math.min(1, a * 2), box = Math.max(0, Math.min(1, a * 2 - 0.6));
+        const left0 = bx > ax;
+        bx += (left0 ? -1 : 1) * (1 - box) * 16 * k;
+        const left = left0, barX = left ? bx - gap : bx + bw + gap;
+        ctx.globalAlpha = Math.min(1, lead * 1.5);
         ctx.strokeStyle = "rgba(244,246,250,0.96)"; ctx.lineCap = "round";
         ctx.lineWidth = 1.8 * k;
-        ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(barX, ay); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(ax + (barX - ax) * lead, ay); ctx.stroke();
+        ctx.globalAlpha = box;
         ctx.lineWidth = 3.2 * k;
         ctx.beginPath(); ctx.moveTo(barX, Math.min(by, ay)); ctx.lineTo(barX, Math.max(by + bh, ay)); ctx.stroke();
+        ctx.globalAlpha = Math.min(1, lead * 1.5);
         ctx.beginPath(); ctx.arc(ax, ay, 3.4 * k, 0, Math.PI * 2); ctx.fillStyle = "#f4f6fa"; ctx.fill();
+        ctx.globalAlpha = box;
         ctx.fillStyle = "rgba(24,28,32,0.88)";
         ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 5 * k); ctx.fill();
         ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
@@ -334,15 +388,21 @@ export default function BioReplay({ id, result, name, onClose }: { id: string; r
     };
 
     const drawVideo = (tf: number, alpha: number, ribbon2d: boolean) => {
+      const tA = Math.max(0, Math.min(T - 1, Math.floor(tf))), mixB = Math.max(0, Math.min(1, tf - tA));
       const t = Math.max(0, Math.min(T - 1, Math.round(tf)));
-      const im = imgs.get(f0 + t);
+      const im = imgs.get(f0 + tA), im2 = imgs.get(f0 + Math.min(T - 1, tA + 1));
       ctx.save();
       ctx.globalAlpha = alpha;
       ctx.fillStyle = "#03050a"; ctx.fillRect(0, 0, W, H);
-      const s = zoom, [cx, cy] = centres[t];
+      const s = zoom, cA = centres[tA], cB = centres[Math.min(T - 1, tA + 1)];
+      const cx = cA[0] + (cB[0] - cA[0]) * mixB, cy = cA[1] + (cB[1] - cA[1]) * mixB;
+      // the tracked points between the two frames
+      const kB = kp[Math.min(T - 1, tA + 1)], KP = kp[tA].map((q, j) => [q[0] + (kB[j][0] - q[0]) * mixB, q[1] + (kB[j][1] - q[1]) * mixB]);
       const ox = Math.min(0, Math.max(W - vw * s, W / 2 - cx * s)), oy = Math.min(0, Math.max(H - vh * s, H / 2 - cy * s));
       const fx = vw * s < W ? (W - vw * s) / 2 : ox, fy = vh * s < H ? (H - vh * s) / 2 : oy;
       if (im && im.complete && im.naturalWidth) ctx.drawImage(im, fx, fy, vw * s, vh * s);
+      // the next frame over this one, as far as the time between them has gone
+      if (mixB > 0.02 && im2 && im2.complete && im2.naturalWidth) { ctx.globalAlpha = alpha * mixB; ctx.drawImage(im2, fx, fy, vw * s, vh * s); ctx.globalAlpha = alpha; }
       // the arm's speed over the picture: the fan the bowling arm has swept so far
       if (ribbon2d) {
         const [iS, , iW] = bow, from = Math.max(0, t0);
@@ -366,11 +426,11 @@ export default function BioReplay({ id, result, name, onClose }: { id: string; r
         if (kc[t][a2] < 0.25 || kc[t][b2] < 0.25) continue;
         const isBow = bow.includes(a2) && bow.includes(b2), isFront = frontLeg.includes(a2) && frontLeg.includes(b2);
         ctx.strokeStyle = isBow ? "#f472b6" : isFront ? "#34d399" : "rgba(20,24,32,0.9)";
-        ctx.beginPath(); ctx.moveTo(kp[t][a2][0] * s + fx, kp[t][a2][1] * s + fy); ctx.lineTo(kp[t][b2][0] * s + fx, kp[t][b2][1] * s + fy); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(KP[a2][0] * s + fx, KP[a2][1] * s + fy); ctx.lineTo(KP[b2][0] * s + fx, KP[b2][1] * s + fy); ctx.stroke();
       }
       for (let j = 5; j < 17; j++) {
         if (kc[t][j] < 0.25) continue;
-        ctx.beginPath(); ctx.arc(kp[t][j][0] * s + fx, kp[t][j][1] * s + fy, 4 * k, 0, Math.PI * 2);
+        ctx.beginPath(); ctx.arc(KP[j][0] * s + fx, KP[j][1] * s + fy, 4 * k, 0, Math.PI * 2);
         ctx.fillStyle = bow.includes(j) ? "#f472b6" : "#22d3ee"; ctx.fill();
       }
       ctx.restore();
@@ -378,6 +438,12 @@ export default function BioReplay({ id, result, name, onClose }: { id: string; r
 
     const drawHud = (title: string, sub: string, scene3d: number) => {
       ctx.save();
+      if (scene3d > 0) {
+        // darker towards the corners, as a broadcast graphic is lit
+        const vg = ctx.createRadialGradient(W / 2, H * 0.52, Math.min(W, H) * 0.45, W / 2, H * 0.52, Math.hypot(W, H) * 0.62);
+        vg.addColorStop(0, "rgba(0,0,0,0)"); vg.addColorStop(1, "rgba(0,0,0,0.42)");
+        ctx.globalAlpha = scene3d; ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1;
+      }
       ctx.textBaseline = "middle"; ctx.textAlign = "left";
       if (title) {
         ctx.globalAlpha = scene3d;
@@ -401,7 +467,7 @@ export default function BioReplay({ id, result, name, onClose }: { id: string; r
       ctx.fillStyle = "#7fb0ff"; ctx.fillText("slow", x0, H - 44 * k);
       ctx.fillStyle = "#ff8f87"; ctx.textAlign = "right"; ctx.fillText("fast", x1, H - 44 * k);
       ctx.font = semi(10.5, 500); ctx.fillStyle = "rgba(226,232,240,0.45)";
-      if (!portrait) ctx.fillText("3D body estimated from the video · pitch drawn for scale", W - 12 * k, H - 10 * k);   // on a phone the note under the picture says it
+      if (!portrait) ctx.fillText(motion.assumed ? "3D body estimated · run-in and stride assumed" : "3D body estimated from the video · pitch drawn for scale", W - 12 * k, H - 12 * k);   // on a phone the note under the picture says it
       ctx.globalAlpha = 1;
       ctx.textAlign = "center"; ctx.font = font(16, 600); spaced(2.2); ctx.fillStyle = "rgba(255,255,255,0.78)";
       ctx.fillText("SEAMLY BIO MECH", W / 2, H - 20 * k);
@@ -409,6 +475,55 @@ export default function BioReplay({ id, result, name, onClose }: { id: string; r
       ctx.restore();
     };
 
+    // each ghost is named above its head
+    const drawGhostLabels = (a: number) => {
+      ctx.save();
+      ctx.globalAlpha = a; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      const taken: [number, number, number][] = [];
+      ctx.font = font(15, 600); spaced(1.2);
+      for (const g of [...ghosts.map((x) => ({ label: x.label, head: x.head })), { label: "Release", head: P[J.head] }]) {
+        const pr = project([g.head[0], g.head[1] + 0.3, g.head[2]]);
+        if (!pr[2]) continue;
+        const x = pr[0], w = ctx.measureText(g.label.toUpperCase()).width + 16 * k;
+        let y = pr[1];
+        // labels that would sit on each other step upwards
+        for (let n = 0; n < 4 && taken.some(([tx, ty, tw]) => Math.abs(tx - x) < (tw + w) / 2 + 4 && Math.abs(ty - y) < 26 * k); n++) y -= 28 * k;
+        taken.push([x, y, w]);
+        ctx.fillStyle = "rgba(20,24,28,0.72)"; ctx.beginPath(); ctx.roundRect(x - w / 2, y - 12 * k, w, 24 * k, 4 * k); ctx.fill();
+        ctx.fillStyle = "#dbeafe"; ctx.fillText(g.label.toUpperCase(), x, y + 1 * k);
+      }
+      spaced(0);
+      ctx.restore();
+    };
+    // the kinetic chain: how fast the hips, shoulder, elbow and hand are moving now, each against its own fastest, with a
+    // tick left where each one peaked
+    const chainFrom = Math.max(0, Math.min(...chain.peak) - 0.25 * fps);
+    const drawChain = (tf: number, a: number) => {
+      const show = Math.max(0, Math.min(1, (tf - chainFrom + 1) / 2)) * a;
+      if (show < 0.02 || portrait) return;
+      ctx.save();
+      ctx.globalAlpha = show;
+      const x0 = W - 250 * k, y0 = H - 168 * k, bw = 150 * k;
+      ctx.textBaseline = "middle"; ctx.textAlign = "left";
+      ctx.font = font(18, 600); spaced(0.6); ctx.fillStyle = "#ffffff";
+      ctx.fillText("KINETIC CHAIN", x0, y0);
+      spaced(0);
+      chain.names.forEach((nm, i) => {
+        const y = y0 + (24 + i * 19) * k, i0 = Math.max(0, Math.min(chain.speed[i].length - 2, Math.floor(tf))), u = Math.max(0, Math.min(1, tf - i0));
+        const v = chain.speed[i][i0] * (1 - u) + chain.speed[i][i0 + 1] * u, c = speedColor(v);
+        ctx.font = semi(12.5, 500); ctx.fillStyle = "rgba(226,232,240,0.9)"; ctx.fillText(nm, x0, y);
+        ctx.fillStyle = "rgba(255,255,255,0.14)"; ctx.fillRect(x0 + 62 * k, y - 3.5 * k, bw, 7 * k);
+        ctx.fillStyle = `rgb(${Math.round(c[0] * 255)},${Math.round(c[1] * 255)},${Math.round(c[2] * 255)})`;
+        ctx.fillRect(x0 + 62 * k, y - 3.5 * k, bw * v, 7 * k);
+        if (tf >= chain.peak[i]) { ctx.fillStyle = "#ffffff"; ctx.fillRect(x0 + 62 * k + bw - 2 * k, y - 6.5 * k, 2.5 * k, 13 * k); }
+      });
+      if (tf >= Math.max(...chain.peak)) {
+        ctx.font = semi(11.5, 500);
+        ctx.fillStyle = chain.ordered === null ? "rgba(226,232,240,0.6)" : chain.ordered ? "#86efac" : "#fcd34d";
+        ctx.fillText(chain.ordered === null ? "slow motion needed to time the order" : chain.ordered ? "hips to hand, in sequence" : "out of sequence", x0, y0 + 104 * k);
+      }
+      ctx.restore();
+    };
     // the bones a callout is about light up: pale blue, or green when it reads well
     let tinted = "";
     const tintFor = (list: Callout[]) => {
@@ -424,6 +539,7 @@ export default function BioReplay({ id, result, name, onClose }: { id: string; r
       tinted = key;
       body.tint([...limbs], limbs.size ? (good ? 0x4ade80 : 0xb4c8ea) : null);
     };
+    const hingeTracks = [0, 1, 2, 3].map((l) => motion.hinges.map((h) => h[l]));
     const P: V3[] = frames[0].map(() => [0, 0, 0]);
     let raf = 0, last = performance.now(), lastShown = -1, lastCaption = "";
     const frame = (now: number) => {
@@ -442,11 +558,16 @@ export default function BioReplay({ id, result, name, onClose }: { id: string; r
       const st = replayState(script, time.current);
       if (st.video < 1) {
         sampleJoints(frames, st.tf, P);
-        body.update(P);
+        body.update(P, hingeTracks.map((tr) => sampleTrack(tr, st.tf)));
+        [P[J.rAnkle], P[J.lAnkle], P[J.pelvis]].forEach((q, i) => {
+          blobs[i].position.set(q[0], 0.012 + i * 0.001, q[2] + (i < 2 ? -0.05 : 0));
+          (blobs[i].material as THREE.MeshBasicMaterial).opacity = i < 2 ? 0.75 * Math.max(0, 1 - (q[1] - 0.08) / 0.45) : 0.32;
+        });
         tintFor(st.callout > 0.08 ? st.segment.callouts : []);
         // the camera circles the hips; a drag adds to the shot's angle
         const az = ((st.shot.az + user.current.az) * Math.PI) / 180, el = (Math.max(3, Math.min(70, st.shot.el + user.current.el)) * Math.PI) / 180;
-        const tx = P[0][0], ty = portrait ? 1.0 : 0.98, tz = P[0][2] - 0.25;
+        const fc = sampleTrack(motion.focus, st.tf);
+        const tx = fc[0], ty = portrait ? 1.0 : 0.98, tz = fc[2] - 0.25;
         camera.position.set(tx + st.shot.dist * Math.sin(az) * Math.cos(el), ty + st.shot.dist * Math.sin(el), tz + st.shot.dist * Math.cos(az) * Math.cos(el));
         camera.lookAt(tx, ty, tz);
         sun.position.set(tx + 3.5, 9, tz + 4.5); sun.target.position.set(tx, 0, tz); sun.target.updateMatrixWorld();
@@ -462,9 +583,13 @@ export default function BioReplay({ id, result, name, onClose }: { id: string; r
           ball.visible = s < 0.45;
           ball.position.set(pB[0] + dir.x * 33 * s, Math.max(0.04, pB[1] + dir.y * 33 * s - 4.9 * s * s), pB[2] + dir.z * 33 * s);
         }
+        const strobe = st.segment.strobe ? Math.min(1, (st.u * st.segment.dur) / 1.4) * Math.min(1, ((1 - st.u) * st.segment.dur) / 0.5) : 0;
+        ghosts.forEach((g) => g.body.fade(strobe * 0.34));
         renderer.render(scene, camera);
         ctx.globalAlpha = 1;
         ctx.drawImage(renderer.domElement, 0, 0, W, H);
+        if (strobe > 0.02) drawGhostLabels(strobe);
+        drawChain(st.tf, 1 - st.video);
         if (st.callout > 0) drawCallouts(st.segment.callouts, P, st.callout);
       }
       if (st.video > 0) drawVideo(st.tf, st.video, st.segment.trail);
@@ -482,19 +607,19 @@ export default function BioReplay({ id, result, name, onClose }: { id: string; r
       const r = recRef.current;
       if (r && r.rec.state !== "inactive") { r.rec.ondataavailable = null; r.rec.onstop = null; r.rec.stop(); }
       recRef.current = null;
-      body.dispose();
+      body.dispose(); ghosts.forEach((g) => g.body.dispose());
       scene.traverse((o) => {
         const m = o as THREE.Mesh;
         m.geometry?.dispose();
         const mat = m.material as (THREE.Material & { map?: THREE.Texture | null }) | THREE.Material[] | undefined;
         for (const x of Array.isArray(mat) ? mat : mat ? [mat] : []) { (x as { map?: THREE.Texture | null }).map?.dispose(); x.dispose(); }
       });
-      sky.dispose();
+      sky.dispose(); blobTex.dispose(); envTex.dispose(); pmrem.dispose();
       renderer.dispose();
       renderer.forceContextLoss();
       imgs.forEach((im) => { im.src = ""; });
     };
-  }, [id, result, frames, speeds, script, W, H, portrait, bones]);
+  }, [id, result, motion, frames, speeds, script, W, H, portrait, bones]);
 
   // drag on the picture to look round the bowler; double-click puts the camera back
   const drag = useRef<{ x: number; y: number } | null>(null);
@@ -513,7 +638,7 @@ export default function BioReplay({ id, result, name, onClose }: { id: string; r
     const c = canvasRef.current;
     if (!c || !mime) return;
     const chunks: Blob[] = [];
-    const r = new MediaRecorder(c.captureStream(30), { mimeType: mime, videoBitsPerSecond: 7_000_000 });
+    const r = new MediaRecorder(c.captureStream(60), { mimeType: mime, videoBitsPerSecond: big ? 5_000_000 : 4_000_000 });
     r.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
     r.onstop = () => {
       recRef.current = null;
@@ -567,7 +692,7 @@ export default function BioReplay({ id, result, name, onClose }: { id: string; r
             )}
             <p className="faint bio-note">
               Drag the picture to look round the bowler (double-click to reset). The 3D body is estimated from the video and its run through the crease
-              is rebuilt from the foot contacts; the pitch is drawn for scale; the numbers shown are the ones this clip measured (≈ marks a 3D estimate). Bone shapes: OpenSim full-body model (Rajagopal et al. 2016).
+              is rebuilt from the foot contacts{motion.assumed ? " (from behind or in front the camera can't see along the pitch, so the run-in speed and the stride's length are assumed)" : ""}; the pitch is drawn for scale; the numbers shown are the ones this clip measured (≈ marks a 3D estimate). Bone shapes: OpenSim full-body model (Rajagopal et al. 2016).
             </p>
           </>
         )}

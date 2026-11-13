@@ -11,7 +11,8 @@ import { J, type V3 } from "./biomech";
 export type Limb = "leg_r" | "leg_l" | "arm_r" | "arm_l" | "trunk";
 export interface Body {
   readonly group: THREE.Group;
-  update(P: V3[]): void;
+  /** Pose on one frame's joints; `hinges` are the axes the limbs bend about (right leg, left leg, right arm, left arm). */
+  update(P: V3[], hinges?: V3[]): void;
   /** Colour some limbs (the ones a callout is about), or give them back their bone colour. */
   tint(limbs: Limb[], color: number | null): void;
   dispose(): void;
@@ -315,7 +316,8 @@ export class BoneBody implements Body {
   private trunkRest: Float32Array;
   private prevZ: Record<string, THREE.Vector3> = {};
 
-  constructor(data: BoneData) {
+  /** `ghost`: a see-through copy in one colour (a moment left standing), casting no shadow. */
+  constructor(data: BoneData, ghost?: number) {
     this.info = data.segments;
     for (const [name, s] of Object.entries(data.segments)) {
       const g = new THREE.BufferGeometry();
@@ -323,8 +325,11 @@ export class BoneBody implements Body {
       g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
       g.setIndex(new THREE.BufferAttribute(new Uint32Array(data.buffer.slice(data.base + s.idx, data.base + s.idx + s.t * 12)), 1));
       g.computeVertexNormals();
-      const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: BONE_REAL, roughness: 0.55, metalness: 0.02, emissive: 0x3a362c, emissiveIntensity: 0.55 }));
-      m.castShadow = true; m.frustumCulled = false; m.matrixAutoUpdate = false;
+      const m = new THREE.Mesh(g, ghost === undefined
+        ? new THREE.MeshStandardMaterial({ color: BONE_REAL, roughness: 0.5, metalness: 0.02, emissive: 0x2c2920, emissiveIntensity: 0.4 })
+        : new THREE.MeshStandardMaterial({ color: ghost, roughness: 0.6, transparent: true, opacity: 0, depthWrite: false, emissive: ghost, emissiveIntensity: 0.25 }));
+      m.castShadow = ghost === undefined; m.frustumCulled = false; m.matrixAutoUpdate = false;
+      if (ghost !== undefined) m.renderOrder = 3;
       this.group.add(m);
       this.mesh[name] = m;
       if (s.tip) {
@@ -336,6 +341,12 @@ export class BoneBody implements Body {
       }
     }
     this.trunkRest = (this.mesh.trunk.geometry.attributes.position.array as Float32Array).slice();
+  }
+
+  /** A ghost's strength (0: not there). */
+  fade(opacity: number) {
+    this.group.visible = opacity > 0.01;
+    for (const m of Object.values(this.mesh)) (m.material as THREE.MeshStandardMaterial).opacity = opacity;
   }
 
   tint(limbs: Limb[], color: number | null) {
@@ -363,7 +374,7 @@ export class BoneBody implements Body {
     return scale;
   }
 
-  update(P: V3[]) {
+  update(P: V3[], hinges?: V3[]) {
     const p = P.map(v);
     const hipR = p[J.rHip], hipL = p[J.lHip], shR = p[J.rShoulder], shL = p[J.lShoulder];
     // the pelvis: right along the hips, up towards the spine
@@ -381,7 +392,8 @@ export class BoneBody implements Body {
     // legs: the knee's hinge is across the plane the leg bends in (the body's right when the leg is straight)
     for (const [side, hip, knee, ankle] of [["r", hipR, p[J.rKnee], p[J.rAnkle]], ["l", hipL, p[J.lKnee], p[J.lAnkle]]] as const) {
       const thigh = new THREE.Vector3().subVectors(knee, hip).normalize(), shin = new THREE.Vector3().subVectors(ankle, knee).normalize();
-      const hinge = new THREE.Vector3().crossVectors(shin, thigh).addScaledVector(right, 0.3);
+      const given = hinges?.[side === "r" ? 0 : 1];
+      const hinge = given ? new THREE.Vector3(given[0], given[1], given[2]) : new THREE.Vector3().crossVectors(shin, thigh).addScaledVector(right, 0.3);
       // the foot: its sole on the ground when the ankle is low, hanging from the shin in the air
       const foot = this.info[`foot_${side}`], shinLen = Math.hypot(...(this.info[`shin_${side}`].tip as V3));
       const fs = Math.max(0.85, Math.min(1.25, knee.distanceTo(ankle) / shinLen));
@@ -433,7 +445,8 @@ export class BoneBody implements Body {
     // arms: the elbow's hinge across the plane the arm bends in (the chest's right when it is straight); the hand follows
     for (const [side, shd, el, wr] of [["r", shR, p[J.rElbow], p[J.rWrist]], ["l", shL, p[J.lElbow], p[J.lWrist]]] as const) {
       const upper = new THREE.Vector3().subVectors(el, shd).normalize(), fore = new THREE.Vector3().subVectors(wr, el).normalize();
-      const hinge = new THREE.Vector3().crossVectors(upper, fore).addScaledVector(cRight, 0.3);
+      const given = hinges?.[side === "r" ? 2 : 3];
+      const hinge = given ? new THREE.Vector3(given[0], given[1], given[2]) : new THREE.Vector3().crossVectors(upper, fore).addScaledVector(cRight, 0.3);
       this.limb(`humerus_${side}`, shd, el, hinge);
       const m = new THREE.Matrix4();
       const s = this.limb(`forearm_${side}`, el, wr, hinge, m);

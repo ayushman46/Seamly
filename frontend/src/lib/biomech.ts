@@ -29,57 +29,245 @@ export function sides(right: boolean): Sides {
 export const LANDING_Z = -1.0;
 export const LANDING_X = 0.62;
 
-/** The body's travel down the pitch. The analysis keeps the pelvis in place (the 3D body is measured relative to it),
- * so the run through the crease is rebuilt from the feet: a planted foot doesn't slide. From back-foot contact to
- * front-foot contact the back foot is held still, from front-foot contact on the front foot is; before the back foot
- * lands the body keeps the speed it has just after, and after the follow-through step it eases to a stop. Returns one
- * (x, z) offset per frame, placed so the front foot lands at the landing spot. */
-export function travel(result: AnalysisResult): [number, number][] {
-  const P = result.skeleton3d.joints as V3[][], T = P.length, f0 = result.frames.start;
-  const s = sides(result.bowling_arm.arm === "right");
-  const fps = Math.max(1, result.fps_real || result.fps);
+/** A zero-lag Gaussian filter over frames (sigma in frames; the ends use the samples there are). */
+export function gaussian(x: number[], sigma: number): number[] {
+  if (!(sigma > 0.05)) return x.slice();
+  const r = Math.max(1, Math.ceil(3 * sigma)), w: number[] = [];
+  for (let k = -r; k <= r; k++) w.push(Math.exp(-(k * k) / (2 * sigma * sigma)));
+  return x.map((_, i) => {
+    let a = 0, n = 0;
+    for (let k = -r; k <= r; k++) { const j = i + k; if (j < 0 || j >= x.length) continue; a += x[j] * w[k + r]; n += w[k + r]; }
+    return a / n;
+  });
+}
+
+export interface Flight {
+  takeoff: number; land: number;   // frames (in the analysis window): the last one on the take-off foot, back-foot contact
+  apex: number;                    // the frame at the top of the bound
+  seconds: number;                 // time in the air
+  height: number;                  // how high the body rises, from the time in the air (g·t²/8), metres
+  clearance: number;               // how far the lower foot is off the ground at its highest (the legs tuck up), metres
+  length: number;                  // how far it travels in the air at its run-in speed, metres
+}
+export interface Motion {
+  joints: V3[][];                  // every frame's joints in the scene: smoothed, on the ground, moving down the pitch
+  hinges: V3[][];                  // per frame, the axis each limb bends about: right leg, left leg, right arm, left arm
+  focus: V3[];                     // where the camera looks: the hips, eased
+  flight: Flight | null;           // the bound into back-foot contact, when the clip shows it
+  speed: number;                   // the run-in speed used for the travel (m/s)
+  assumed: boolean;                // the camera can't see along the pitch (behind or in front): the run-in and the
+                                   // stride's length are assumed, and the legs are re-solved over the planted feet
+}
+
+const ANKLE = 0.08;   // an ankle joint's height when its foot is flat on the ground (m)
+const G = 9.81;
+
+/** The bound into back-foot contact: the bowler leaves the ground off the front-side foot and lands on the back foot.
+ * The take-off is the last frame that foot is still down (within 3.5 cm of its lowest in the half-second before);
+ * the time in the air gives the rise (a body in flight follows g, whatever the camera sees). Null when the clip
+ * doesn't show it, or the timing isn't believable. */
+export function findFlight(result: AnalysisResult): Omit<Flight, "length" | "clearance"> | null {
+  const P = result.skeleton3d.joints as V3[][], f0 = result.frames.start, fps = Math.max(1, result.fps_real || result.fps);
+  const bf = result.events.bfc;
+  if (!bf || bf.method === "timing_prior" || bf.method === "constrained") return null;
+  const bfc = bf.frame - f0, s = sides(result.bowling_arm.arm === "right");
+  const lo = Math.max(0, bfc - Math.round(0.6 * fps));
+  if (bfc - lo < Math.max(3, Math.round(0.12 * fps))) return null;
+  const y = gaussian(P.map((fr) => fr[s.frontAnkle][1]), 0.012 * fps), other = P.map((fr) => fr[s.backAnkle][1]);
+  let m = Infinity;
+  for (let t = lo; t < bfc; t++) if (y[t] < other[t]) m = Math.min(m, y[t]);
+  if (!Number.isFinite(m)) return null;
+  let takeoff = -1;
+  for (let t = bfc - 1; t >= lo; t--) if (y[t] <= m + 0.035 && y[t] < other[t]) { takeoff = t; break; }
+  if (takeoff < 0) return null;
+  const seconds = (bfc - takeoff - 0.5) / fps;   // the foot leaves between that frame and the next
+  if (seconds < 0.07 || seconds > 0.75) return null;
+  return { takeoff, land: bfc, apex: Math.round((takeoff + bfc) / 2), seconds, height: (G * seconds * seconds) / 8 };
+}
+
+const motions = new WeakMap<AnalysisResult, Motion>();
+
+/** The delivery as it is shown in 3D, rebuilt from the analysis so it moves like a body and not like a measurement:
+ *  1. every bone gets one length (its median) and its direction is filtered over time, lightly on the bowling arm so
+ *     the release isn't softened, then the body is put back together from the hips;
+ *  2. the planted foot stays put (the back foot from its contact to the front foot's, then the front foot), which
+ *     gives the run through the crease; before that the body keeps its run-in speed;
+ *  3. the analysis keeps the lower foot on the ground in every frame, so the bound has no flight in it: between
+ *     take-off and back-foot contact the body follows the arc its time in the air implies;
+ *  4. the axis each limb bends about is found per frame, kept from flipping and filtered, so bones don't twitch. */
+export function buildMotion(result: AnalysisResult): Motion {
+  const hit = motions.get(result);
+  if (hit) return hit;
+  const raw = result.skeleton3d.joints as V3[][], T = raw.length, f0 = result.frames.start;
+  const parents = result.skeleton3d.parents, fps = Math.max(1, result.fps_real || result.fps);
+  const right = result.bowling_arm.arm === "right", s = sides(right);
   const at = (k: EventKey) => { const f = result.events[k]?.frame; return f === undefined || f === null ? null : Math.max(0, Math.min(T - 1, f - f0)); };
   const br = at("br") ?? Math.round(T * 0.6);
   const ffc = Math.min(at("ffc") ?? Math.max(0, br - Math.round(0.12 * fps)), br);
   const bfc = Math.min(at("bfc") ?? Math.max(0, ffc - Math.round(0.2 * fps)), ffc);
   const ft = Math.max(at("ft") ?? Math.min(T - 1, br + Math.round(0.25 * fps)), br);
-  const maxStep = 10 / fps;   // nobody runs in faster than 10 m/s
+
+  // 1. fixed bone lengths, filtered directions
+  const NJ = raw[0].length;
+  const len: number[] = [], sig: number[] = [];
+  for (let j = 0; j < NJ; j++) {
+    const p = parents[j];
+    if (p < 0) { len.push(0); sig.push(0); continue; }
+    const ls = raw.map((fr) => Math.hypot(fr[j][0] - fr[p][0], fr[j][1] - fr[p][1], fr[j][2] - fr[p][2])).sort((a, b) => a - b);
+    len.push(ls[ls.length >> 1]);
+    sig.push((j === s.elbow || j === s.wrist ? 0.012 : j === J.nose || j === J.head ? 0.04 : 0.028) * fps);
+  }
+  const dir: V3[][] = raw.map(() => []);
+  for (let j = 0; j < NJ; j++) {
+    const p = parents[j];
+    if (p < 0) continue;
+    const c = [0, 1, 2].map((k) => gaussian(raw.map((fr) => (fr[j][k] - fr[p][k])), sig[j]));
+    for (let t = 0; t < T; t++) { const l = Math.hypot(c[0][t], c[1][t], c[2][t]) || 1; dir[t][j] = [c[0][t] / l, c[1][t] / l, c[2][t] / l]; }
+  }
+  const rel: V3[][] = raw.map((_, t) => {
+    const out: V3[] = [];
+    for (let j = 0; j < NJ; j++) {   // parents come before their children in this skeleton
+      const p = parents[j];
+      out.push(p < 0 ? [0, 0, 0] : [out[p][0] + dir[t][j][0] * len[j], out[p][1] + dir[t][j][1] * len[j], out[p][2] + dir[t][j][2] * len[j]]);
+    }
+    return out;
+  });
+
+  // 3. the hips' height: the planted foot's ankle at ankle height; in the bound, the arc of the flight
+  const fl = findFlight(result);
+  const planted = (t: number) => (t >= bfc && t < ffc ? s.backAnkle : t >= ffc && t <= ft ? s.frontAnkle
+    : rel[t][s.backAnkle][1] < rel[t][s.frontAnkle][1] ? s.backAnkle : s.frontAnkle);
+  let rootY = rel.map((fr, t) => ANKLE - fr[planted(t)][1]);
+  rootY = gaussian(rootY, 0.03 * fps);
+  if (fl) {
+    const a = fl.takeoff, b = fl.land, ya = rootY[a], yb = rootY[b];
+    for (let t = a + 1; t < b; t++) { const u = (t - a) / (b - a); rootY[t] = ya + (yb - ya) * u + 4 * fl.height * u * (1 - u); }
+    rootY = gaussian(rootY, 0.012 * fps);
+  }
+  // no foot goes into the ground (the foot named as planted isn't always the lower one in the 3D estimate)
+  rootY = rootY.map((y, t) => Math.max(y, ANKLE - 0.015 - Math.min(rel[t][s.backAnkle][1], rel[t][s.frontAnkle][1])));
+
+  // 2. the run through the crease
+  const maxStep = 10 / fps;
   const step: [number, number][] = Array.from({ length: T }, () => [0, 0]);
   const lock = (t: number, j: number) => {
-    let dx = -(P[t][j][0] - P[t - 1][j][0]), dz = -(P[t][j][2] - P[t - 1][j][2]);
+    let dx = -(rel[t][j][0] - rel[t - 1][j][0]), dz = -(rel[t][j][2] - rel[t - 1][j][2]);
     const m = Math.hypot(dx, dz);
     if (m > maxStep) { dx *= maxStep / m; dz *= maxStep / m; }
     step[t] = [dx, dz];
   };
   for (let t = bfc + 1; t <= ffc; t++) lock(t, s.backAnkle);
   for (let t = ffc + 1; t <= ft && t < T; t++) lock(t, s.frontAnkle);
-  // the run-in: the mean speed of the first steps after back-foot contact (at least a jog, towards the batter)
   let vx = 0, vz = 0, n = 0;
-  for (let t = bfc + 1; t <= Math.min(ffc, bfc + Math.max(2, Math.round(0.12 * fps))); t++) { vx += step[t][0]; vz += step[t][1]; n++; }
+  for (let t = bfc + 1; t <= ffc; t++) { vx += step[t][0]; vz += step[t][1]; n++; }
   if (n) { vx /= n; vz /= n; }
-  vz = Math.min(vz, -2.5 / fps);
+  vz = Math.min(vz, -3 / fps);   // at least a jog, towards the batter
   for (let t = 1; t <= bfc; t++) step[t] = [vx, vz];
-  // after the follow-through step: ease to a stop over about half a second
   let ex = step[Math.min(T - 1, ft)][0], ez = step[Math.min(T - 1, ft)][1];
   const decay = Math.pow(0.5, 1 / Math.max(1, 0.2 * fps));
   for (let t = ft + 1; t < T; t++) { ex *= decay; ez *= decay; step[t] = [ex, ez]; }
-  const raw: [number, number][] = [[0, 0]];
-  for (let t = 1; t < T; t++) raw.push([raw[t - 1][0] + step[t][0], raw[t - 1][1] + step[t][1]]);
-  // a little smoothing where one rule hands over to the next
-  const off = raw.map((_, t) => {
-    let x = 0, z = 0, w = 0;
-    for (let k = -1; k <= 1; k++) { const u = Math.max(0, Math.min(T - 1, t + k)), g = k === 0 ? 2 : 1; x += raw[u][0] * g; z += raw[u][1] * g; w += g; }
-    return [x / w, z / w] as [number, number];
-  });
-  const ax = LANDING_X * (result.bowling_arm.arm === "right" ? -1 : 1) - (P[ffc][s.frontAnkle][0] + off[ffc][0]);
-  const az = LANDING_Z - (P[ffc][s.frontAnkle][2] + off[ffc][1]);
-  return off.map(([x, z]) => [x + ax, z + az]);
+  // A camera behind or in front of the bowler can't see movement along the pitch, and the 3D estimate from it has the
+  // legs almost under the hips. There the run-in is assumed from the arm (a faster arm, a faster run-in), the body
+  // slows over the stride as bowlers do, the front foot lands a stride ahead, and each planted foot is pinned to the
+  // ground with its leg re-solved from hip to foot (the way motion capture is cleaned up).
+  const assumed = result.view.view !== "side_on";
+  if (assumed) {
+    let hand = 0;
+    for (let t = Math.max(1, bfc); t <= br; t++) hand = Math.max(hand, Math.hypot(...([0, 1, 2].map((k) => (rel[t][s.wrist][k] - rel[t - 1][s.wrist][k]) * fps) as V3)));
+    const run = Math.max(2.5, Math.min(6.5, 0.3 * hand)) / fps;
+    for (let t = 1; t < T; t++) {
+      const k = t <= bfc ? 1 : t <= ffc ? 1 - 0.3 * ((t - bfc) / Math.max(1, ffc - bfc)) : t <= ft ? 0.55 - 0.35 * ((t - ffc) / Math.max(1, ft - ffc)) : 0.2 * Math.pow(decay, t - ft);
+      step[t] = [0, -run * k];
+    }
+    vx = 0; vz = -run;
+  }
+  let ox = [0], oz = [0];
+  for (let t = 1; t < T; t++) { ox.push(ox[t - 1] + step[t][0]); oz.push(oz[t - 1] + step[t][1]); }
+  ox = gaussian(ox, 0.03 * fps); oz = gaussian(oz, 0.03 * fps);
+  const world = rel.map((fr, t) => fr.map((p) => [p[0] + ox[t], Math.max(0.03, p[1] + rootY[t]), p[2] + oz[t]] as V3));
+  if (assumed) {
+    const legOf = (ankle: number): [number, number] => (ankle === J.rAnkle ? [J.rHip, J.rKnee] : [J.lHip, J.lKnee]);
+    /** Put the ankle at `target` and bend the knee to fit, keeping the knee on the side of the leg it was on. */
+    const solve = (t: number, ankle: number, target: V3) => {
+      const [hip, knee] = legOf(ankle), H = world[t][hip], K = world[t][knee], l1 = len[knee], l2 = len[ankle];
+      let d: V3 = [target[0] - H[0], target[1] - H[1], target[2] - H[2]], dl = Math.hypot(d[0], d[1], d[2]) || 1e-6;
+      const reach = (l1 + l2) * 0.985;
+      if (dl > reach) { d = [d[0] * reach / dl, d[1] * reach / dl, d[2] * reach / dl]; dl = reach; }
+      const n: V3 = [d[0] / dl, d[1] / dl, d[2] / dl];
+      const a = (l1 * l1 - l2 * l2 + dl * dl) / (2 * dl), h = Math.sqrt(Math.max(0, l1 * l1 - a * a));
+      // the knee points where it did (forwards if that isn't clear)
+      let k: V3 = [K[0] - H[0], K[1] - H[1], K[2] - H[2] - 0.12];
+      const dot = k[0] * n[0] + k[1] * n[1] + k[2] * n[2];
+      k = [k[0] - n[0] * dot, k[1] - n[1] * dot, k[2] - n[2] * dot];
+      const kl = Math.hypot(k[0], k[1], k[2]);
+      k = kl > 1e-4 ? [k[0] / kl, k[1] / kl, k[2] / kl] : [0, 0, -1];
+      world[t][knee] = [H[0] + n[0] * a + k[0] * h, H[1] + n[1] * a + k[1] * h, H[2] + n[2] * a + k[2] * h];
+      world[t][ankle] = [H[0] + d[0], H[1] + d[1], H[2] + d[2]];
+    };
+    const ramp = Math.max(1, Math.round(0.05 * fps));
+    const mix = (a: V3, b: V3, u: number): V3 => [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u];
+    // the back foot: down at back-foot contact, lifting as the front foot lands
+    const backPin: V3 = [world[bfc][s.backAnkle][0], ANKLE, world[bfc][s.backAnkle][2]];
+    for (let t = Math.max(0, bfc - ramp); t <= Math.min(T - 1, ffc + ramp); t++) {
+      const w = t < bfc ? 1 - (bfc - t) / (ramp + 1) : t > ffc ? 1 - (t - ffc) / (ramp + 1) : 1;
+      solve(t, s.backAnkle, mix(world[t][s.backAnkle], backPin, w));
+    }
+    // the front foot: reaching a stride ahead through the delivery stride, then planted there
+    const stride = 0.55 * (len[s.frontKnee] + len[s.frontAnkle]);
+    const frontPin: V3 = [world[ffc][s.frontAnkle][0], ANKLE, world[ffc][J.pelvis][2] - stride];
+    for (let t = bfc + 1; t < ffc; t++) { const u = (t - bfc) / (ffc - bfc), e = u * u * (3 - 2 * u), p = world[t][s.frontAnkle]; solve(t, s.frontAnkle, [p[0], p[1], p[2] - stride * e]); }
+    for (let t = ffc; t <= Math.min(T - 1, ft + ramp); t++) {
+      const w = t > ft ? 1 - (t - ft) / (ramp + 1) : 1;
+      solve(t, s.frontAnkle, mix(world[t][s.frontAnkle], frontPin, w));
+    }
+  }
+  const ax = LANDING_X * (right ? -1 : 1) - world[ffc][s.frontAnkle][0];
+  const az = LANDING_Z - world[ffc][s.frontAnkle][2];
+  const joints = world.map((fr) => fr.map((p) => [p[0] + ax, p[1], p[2] + az] as V3));
+  const speed = Math.hypot(vx, vz) * fps;
+
+  // 4. the axis each limb bends about
+  const sub = (a: V3, b: V3): V3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const cross = (a: V3, b: V3): V3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const unit = (a: V3): V3 => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
+  const limbs: [number, number, number, boolean][] = [[J.rHip, J.rKnee, J.rAnkle, true], [J.lHip, J.lKnee, J.lAnkle, true],
+    [J.rShoulder, J.rElbow, J.rWrist, false], [J.lShoulder, J.lElbow, J.lWrist, false]];
+  const rawH: V3[][] = joints.map((fr) => limbs.map(([a, b, c, leg]) => {
+    const up = unit(sub(fr[b], fr[a])), low = unit(sub(fr[c], fr[b]));
+    const side = unit(leg ? sub(fr[J.rHip], fr[J.lHip]) : sub(fr[J.rShoulder], fr[J.lShoulder]));
+    const h = leg ? cross(low, up) : cross(up, low);   // a knee bends back, an elbow forward
+    // a nearly straight limb has no bending plane: lean on the body's own right
+    return unit([h[0] + side[0] * 0.35, h[1] + side[1] * 0.35, h[2] + side[2] * 0.35]);
+  }));
+  const hinges: V3[][] = rawH.map(() => []);
+  for (let l = 0; l < 4; l++) {
+    for (let t = 1; t < T; t++) { const a = rawH[t - 1][l], b = rawH[t][l]; if (a[0] * b[0] + a[1] * b[1] + a[2] * b[2] < 0) rawH[t][l] = [-b[0], -b[1], -b[2]]; }
+    const c = [0, 1, 2].map((k) => gaussian(rawH.map((h) => h[l][k]), (l < 2 ? 0.05 : 0.03) * fps));
+    for (let t = 0; t < T; t++) hinges[t][l] = unit([c[0][t], c[1][t], c[2][t]]);
+  }
+  const fx = gaussian(joints.map((fr) => fr[0][0]), 0.14 * fps), fz = gaussian(joints.map((fr) => fr[0][2]), 0.14 * fps);
+  const focus = joints.map((_, t) => [fx[t], 0.98, fz[t]] as V3);
+  let flight: Flight | null = null;
+  if (fl) {
+    let d = 0, c = 0, apex = fl.apex;
+    for (let t = fl.takeoff + 1; t <= fl.land; t++) d += Math.hypot(step[t][0], step[t][1]);
+    for (let t = fl.takeoff + 1; t < fl.land; t++) { const low = Math.min(joints[t][s.backAnkle][1], joints[t][s.frontAnkle][1]) - ANKLE; if (low > c) { c = low; apex = t; } }
+    flight = { ...fl, apex, clearance: c, length: d };
+  }
+  const out: Motion = { joints, hinges, focus, flight, speed, assumed };
+  motions.set(result, out);
+  return out;
 }
 
-/** Every frame's joints in the scene: the analysis' joints moved by the travel. */
-export function sceneJoints(result: AnalysisResult): V3[][] {
-  const off = travel(result);
-  return (result.skeleton3d.joints as V3[][]).map((fr, t) => fr.map((p) => [p[0] + off[t][0], p[1], p[2] + off[t][1]] as V3));
+/** Every frame's joints in the scene. */
+export function sceneJoints(result: AnalysisResult): V3[][] { return buildMotion(result).joints; }
+
+/** A per-frame track (hinges, the camera's focus) at a fractional frame. */
+export function sampleTrack(track: V3[], tf: number): V3 {
+  const x = Math.max(0, Math.min(track.length - 1, tf)), i = Math.min(track.length - 2, Math.floor(x)), u = track.length < 2 ? 0 : x - i;
+  if (track.length < 2) return track[0];
+  const a = track[i], b = track[i + 1];
+  return [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u];
 }
 
 /** The joints at a fractional frame (Catmull-Rom through the frames), so slow motion is smooth at any frame rate. */
@@ -130,7 +318,7 @@ export interface Callout {
   title: string;          // what it means ("Front leg firm")
   detail: string;         // the number ("Front knee angle 172°")
   anchor: number[];       // joints whose mean the leader line points at
-  graphic: "knee_front" | "knee_back" | "stride" | "height" | "trunk" | "none";
+  graphic: "knee_front" | "knee_back" | "stride" | "height" | "trunk" | "clearance" | "none";
   side: 1 | -1;           // which side of the anchor the box sits on
   limbs: ("leg_front" | "leg_back" | "arm" | "trunk")[];   // the bones to light up while it shows
   good: boolean;          // lit green (reads well) or pale blue
@@ -167,6 +355,9 @@ export function calloutsAt(result: AnalysisResult, event: "bfc" | "ffc" | "br"):
   };
   if (event === "bfc") {
     add("back_knee_bfc", deg, [s.backKnee], "knee_back", 1);
+    const lean = result.view.view === "side_on" && !result.view.oblique ? result.series?.trunk_angle_2d?.[(result.events.bfc?.frame ?? -1) - result.frames.start] : null;
+    if (lean !== null && lean !== undefined && Number.isFinite(lean)) out.push({ key: "trunk_bfc", title: Math.abs(lean) <= 12 ? "Tall at landing" : "Trunk leans at landing",
+      detail: `Trunk ${Math.round(Math.abs(lean))}° from upright`, anchor: [J.thorax], graphic: "trunk", side: -1, limbs: [], good: false });
     add("hip_shoulder_sep_bfc", deg, [J.spine], "none", -1);
   } else if (event === "ffc") {
     add("front_knee_ffc", deg, [s.frontKnee], "knee_front", 1);
@@ -188,12 +379,56 @@ export interface Segment {
   title: string;
   sub: string;                 // a small line under the title
   orbit: boolean;              // the camera goes right round the bowler, rising and falling
+  strobe: boolean;             // the body's earlier key moments stand along the crease as ghosts
   callouts: Callout[];
   shot: Shot | null;           // where the camera is (3D segments)
   fade: number;                // video segments: seconds of cross-fade with the 3D scene at the 3D end of the segment
   trail: boolean;              // whether the arm ribbon is shown
 }
-export interface Script { segments: Segment[]; total: number; br: number; trailFrom: number }
+export interface Script { segments: Segment[]; total: number; br: number; trailFrom: number; ghosts: { frame: number; label: string }[] }
+
+export interface Chain {
+  names: string[];        // the hips' turn, the shoulders' turn, the upper arm's swing, the hand
+  speed: number[][];      // per link, per frame: its speed as a share of its own fastest (0–1)
+  top: number[];          // each link's fastest: degrees a second for the three turns, m/s for the hand
+  peak: number[];         // the frame each link is fastest at (between frames, from the three samples round the peak)
+  timed: boolean;         // filmed fast enough (90+ frames a second) to say which peaked first
+  ordered: boolean | null;   // each link peaks no earlier than the one before it (null when it can't be timed)
+}
+
+/** The kinetic chain: a fast delivery passes speed up the body, the hips turning first, then the shoulders, then the
+ * bowling arm swinging, then the hand, each peaking as the one before slows. From the 3D body, in the stride and
+ * release (from just before back-foot contact to just after release). */
+export function kineticChain(result: AnalysisResult): Chain {
+  const m = buildMotion(result), P = m.joints, T = P.length, f0 = result.frames.start, fps = Math.max(1, result.fps_real || result.fps);
+  const s = sides(result.bowling_arm.arm === "right");
+  const br = Math.max(0, Math.min(T - 1, (result.events.br?.frame ?? f0 + Math.round(T * 0.6)) - f0));
+  const lo = Math.max(1, Math.min(br - 2, (result.events.bfc?.frame ?? f0) - f0 - Math.round(0.1 * fps))), hi = Math.min(T - 2, br + Math.round(0.06 * fps));
+  // how fast a line between two joints is turning (degrees a second), or a joint is moving relative to the hips (m/s)
+  const turn = (a: number, b: number) => P.map((_, t) => {
+    const u = Math.max(0, t - 1), w = Math.min(T - 1, t + 1);
+    const d = (i: number): V3 => { const x = P[i][b][0] - P[i][a][0], y = P[i][b][1] - P[i][a][1], z = P[i][b][2] - P[i][a][2], l = Math.hypot(x, y, z) || 1; return [x / l, y / l, z / l]; };
+    const p = d(u), q = d(w);
+    return ((Math.acos(Math.max(-1, Math.min(1, p[0] * q[0] + p[1] * q[1] + p[2] * q[2]))) * 180) / Math.PI) * fps / Math.max(1, w - u);
+  });
+  const move = (j: number) => P.map((_, t) => {
+    const u = Math.max(0, t - 1), w = Math.min(T - 1, t + 1), r = (i: number, c: number) => P[i][j][c] - P[i][0][c];
+    return (Math.hypot(r(w, 0) - r(u, 0), r(w, 1) - r(u, 1), r(w, 2) - r(u, 2)) * fps) / Math.max(1, w - u);
+  });
+  const raw = [turn(J.lHip, J.rHip), turn(J.lShoulder, J.rShoulder), turn(s.shoulder, s.elbow), move(s.wrist)].map((v) => gaussian(v, 0.012 * fps));
+  const top: number[] = [], peak: number[] = [];
+  for (const v of raw) {
+    let i = lo;
+    for (let t = lo; t <= hi; t++) if (v[t] > v[i]) i = t;
+    // the top of the parabola through the three samples round the fastest frame
+    const d = v[i - 1] - 2 * v[i] + v[i + 1];
+    peak.push(i > 0 && i < T - 1 && d < 0 ? i + (0.5 * (v[i - 1] - v[i + 1])) / d : i);
+    top.push(v[i]);
+  }
+  const timed = fps * (1 - (result.quality?.repeated_frames ?? 0)) >= 90;
+  const ordered = timed ? peak.every((p, i) => i === 0 || p >= peak[i - 1] - 0.5) : null;
+  return { names: ["Hips", "Trunk", "Arm", "Hand"], speed: raw.map((v, i) => v.map((x) => Math.max(0, Math.min(1, x / Math.max(1e-6, top[i]))))), top, peak, timed, ordered };
+}
 
 /** The lowest the back knee gets between back-foot and front-foot contact, from the 3D body (an estimate, marked ≈):
  * the frame and the angle, or null when the stride is too short to say or the series isn't there. */
@@ -218,7 +453,7 @@ export function replayScript(result: AnalysisResult): Script {
   const at = (k: EventKey) => { const f = result.events[k]?.frame; return f === undefined || f === null ? null : Math.max(0, Math.min(T - 1, f - f0)); };
   const br = at("br") ?? Math.round(T * 0.6);
   const ffc = Math.min(at("ffc") ?? br, br), bfc = Math.min(at("bfc") ?? ffc, ffc);
-  const start = Math.max(0, bfc - Math.round(0.45 * fps));        // the gather: a little before the back foot lands
+  let start = Math.max(0, bfc - Math.round(0.45 * fps));        // the gather: a little before the back foot lands
   const realS = (a: number, b: number) => Math.max(0, b - a) / fps;
   const right = result.bowling_arm.arm === "right";
   // the camera starts where the video's camera was: beside the pitch for a side-on clip (on the bowler's open side),
@@ -226,25 +461,40 @@ export function replayScript(result: AnalysisResult): Script {
   const open = right ? -1 : 1;
   const base = result.view.view === "side_on" ? 90 * open : result.view.view === "front_on" ? 180 : 0;
   const shot = (az: number, el: number, dist: number, drift = 0): Shot => ({ az, el, dist, drift });
-  const slow = (a: number, b: number, rate: number) => Math.max(0.5, realS(a, b) / rate);
+  const slow = (a: number, b: number, rate: number) => Math.max(0.9, (realS(a, b) / rate) * 1.35);   // longer, because it eases in and out
   const seg = (s: Partial<Segment> & Pick<Segment, "kind" | "dur" | "from" | "to">): Segment =>
-    ({ title: "", sub: "", orbit: false, callouts: [], shot: null, fade: 0, trail: true, ...s });
+    ({ title: "", sub: "", orbit: false, strobe: false, callouts: [], shot: null, fade: 0, trail: true, ...s });
   const cam = (off: number, el: number, dist: number, drift = 0) => shot(base + off * open, el, dist * 0.86, drift * open);
   const segments: Segment[] = [];
+  const motion = buildMotion(result), fl = motion.flight;
+  if (fl) start = Math.max(0, Math.min(start, fl.takeoff - Math.round(0.12 * fps)));
   // 1. the video, through the delivery to just after release, the arm's speed drawn over it
   const out = Math.min(T - 1, br + Math.round(0.12 * fps));
-  segments.push(seg({ kind: "video", dur: Math.min(3.2, Math.max(1.6, realS(0, out) / 0.45)), from: 0, to: out }));
-  // 2. back at the gather, the video fades and the skeleton stands in the bowler's place
-  segments.push(seg({ kind: "video", dur: 0.9, from: start, to: start, fade: 0.9, trail: false }));
-  segments.push(seg({ kind: "hold", dur: 1.4, from: start, to: start, title: "Gather", shot: cam(-34, 8, 4.7, 3), trail: false }));
-  // 3. back-foot contact
-  if (bfc > start) segments.push(seg({ kind: "play", dur: slow(start, bfc, 0.2), from: start, to: bfc, title: "Gather", shot: cam(-28, 8, 4.6) }));
+  segments.push(seg({ kind: "video", dur: Math.min(3.4, Math.max(1.8, realS(0, out) / 0.55)), from: 0, to: out }));
+  // 2. back before the bound, the video fades and the skeleton stands in the bowler's place
+  segments.push(seg({ kind: "video", dur: 1.0, from: start, to: start, fade: 1.0, trail: false }));
+  segments.push(seg({ kind: "hold", dur: 0.7, from: start, to: start, title: "Jump / gather", shot: cam(-34, 8, 4.7, 3), trail: false }));
+  // 3. the bound: a stop at its top with what the time in the air says (an estimate: the camera doesn't measure height)
+  let from = start;
+  if (fl && fl.apex > start && fl.apex < bfc) {
+    const s = sides(right), side = result.view.view === "side_on";
+    const c: Callout[] = [{ key: "jump_clearance", title: fl.clearance >= 0.25 ? "High gather" : fl.clearance >= 0.12 ? "Gather" : "Low gather",
+      detail: `Jump clearance ≈${fl.clearance.toFixed(2)} m`, anchor: [s.backAnkle], graphic: "clearance", side: 1, limbs: [], good: false }];
+    // how far the bound carries needs the run-in speed, which only a side-on camera sees
+    if (side && fl.length > 0.3) c.push({ key: "jump_length", title: "Jump length (forward)", detail: `≈${fl.length.toFixed(2)} m`, anchor: [J.pelvis], graphic: "none", side: 1, limbs: [], good: false });
+    segments.push(seg({ kind: "play", dur: slow(start, fl.apex, 0.2), from: start, to: fl.apex, title: "Jump / gather", shot: cam(-32, 8, 4.7), trail: false }));
+    segments.push(seg({ kind: "hold", dur: 3.0, from: fl.apex, to: fl.apex, title: "Jump / gather", callouts: c, shot: cam(-30, 7, 4.6, 3), trail: false }));
+    from = fl.apex;
+  }
+  // back-foot contact
+  if (bfc > from) segments.push(seg({ kind: "play", dur: slow(from, bfc, 0.2), from, to: bfc, title: fl ? "Jump / gather" : "Gather", shot: cam(-28, 8, 4.6) }));
   const cB = calloutsAt(result, "bfc");
   segments.push(seg({ kind: "hold", dur: cB.length ? 3.0 : 1.3, from: bfc, to: bfc, title: "Back foot contact", callouts: cB, shot: cam(-22, 7, 4.4, 3) }));
   // 4. the back leg through the stride, at its deepest bend
   const dip = backLegDip(result);
-  let from = bfc;
-  if (dip && dip.t > bfc && dip.t < ffc) {
+  from = bfc;
+  // (only where the camera sees the knee bend: side-on)
+  if (dip && dip.t > bfc && dip.t < ffc && result.view.view === "side_on") {
     const s = sides(right), firm = dip.angle >= 150;
     segments.push(seg({ kind: "play", dur: slow(bfc, dip.t, 0.16), from: bfc, to: dip.t, title: "Back leg", shot: cam(-14, 7, 4.5) }));
     segments.push(seg({ kind: "hold", dur: 2.6, from: dip.t, to: dip.t, title: "Back leg", shot: cam(-10, 7, 4.4, 3),
@@ -261,13 +511,18 @@ export function replayScript(result: AnalysisResult): Script {
   const cR = calloutsAt(result, "br");
   segments.push(seg({ kind: "hold", dur: cR.length ? 3.8 : 1.5, from: br, to: br, title: "Release", callouts: cR, shot: cam(24, 7, 5.1, 3) }));
   // 7. right round the bowler at release, the whole ribbon in view
-  segments.push(seg({ kind: "hold", dur: 6.5, from: br, to: br, title: "Skeleton, 3D", sub: "drag to look round", orbit: true, shot: cam(35, 16, 5.4, 52) }));
+  segments.push(seg({ kind: "hold", dur: 7.5, from: br, to: br, title: "Skeleton, 3D", sub: "action strobe: every key moment at once · drag to look round", orbit: true, strobe: true, shot: cam(35, 16, 6.1, 46) }));
   // 8. back to the video at release, out through the follow-through
   segments.push(seg({ kind: "video", dur: Math.max(1.2, realS(br, T - 1) / 0.5), from: br, to: T - 1, fade: -0.6, trail: false }));
-  return { segments, total: segments.reduce((a, s) => a + s.dur, 0), br, trailFrom: start };
+  // the moments left standing in the strobe: the top of the bound, the two foot contacts (release is the body itself)
+  const ghosts = [...(fl && fl.apex < bfc ? [{ frame: fl.apex, label: "Gather" }] : []), ...(bfc < ffc ? [{ frame: bfc, label: "Back foot" }] : []), ...(ffc < br ? [{ frame: ffc, label: "Front foot" }] : [])];
+  // the ribbon covers the delivery swing: from a little before back-foot contact (a long run-up would smear it out)
+  return { segments, total: segments.reduce((a, s) => a + s.dur, 0), br, trailFrom: Math.max(start, bfc - Math.round(0.14 * fps)), ghosts };
 }
 
 const ease = (u: number) => (u <= 0 ? 0 : u >= 1 ? 1 : u * u * (3 - 2 * u));
+// the action between two stops: it starts from rest and comes to rest (speed and acceleration both zero at the ends)
+const glide = (u: number) => (u <= 0 ? 0 : u >= 1 ? 1 : u * u * u * (u * (6 * u - 15) + 10));
 
 export interface ReplayState {
   index: number; segment: Segment;
@@ -286,7 +541,7 @@ export function replayState(script: Script, time: number): ReplayState {
   for (; index < script.segments.length - 1; index++) { if (t < acc + script.segments[index].dur) break; acc += script.segments[index].dur; }
   const s = script.segments[index], local = t - acc, u = s.dur > 0 ? local / s.dur : 1;
   // motion eases in and out of each stop, so nothing jerks
-  const tf = s.from + (s.to - s.from) * (s.kind === "play" ? ease(u) * 0.35 + u * 0.65 : u);
+  const tf = s.from + (s.to - s.from) * (s.kind === "play" ? glide(u) : u);
   let video = 0;
   if (s.kind === "video") video = s.fade > 0 ? 1 - ease((local - (s.dur - s.fade)) / s.fade) : s.fade < 0 ? ease(local / -s.fade) : 1;
   // the camera: this segment's shot, turning slowly, reached from where the previous 3D segment's camera ended
@@ -305,7 +560,7 @@ export function replayState(script: Script, time: number): ReplayState {
   const cut = index > 0 && s.kind === "play" && s.from < script.segments[index - 1].to;
   if (prev >= 0 && shots[prev] && !cut) {
     const p = shots[prev]!, pEnd = { ...p, az: p.az + p.drift * script.segments[prev].dur };
-    const k = ease(Math.min(1, local / Math.min(1.4, Math.max(0.4, s.dur * 0.6))));
+    const k = glide(Math.min(1, local / Math.min(1.8, Math.max(0.6, s.dur * 0.75))));
     shot = { az: pEnd.az + (shot.az - pEnd.az) * k, el: pEnd.el + (shot.el - pEnd.el) * k, dist: pEnd.dist + (shot.dist - pEnd.dist) * k, drift: own.drift };
   }
   const callout = s.kind === "hold" && s.callouts.length ? Math.min(ease(local / 0.5), ease((s.dur - local) / 0.35)) : 0;

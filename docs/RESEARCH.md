@@ -335,3 +335,24 @@ an arm-speed ribbon and a moving camera. What was looked at, and what was chosen
 Honesty rules kept from the rest of the app: callouts show only what the clip measured from a camera that sees it, with
 metres only when the bowler's height was entered; the ribbon is relative speed; the picture says "3D body estimated
 from the video · pitch drawn for scale".
+
+### Motion pipeline for the replay (2026-11-14)
+
+The first replay drew the analysis' joints as they were. Three things made it look measured rather than alive, and
+each has a standard fix from motion-capture clean-up:
+
+| Problem in the raw data | Fix (`lib/biomech.ts: buildMotion`) |
+|---|---|
+| Bone lengths wobble frame to frame; directions jitter | One length per bone (its median); bone directions filtered with a zero-lag Gaussian (28 ms; 12 ms on the bowling arm so release isn't softened); body rebuilt from the hips |
+| The analysis puts the lower foot on the ground in every frame, so the bound has no flight | Take-off found from the front-side foot leaving the ground; between take-off and back-foot contact the hips follow the arc gravity gives for that time in the air (rise = g·t²/8) |
+| Feet slide; from behind the legs sit under the hips | The planted foot stays put (side-on: the pose itself gives the travel). From behind or in front: run-in speed from the arm's speed, feet pinned, each leg re-solved hip-to-foot (two-bone IK), front foot landed a stride ahead; labelled as assumed |
+| Bones twist or flip when a limb is nearly straight | The axis each limb bends about is found per frame, kept sign-consistent and filtered (30–50 ms) |
+
+On top: slow motion eases from rest to rest between stops (quintic), the camera follows an eased track of the hips,
+video frames are cross-blended in slow motion, rendering is full HD with soft shadows, contact shadows under the
+feet, an environment light and neutral tone mapping. Measured on a GPU: 1920×1080 at 43–55 frames a second while
+recording.
+
+New readouts that come out of the same motion: **jump clearance** (≈, from the flight), **jump length** (≈, side-on),
+the **kinetic chain** (hips' turn, shoulders' turn, upper arm's swing, hand: each as a share of its own top speed,
+with the order judged only at 90+ fps) and the **action strobe** (ghost skeletons at the key moments).
