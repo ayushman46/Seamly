@@ -1300,3 +1300,49 @@ body.pace-measuring { padding-bottom: 150px; }
 .bio-ghost { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--c-text-2); }
 .bio-ghost select { max-width: 220px; padding: 5px 8px; font-size: 13px; }
 .bio-tools .btn.on { border-color: var(--c-accent); color: var(--c-accent); }
+
+/* face it: the delivery from the batter's end */
+.bio-overlay:has(.face-sheet) { background: #04060b; place-items: start center; }
+.face-sheet { width: min(1100px, 100%, max(560px, calc((100vh - 330px) * 16 / 9))); }
+.face-sheet.portrait { width: min(560px, 100%); }
+.face-stage { position: relative; }
+.face-canvas { cursor: pointer; }
+.face-canvas:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 2px; }
+.face-canvas:active { cursor: pointer; }
+.face-hud { position: absolute; inset: 0; pointer-events: none; color: #fff; font-family: "Barlow Condensed", "Roboto Condensed", "Arial Narrow", Inter, sans-serif; text-shadow: 0 1px 6px rgba(0, 0, 0, 0.7); container-type: inline-size; }
+.face-tag { position: absolute; left: 2.2cqw; top: 2cqw; font-size: clamp(11px, 1.5cqw, 18px); font-weight: 600; letter-spacing: 0.14em; color: rgba(255, 255, 255, 0.8); }
+.face-pace, .face-clock { position: absolute; top: max(4.6cqw, 27px); display: flex; align-items: baseline; gap: 0.7cqw; }
+.face-pace { left: 2.2cqw; }
+.face-clock { right: 2.2cqw; flex-direction: row-reverse; }
+.face-pace b, .face-clock b { font-size: clamp(26px, 5cqw, 64px); font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
+.face-pace span, .face-clock > span { font-size: clamp(11px, 1.5cqw, 18px); font-weight: 500; color: rgba(226, 232, 240, 0.85); letter-spacing: 0.04em; }
+.face-result { position: absolute; left: 50%; bottom: 3cqw; transform: translateX(-50%); width: max-content; max-width: 94%; text-align: center; padding: 0.8cqw 1.6cqw; border-radius: 10px;
+  background: rgba(5, 8, 16, 0.78); border: 1px solid rgba(255, 255, 255, 0.14); font-size: clamp(13px, 1.9cqw, 24px); font-weight: 500; letter-spacing: 0.02em; text-shadow: none; }
+.face-result b { font-weight: 600; color: #7dd3fc; }
+.face-result span { display: block; margin-top: 2px; font-size: 0.86em; }
+.face-result span.good { color: var(--c-good); }
+.face-result span.miss { color: #fbbf24; }
+.face-hint { position: absolute; left: 50%; bottom: 3cqw; transform: translateX(-50%); font-size: clamp(12px, 1.5cqw, 18px); letter-spacing: 0.06em; color: rgba(255, 255, 255, 0.72); white-space: nowrap; }
+.face-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 14px 22px; margin-top: 14px; align-items: start; }
+.face-controls { display: grid; gap: 12px; }
+.face-controls label { display: grid; gap: 4px; font-size: 13px; color: var(--c-text-2); }
+.face-controls label b { color: var(--c-text); font-weight: 600; }
+.face-controls label em { font-style: normal; color: var(--c-text-3); font-size: 12px; }
+.face-controls input[type=range] { width: 100%; }
+.face-read { margin: 0; display: grid; gap: 0; font-size: 13px; border: 1px solid var(--c-line); border-radius: 12px; overflow: hidden; }
+.face-read > div { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 10px; padding: 7px 12px; border-top: 1px solid var(--c-line); }
+.face-read > div:first-child { border-top: 0; }
+.face-read dt { color: var(--c-text-3); }
+.face-read dd { margin: 0; color: var(--c-text-2); }
+.face-read dd b { color: var(--c-text); font-weight: 600; }
+.face-bands { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; margin-top: 12px; }
+.face-bands > div { display: grid; grid-template-columns: 10px minmax(0, 1fr); gap: 1px 7px; padding: 7px 9px; border: 1px solid var(--c-line); border-radius: 10px; font-size: 12px; align-items: center; }
+.face-bands > div.on { border-color: var(--c-line-3); background: var(--c-surface-2); }
+.face-bands .sw { width: 10px; height: 10px; border-radius: 3px; grid-row: 1; }
+.face-bands .nm { color: var(--c-text); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.face-bands .rg, .face-bands .an { grid-column: 2; color: var(--c-text-3); }
+.face-bands .an { color: var(--c-text-2); }
+@media (max-width: 760px) {
+  .face-grid { grid-template-columns: minmax(0, 1fr); }
+  .face-bands { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

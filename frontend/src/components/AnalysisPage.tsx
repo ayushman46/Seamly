@@ -23,7 +23,7 @@ import PairCard, { PairNotice } from "./PairCard";
 import PlanPanel from "./PlanPanel";
 import { Verdict } from "./InsightsCard";
 import { setCurrentPlayer } from "../lib/player";
-import { IAlert, IBack, ICheck, IChevronDown, IClock, ICube, IDownload, IFile, IFilm, IInfo, ILock, INext, IPause, IPlay, IPrev, IRefresh, IVideo } from "./Icons";
+import { IAlert, IBack, ICheck, IChevronDown, IClock, ICube, IDownload, IEye, IFile, IFilm, IInfo, ILock, INext, IPause, IPlay, IPrev, IRefresh, IVideo } from "./Icons";
 import { SiteFooter } from "./Landing";
 import { usePageTitle } from "../lib/title";
 import ShareSummary from "./ShareSummary";
@@ -31,6 +31,7 @@ import ShareSummary from "./ShareSummary";
 // three.js is large: the 3D viewer loads as its own chunk so the player and metrics appear first
 const Viewer3D = lazyPage(() => import("./Viewer3D"));
 const BioReplay = lazyPage(() => import("./BioReplay"));
+const FaceIt = lazyPage(() => import("./FaceIt"));
 import { concerns } from "../lib/sanity";
 
 const STAGES = [
@@ -318,6 +319,8 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
 
   const [frame, setFrame] = useState(result.events.br?.frame ?? f0);
   const [playing, setPlaying] = useState(false);
+  const [face, setFace] = useState(false); // the delivery from the batter's end, over the page
+  const faceBtn = useRef<HTMLButtonElement>(null);
   const [bio, setBio] = useState(false);   // the 3D bio-mech replay, over the page
   const doubts = useMemo(() => (result ? concerns(result) : []), [result]);
   const bioBtn = useRef<HTMLButtonElement>(null);
@@ -601,6 +604,8 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
             <ShareSummary meta={meta} result={result} ins={ins} fileBase={fileBase} />
             <button ref={bioBtn} className="btn" onClick={() => { setPlaying(false); setBio(true); }} disabled={doubts.some((c) => c.level === "block")}
               title={doubts.some((c) => c.level === "block") ? "Not available: this analysis didn't find a usable delivery (see the note above)" : "The delivery replayed in 3D, broadcast style: a skeleton on the pitch, the arm's speed, and the numbers at each key moment"}><ICube size={15} /> 3D replay</button>
+            <button ref={faceBtn} className="btn" onClick={() => { setPlaying(false); setFace(true); }} disabled={!result.events.br || doubts.some((c) => c.level === "block")}
+              title="Stand at the batter's end and face this delivery in 3D, in real time: the ball's flight from this release point, and what the release is worth"><IEye size={15} /> Face it</button>
             <ClipMaker meta={meta} result={result} ins={ins} fileBase={fileBase} frame={frame}
               onFrame={(f) => { setPlaying(false); setFrame(f); }} players={() => [...(playerRef.current?.querySelectorAll<HTMLCanvasElement>(".player-stage canvas") ?? [])]} />
             <div className="rel" ref={menuRef} onBlur={(e) => { if (!menuRef.current?.contains(e.relatedTarget as Node | null)) setMenu(false); }}>
@@ -746,6 +751,11 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
       {bio && result && meta && (
         <Suspense fallback={null}>
           <BioReplay id={id} result={result} name={meta.name ?? "delivery"} others={others.map((m) => ({ id: m.id, name: m.name ?? "delivery" }))} onClose={() => { setBio(false); requestAnimationFrame(() => bioBtn.current?.focus({ preventScroll: true })); }} />
+        </Suspense>
+      )}
+      {face && result && meta && (
+        <Suspense fallback={null}>
+          <FaceIt result={result} name={meta.name ?? "delivery"} pace={meta.pace} onClose={() => { setFace(false); requestAnimationFrame(() => faceBtn.current?.focus({ preventScroll: true })); }} />
         </Suspense>
       )}
       <SiteFooter compact />

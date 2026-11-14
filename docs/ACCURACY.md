@@ -341,6 +341,62 @@ measured arm slot, eased in and out round release, and draws the swing plane thr
 where it was. Side-on, where the lean lies along the camera's view, the plane is drawn from the 3D estimate and no
 angle is quoted.
 
+## 9e. Face it: the simulated flight (2026-11-14)
+
+Face it (`frontend/src/lib/flight.ts`) flies a ball from the bowler's release point to the batter. Nothing here is
+measured on a real ball in flight: this section is about whether the physics is computed correctly and whether its
+constants give the figures real deliveries show. `frontend/tests/flight.test.ts` holds every check below.
+
+**The integration is right.**
+
+- With drag switched off, the pitching time, the pitching point and the speed at the pitch match the textbook
+  parabola to a millimetre and three decimal places of a second.
+- With drag, swing and the bounce on, the result was compared with a second implementation written separately for
+  the test: fourth-order Runge-Kutta at a tenth of the time step, with the bounce found by bisection. Over four
+  deliveries (86 to 148 km/h, with and without swing) the two agree to within 4 mm at the pitch and at the batter,
+  0.2 ms in arrival time and 0.02 m/s in arrival speed.
+- Aiming: over 180 combinations of pace (75 to 150 km/h), length (0.8 to 12 m), line and swing, the ball pitches
+  within 1 cm of the length asked for and passes the stumps within 3 mm of the line.
+
+**The constants give believable deliveries.** From a release 2.10 m high, 1.2 m in front of the bowler's stumps:
+
+| Pace at release | Length (from the batter's stumps) | Release angle below horizontal | Hand to bat | Speed into the pitch | Speed at the batter | Height at the stumps | Length per degree |
+|---|---|---|---|---|---|---|---|
+| 150 km/h | 1.2 m (yorker) | 3.5° | 454 ms | 134 km/h | 134 km/h (before it pitches) | 16 cm | 1.8 m |
+| 140 km/h | 7 m (good) | 7.5° | 515 ms | 130 km/h | 107 km/h | 74 cm | 1.0 m |
+| 140 km/h | 11 m (short) | 13.1° | 541 ms | 134 km/h | 105 km/h | 141 cm | 0.5 m |
+| 125 km/h | 7 m (good) | 6.9° | 576 ms | 117 km/h | 95 km/h | 72 cm | 0.9 m |
+| 100 km/h | 5 m (full) | 3.0° | 703 ms | 93 km/h | 77 km/h | 56 cm | 1.0 m |
+
+A 140 km/h ball taking about half a second, losing about a tenth of its speed in the air and reaching the batter
+at about three quarters of its release speed is what ball-tracking broadcasts show, and a good-length ball arriving
+at the top of the stumps is what "good length" means. The average speed to the batter as a share of the release speed
+stays inside the 0.76-0.95 the ball-speed measurement (§6) already assumes, so the two features agree with each other.
+
+**The release point.** On all four bundled examples the release point is the bowling hand at the release frame,
+1.84 to 2.09 m high, by the bowler's crease, on the bowling arm's side, and its height is the one measured on the
+video. A pace marked on the clip becomes the starting pace; a marked pitching frame becomes the starting length
+(tested by marking a pitch 0.35 s after release and checking the flight to that length takes 0.35 s).
+
+**In the browser.** Run in GPU Chrome on the four bundled examples, at desktop and phone sizes, with no errors: the
+on-screen clock stops at the computed hand-to-bat time; a 150 km/h in-swinging yorker to a left-hander, a 145 km/h
+bouncer and a 70 km/h lob all play and report; the dialog closes on Esc and returns focus to its button.
+
+**What it does not claim.**
+
+- The flight is not the ball in the video. Only the release height is measured; the bowler's distance from the
+  stumps and the hand's position along the pitch are the 3D scene's (the front foot is stood 0.22 m behind the
+  popping crease, 0.62 m from middle stump).
+- Heights scale with the bowler's height, 1.80 m unless it was entered.
+- One bounce model (55% of vertical speed kept, 87% along the ground): a firm pitch. A cricket ball dropped on a hard
+  surface keeps 0.58 (R. Cross, University of Sydney); real pitches vary either side, and so will the height at the
+  batter.
+- Swing is a constant side-force coefficient up to 0.25 until the ball pitches (Test-match tracking spans about 0.1
+  to 0.5); late swing, reverse swing, seam movement and spin are not modelled.
+- The 0.2 s "last look" is a typical visual reaction time (McLeod 1987), not a measurement of any batter.
+- The batter's-eye picture uses a long lens on the bowler that opens out as the ball comes, and the ball has a glow,
+  so it can be seen on a phone. Timing is real; apparent size early in the flight is not.
+
 ## 10. Still to do
 
 - Lab validation against marker-based motion capture (real bodies, real knees): the synthetic body can't say whether
