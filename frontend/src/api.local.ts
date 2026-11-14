@@ -4,6 +4,7 @@
  * analyses/players are kept in IndexedDB. Nothing is uploaded anywhere.
  */
 import type { AnalysisMeta, AnalysisResult, BowlingLogEntry, CreaseRecord, EventKey, Insights, Player, PlayerProgress, PaceRecord } from "./types";
+import type { TrackRecord } from "./lib/tracker";
 import * as db from "./engine/store";
 import { AnalysisError, backend, optionsFrom, type Options } from "./engine/common";
 import type { Overrides, StageA } from "./engine/pipeline";
@@ -114,7 +115,7 @@ async function refresh(id: string): Promise<void> {
 }
 
 const PUBLIC = ["id", "name", "created", "updated", "status", "progress", "stage", "stage_label", "error", "score", "grade", "view", "arm",
-  "thumb_frame", "options", "timing_s", "elapsed", "size_mb", "notice", "suggest", "player_id", "input_type", "arm_conf", "pace", "crease", "source_id", "pair", "angled"] as const;
+  "thumb_frame", "options", "timing_s", "elapsed", "size_mb", "notice", "suggest", "player_id", "input_type", "arm_conf", "pace", "crease", "track", "source_id", "pair", "angled"] as const;
 
 function pub(m: Meta): AnalysisMeta {
   const out = {} as Record<string, unknown>;
@@ -439,6 +440,26 @@ function cleanPace(p: unknown): PaceRecord | null {
     kmh: q.kmh, lo: q.lo, hi: q.hi };
 }
 /** A no-ball check as stored, or null if it isn't a valid one. */
+/** A kept ball track (lib/tracker.ts TrackRecord): the right shape and finite numbers, or nothing. */
+function cleanTrack(t: unknown): TrackRecord | null {
+  const r = t as TrackRecord;
+  const pt = (p: unknown) => Array.isArray(p) && p.length === 2 && p.every((v) => typeof v === "number" && Number.isFinite(v));
+  if (!r || r.v !== 1 || !(r.w > 0) || !(r.h > 0) || !Number.isInteger(r.markFrame)) return null;
+  if (!Array.isArray(r.marks) || r.marks.length < 4 || r.marks.length > 40 || !r.marks.every((m) => (m.end === "bowler" || m.end === "batter") && typeof m.kind === "string" && pt(m.px))) return null;
+  if (!Array.isArray(r.sightings) || r.sightings.length < 4 || r.sightings.length > 400 || !r.sightings.every((s) => Number.isInteger(s.frame) && pt(s.px) && (s.shadow == null || pt(s.shadow)))) return null;
+  if (!Array.isArray(r.shifts) || r.shifts.length > 1000 || !r.shifts.every((s) => Array.isArray(s) && s.length === 4 && s.every((v) => typeof v === "number" && Number.isFinite(v)))) return null;
+  if (r.upright != null && !(Number.isInteger(r.upright.frame) && pt(r.upright.foot) && pt(r.upright.tip))) return null;
+  if (!Number.isFinite(r.kmh) || !(r.kmh > 20 && r.kmh < 200)) return null;
+  return {
+    v: 1, w: r.w, h: r.h, markFrame: r.markFrame, marks: r.marks.map((m) => ({ end: m.end, kind: m.kind, px: [m.px[0], m.px[1]] })), upright: r.upright ?? null,
+    sightings: r.sightings.map((s) => ({ frame: s.frame, px: [s.px[0], s.px[1]], shadow: s.shadow ? [s.shadow[0], s.shadow[1]] : null, auto: s.auto !== false })),
+    shifts: r.shifts.map((s) => [s[0], s[1], s[2], s[3]]), kmh: r.kmh, kmhSigma: Number(r.kmhSigma) || 0,
+    length: typeof r.length === "number" ? r.length : null, line: typeof r.line === "number" ? r.line : null, swing: Number(r.swing) || 0,
+    deviation: typeof r.deviation === "number" ? r.deviation : null, height: typeof r.height === "number" ? r.height : null,
+    hitting: r.hitting === "hitting" || r.hitting === "missing" || r.hitting === "close" ? r.hitting : null, rmsPx: Number(r.rmsPx) || 0,
+    release: Number.isInteger(r.release) ? r.release : null, releaseSigma: typeof r.releaseSigma === "number" && r.releaseSigma > 0 ? r.releaseSigma : null,
+  };
+}
 function cleanCrease(c: unknown): CreaseRecord | null {
   const q = c as CreaseRecord | null;
   const pt = (v: unknown) => Array.isArray(v) && v.length === 2 && isNum(v[0]) && isNum(v[1]);
@@ -492,11 +513,14 @@ export const SAMPLES = {
     name: "Example: club match, from in front" },
   netsBehind: { url: `${import.meta.env.BASE_URL}samples/nets-behind-60fps.mp4`, dir: `${import.meta.env.BASE_URL}samples/nets-behind/`, id: "9e755a3d1e06",
     name: "Example: nets, from behind, 60 fps" },
+  // a rendered delivery with a known ball (backend/tools/synth_delivery.py), with its ball already tracked
+  trackedBall: { url: `${import.meta.env.BASE_URL}samples/tracked-ball-60fps.mp4`, dir: `${import.meta.env.BASE_URL}samples/tracked-ball/`, id: "ba115a3d1e07",
+    name: "Example: tracked test ball, 60 fps" },
 };
 
 export type SampleName = keyof typeof SAMPLES;
 // bump when the bundled sample analyses are regenerated, so a browser that imported an older copy gets the new one
-const SAMPLE_VERSION = 17;
+const SAMPLE_VERSION = 18;
 
 /** A link to one of the built-in examples opens anywhere: import it on first use (the ids are fixed). */
 const sampleImports = new Map<string, Promise<unknown>>();   // the report asks for an analysis and its insights at once
@@ -617,7 +641,7 @@ async function restore(file: Blob): Promise<{ analyses: number; players: number;
     }
     const entries = a.files.map((f, j) => [f?.name, files[i][j]] as const).filter(([name]) => typeof name === "string" && FILE_NAME.test(name));
     const meta = { ...m, status: "done", progress: 1, stage: "done", stage_label: "Complete", error: null, gen: "", owner: undefined, previous: null, source_id: undefined,
-      pace: cleanPace(m.pace), crease: cleanCrease(m.crease), pair: typeof m.pair === "string" && ID.test(m.pair) ? m.pair : null,
+      pace: cleanPace(m.pace), crease: cleanCrease(m.crease), track: cleanTrack(m.track), pair: typeof m.pair === "string" && ID.test(m.pair) ? m.pair : null,
       player_id: m.player_id && have.has(m.player_id) ? m.player_id : null, size_mb: m.size_mb ?? null, arm_conf: m.arm_conf ?? armConf(r) } as Meta;
     await db.write(["blob", "stagea", "result", "meta"], (st) => {
       for (const [name, b] of entries) st.blob.put(b, `${m.id}/${name}`);
@@ -730,7 +754,7 @@ export const api = {
     const keep: Overrides = prev.gender !== undefined ? { gender: prev.gender } : {};
     const previous = meta.status === "done" ? { options: oldOpts, overrides: prev } : null;
     // a saved ball speed was timed on the old analysis' frames (and clip speed): it has to be measured again
-    await writeMeta(id, { options: optionsFrom(opts) as unknown as AnalysisMeta["options"], overrides: keep, error: null, previous, status: "queued", progress: 0, stage: null, suggest: null, owner: TAB, pace: null, crease: null });
+    await writeMeta(id, { options: optionsFrom(opts) as unknown as AnalysisMeta["options"], overrides: keep, error: null, previous, status: "queued", progress: 0, stage: null, suggest: null, owner: TAB, pace: null, crease: null, track: null });
     submit(id);
     return { id };
   }),
@@ -884,13 +908,17 @@ export const api = {
     submit(id);
     return { id };
   },
-  patch: async (id: string, body: { name?: string; player_id?: string | null; pace?: PaceRecord | null; crease?: CreaseRecord | null }) => {
+  patch: async (id: string, body: { name?: string; player_id?: string | null; pace?: PaceRecord | null; crease?: CreaseRecord | null; track?: TrackRecord | null }) => {
     await loadAll();
     requireMeta(id);
     const f: Partial<Meta> = {};
     if ("crease" in body) {
       f.crease = body.crease ? cleanCrease(body.crease) : null;
       if (body.crease && !f.crease) throw new Error("That crease check isn't valid.");
+    }
+    if ("track" in body) {
+      f.track = body.track ? cleanTrack(body.track) : null;
+      if (body.track && !f.track) throw new Error("That ball track isn't valid.");
     }
     if ("pace" in body) {
       f.pace = body.pace ? cleanPace(body.pace) : null;

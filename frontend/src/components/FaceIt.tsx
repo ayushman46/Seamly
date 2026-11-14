@@ -6,6 +6,8 @@ import { buildMotion, sampleJoints, sampleTrack, sides, type V3 } from "../lib/b
 import { BoneBody, SimpleBody, loadBones, type Body, type BoneData } from "../lib/bones";
 import { buildPitch, skyTexture } from "../lib/pitchScene";
 import { BALL_R, CREASE_Z, LENGTHS, MAX_SWING, REACTION_S, STUMPS_Z, STUMPS_W, STUMP_H, aimAt, ballAt, lengthName, measuredBall, readDelivery, releaseOf, type Read } from "../lib/flight";
+import { angle, cm, heightWord, lineWord } from "../lib/words";
+import { fromRecord, trackedRead, type TrackRecord } from "../lib/tracker";
 import { IRefresh, IX } from "./Icons";
 
 /**
@@ -31,32 +33,22 @@ class Poly extends THREE.Curve<THREE.Vector3> {
 }
 const RADIAL = 8;
 
-/** A release angle in words: degrees below the horizontal, or above it for a slow ball that has to be lobbed. */
-const angle = (down: number) => `${Math.abs(down).toFixed(1)}° ${down >= 0 ? "down" : "up"}`;
-const cm = (m: number) => `${Math.round(Math.abs(m) * 100)} cm`;
-/** How high that is on a batter of about 1.8 m. */
-function heightWord(h: number): string {
-  return h < 0.12 ? "at the toes" : h < 0.32 ? "ankle high" : h < 0.6 ? "knee high" : h < 0.95 ? "thigh high" : h < 1.15 ? "waist high"
-    : h < 1.45 ? "chest high" : h < 1.8 ? "head high" : "over the head";
-}
-/** The line at the stumps in a batter's words (off: metres towards the off side of middle stump). */
-function lineWord(off: number): string {
-  const a = Math.abs(off), side = off >= 0 ? "off" : "leg";
-  if (a < 0.04) return "middle stump";
-  if (a < 0.15) return `${side} stump`;
-  if (off < 0) return a < 0.3 ? "just down the leg side" : "down the leg side";
-  return a < 0.26 ? "just outside off stump" : a < 0.5 ? "outside off stump" : "wide outside off stump";
-}
-
-export default function FaceIt({ result, name, pace, onClose }: {
-  result: AnalysisResult; name: string; pace?: PaceRecord | null; onClose: () => void;
+export default function FaceIt({ result, name, pace, track, onClose }: {
+  result: AnalysisResult; name: string; pace?: PaceRecord | null; track?: TrackRecord | null; onClose: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const clockEl = useRef<HTMLSpanElement>(null);
   const motion = useMemo(() => buildMotion(result), [result]);
-  const release = useMemo(() => releaseOf(result), [result]);
+  const poseRelease = useMemo(() => releaseOf(result), [result]);
+  // the ball tracked on this clip (components/BallTracker.tsx): the real flight, replayed
+  const tracked = useMemo(() => (track ? fromRecord(track, result)?.tracked ?? null : null), [track, result]);
+  const realRead = useMemo(() => (tracked ? trackedRead(tracked) : null), [tracked]);
+  const [real, setReal] = useState(true);          // show the tracked ball (when there is one) rather than a what-if
+  const isReal = real && !!realRead;
+  // where the ball leaves the hand: where the tracked flight starts when there is one, otherwise the 3D skeleton's hand
+  const release = useMemo(() => (poseRelease && tracked ? { ...poseRelease, from: tracked.release.p } : poseRelease), [poseRelease, tracked]);
   const fps = Math.max(1, result.fps_real || result.fps);
   const right = result.bowling_arm.arm === "right";
 
@@ -64,9 +56,11 @@ export default function FaceIt({ result, name, pace, onClose }: {
   const measured = useMemo(() => (release ? measuredBall(result, release, pace) : { kmh: null, length: null }), [result, release, pace]);
   const measuredKmh = measured.kmh !== null ? Math.max(70, Math.min(160, Math.round(measured.kmh))) : null;
   const measuredLength = measured.length !== null ? Math.max(0.6, Math.min(13, Math.round(measured.length * 10) / 10)) : null;
-  const [kmh, setKmh] = useState(measuredKmh ?? 130);
-  const [length, setLength] = useState(measuredLength ?? 7);
-  const [off, setOff] = useState(0.1);         // the line at the stumps: metres to the off side of middle stump
+  const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+  const [kmh, setKmh] = useState(tracked ? clamp(Math.round(tracked.release.kmh.value), 70, 160) : measuredKmh ?? 130);
+  const [length, setLength] = useState(tracked?.pitch ? clamp(Math.round(tracked.pitch.length.value * 10) / 10, 0.6, 13) : measuredLength ?? 7);
+  // the line at the stumps: metres to the off side of middle stump (a right-hander's, to start with)
+  const [off, setOff] = useState(tracked?.stumps ? clamp(Math.round(-tracked.stumps.x.value * 100) / 100, -0.45, 0.75) : 0.1);
   const [swing, setSwing] = useState(0);       // side-force coefficient: positive is away from the batter
   const [batter, setBatter] = useState<"right" | "left">("right");
   const [view, setView] = useState<View>("eye");
@@ -79,8 +73,9 @@ export default function FaceIt({ result, name, pace, onClose }: {
 
   // a right-hander's off side is -x in the scene (the side a right-arm bowler over the wicket runs in on)
   const offSign = batter === "right" ? -1 : 1;
-  const read: Read | null = useMemo(() => (release ? readDelivery(release.from, kmh / 3.6, { length, line: off * offSign }, swing * offSign) : null),
+  const simRead: Read | null = useMemo(() => (release ? readDelivery(release.from, kmh / 3.6, { length, line: off * offSign }, swing * offSign) : null),
     [release, kmh, length, off, swing, offSign]);
+  const read: Read | null = isReal ? realRead : simRead;
   // the release angle each length band needs from this hand, at this pace
   const bands = useMemo(() => {
     if (!release) return [];
@@ -169,9 +164,12 @@ export default function FaceIt({ result, name, pace, onClose }: {
     const hingeTracks = [0, 1, 2, 3].map((l) => motion.hinges.map((h) => h[l]));
     const P: V3[] = frames[0].map(() => [0, 0, 0]);
     const S = sides(right);
+    // with a tracked ball the bowler is stood where that ball was let go (the clip measured it; the scene only assumed it)
+    const own = poseRelease!.from, move: V3 = [release.from[0] - own[0], release.from[1] - own[1], release.from[2] - own[2]];
+    body.group.position.set(move[0], 0, move[2]);
     const hand = (Q: V3[]): V3 => {
       const e = Q[S.elbow], w = Q[S.wrist], d = Math.hypot(w[0] - e[0], w[1] - e[1], w[2] - e[2]) || 1;
-      return [w[0] + ((w[0] - e[0]) / d) * 0.13, w[1] + ((w[1] - e[1]) / d) * 0.13, w[2] + ((w[2] - e[2]) / d) * 0.13];
+      return [w[0] + ((w[0] - e[0]) / d) * 0.13 + move[0], w[1] + ((w[1] - e[1]) / d) * 0.13 + move[1], w[2] + ((w[2] - e[2]) / d) * 0.13 + move[2]];
     };
 
     // the ball, true to size, with a soft glow so it can be picked up on a small screen
@@ -222,7 +220,8 @@ export default function FaceIt({ result, name, pace, onClose }: {
       for (const t of trails) { scene.remove(t); t.geometry.dispose(); }
       const s = r.path.samples, tp = r.path.pitch?.t ?? Infinity;
       const pre: V3[] = [], post: V3[] = [];
-      for (let i = 0; i < s.length; i += 6) (s[i].t <= tp ? pre : post).push(s[i].p);
+      const every = Math.max(1, Math.round(0.006 / Math.max(1e-4, s[1].t - s[0].t)));
+      for (let i = 0; i < s.length; i += every) (s[i].t <= tp ? pre : post).push(s[i].p);
       if (r.path.pitch) { const q: V3 = [r.path.pitch.p[0], BALL_R, r.path.pitch.p[2]]; pre.push(q); post.unshift(q); }
       post.push(s[s.length - 1].p);
       trails = [pre, post].map((pts, i) => {
@@ -270,7 +269,7 @@ export default function FaceIt({ result, name, pace, onClose }: {
       sampleJoints(frames, Math.max(0, Math.min(T - 1, br + clock * fps)), P);
       body.update(P, hingeTracks.map((tr) => sampleTrack(tr, Math.max(0, Math.min(T - 1, br + clock * fps)))));
       const pel = P[0];
-      sun.position.set(pel[0] + 3.5, 9, pel[2] + 4.5); sun.target.position.set(pel[0], 0, pel[2]); sun.target.updateMatrixWorld();
+      sun.position.set(pel[0] + move[0] + 3.5, 9, pel[2] + move[2] + 4.5); sun.target.position.set(pel[0] + move[0], 0, pel[2] + move[2]); sun.target.updateMatrixWorld();
       // the ball: in the hand, then on its way
       if (clock <= 0) { const h = hand(P); bp[0] = h[0]; bp[1] = h[1]; bp[2] = h[2]; } else ballAt(r.path, clock, bp);
       ball.position.set(bp[0], bp[1], bp[2]);
@@ -337,7 +336,7 @@ export default function FaceIt({ result, name, pace, onClose }: {
       renderer.forceContextLoss();
       L.restart = "full";
     };
-  }, [result, motion, release, bones, W, H, portrait, right, fps, lead]);
+  }, [result, motion, release, poseRelease, bones, W, H, portrait, right, fps, lead]);
 
   // the shot the viewer played, against when the ball arrived
   const shot = (() => {
@@ -352,9 +351,12 @@ export default function FaceIt({ result, name, pace, onClose }: {
   const stumpsText = !st ? "" : st.hitting ? `hitting the stumps, ${cm(st.height)} up`
     : st.height > STUMP_H + BALL_R && Math.abs(st.x) <= STUMPS_W / 2 + BALL_R ? `over the stumps by ${cm(st.height - STUMP_H)}`
     : `missing ${st.x * offSign > 0 ? "off" : "leg"} stump by ${cm(Math.abs(st.x) - STUMPS_W / 2)}${st.height > STUMP_H + BALL_R ? ", and over them" : ""}`;
-  const swungCm = read ? Math.round(Math.abs(read.path.swung) * 100) : 0;
+  const swungCm = simRead ? Math.round(Math.abs(simRead.path.swung) * 100) : 0;
+  const shownKmh = isReal && tracked ? Math.round(tracked.release.kmh.value) : kmh;
+  const shownLength = isReal && tracked?.pitch ? tracked.pitch.length.value : length;
+  const shownOff = isReal && tracked?.stumps ? tracked.stumps.x.value * offSign : off;
   const stature = result.skeleton.stature_m, ownHeight = result.skeleton.height_source === "user";
-  const summary = read ? `${kmh} km/h, ${lengthName(length).toLowerCase()}, ${lineWord(off)}. Reaches the batter in ${Math.round(read.seconds * 1000)} milliseconds at ${Math.round(read.arriveKmh)} km/h, ${heightWord(read.height)}; ${stumpsText}.` : "";
+  const summary = read ? `${shownKmh} km/h, ${lengthName(shownLength).toLowerCase()}, ${lineWord(shownOff)}. Reaches the batter in ${Math.round(read.seconds * 1000)} milliseconds at ${Math.round(read.arriveKmh)} km/h, ${heightWord(read.height)}; ${stumpsText}.` : "";
 
   return (
     <div className="bio-overlay" role="dialog" aria-modal="true" aria-labelledby="face-title" ref={dialogRef}>
@@ -372,11 +374,11 @@ export default function FaceIt({ result, name, pace, onClose }: {
                 aria-label={`The delivery from the batter's end, in 3D: ${name}'s action rebuilt from the clip, and the ball's flight to the batter`} />
               <div className="face-hud" aria-hidden="true">
                 <div className="face-tag">{view === "eye" ? "BATTER'S EYE" : view === "tracker" ? "BALL TRACKER" : "SIDE ON"} · {rate === 1 ? "REAL TIME" : rate === 0.5 ? "HALF SPEED" : "QUARTER SPEED"}</div>
-                <div className="face-pace"><b>{kmh}</b><span>km/h{measuredKmh !== null && kmh === measuredKmh ? " · measured" : ""}</span></div>
+                <div className="face-pace"><b>{shownKmh}</b><span>km/h{isReal ? " · tracked on this clip" : measuredKmh !== null && kmh === measuredKmh ? " · measured" : ""}</span></div>
                 <div className="face-clock"><b><span ref={clockEl}>0</span></b><span>ms since release</span></div>
                 {phase === "done" && read && (
                   <div className="face-result">
-                    <b>{Math.round(read.seconds * 1000)} ms</b> hand to bat · {lengthName(length)} · {heightWord(read.height)} · {stumpsText}
+                    <b>{Math.round(read.seconds * 1000)} ms</b> hand to bat · {lengthName(shownLength)} · {heightWord(read.height)} · {stumpsText}
                     {shot && <span className={shot.good ? "good" : "miss"}>Your shot: {shot.text}</span>}
                   </div>
                 )}
@@ -396,6 +398,12 @@ export default function FaceIt({ result, name, pace, onClose }: {
                   <button key={v} type="button" className={rate === v ? "on" : ""} aria-pressed={rate === v} onClick={() => setRate(v)}>{label}</button>
                 ))}
               </div>
+              {realRead && (
+                <div className="seg" role="group" aria-label="Which ball">
+                  <button type="button" className={isReal ? "on" : ""} aria-pressed={isReal} onClick={() => setReal(true)}>This ball</button>
+                  <button type="button" className={!isReal ? "on" : ""} aria-pressed={!isReal} onClick={() => setReal(false)}>What if</button>
+                </div>
+              )}
               <div className="seg" role="group" aria-label="The batter">
                 {(["right", "left"] as const).map((v) => (
                   <button key={v} type="button" className={batter === v ? "on" : ""} aria-pressed={batter === v} onClick={() => setBatter(v)}>{v === "right" ? "Right-hander" : "Left-hander"}</button>
@@ -403,6 +411,19 @@ export default function FaceIt({ result, name, pace, onClose }: {
               </div>
             </div>
             <div className="face-grid">
+              {isReal && tracked ? (
+                <div className="face-controls face-real">
+                  <p><b>This is the ball in your video.</b> Its flight was measured from the clip, frame by frame, not simulated.</p>
+                  <dl className="face-read">
+                    <div><dt>Speed</dt><dd><b>{tracked.release.kmh.value.toFixed(1)} km/h</b> out of the hand, ± {tracked.release.kmh.sigma.toFixed(1)}</dd></div>
+                    {tracked.pitch && <div><dt>Pitched</dt><dd><b>{tracked.pitch.length.value.toFixed(2)} m</b> from the stumps ({lengthName(tracked.pitch.length.value)}), ± {cm(tracked.pitch.length.sigma)}</dd></div>}
+                    <div><dt>Swing</dt><dd>{Math.abs(tracked.swing.value) > 1.5 * tracked.swing.sigma && Math.abs(tracked.swing.value) >= 0.03 ? <><b>{cm(tracked.swing.value)}</b> {tracked.swing.value * offSign > 0 ? "away from" : "in to"} the batter</> : "none that can be told apart"}</dd></div>
+                    {tracked.deviation && <div><dt>Off the pitch</dt><dd><b>{Math.abs(tracked.deviation.value).toFixed(1)}°</b> {Math.abs(tracked.deviation.value) < Math.max(0.3, 1.5 * tracked.deviation.sigma) ? "(straight on)" : tracked.deviation.value * offSign > 0 ? "away from the batter" : "in to the batter"}</dd></div>}
+                    <div><dt>Fit</dt><dd>{tracked.used} sightings, {tracked.rmsPx.toFixed(1)} px from the fitted flight{tracked.sun ? ", with the ball's shadow" : ""}</dd></div>
+                  </dl>
+                  <p className="faint">Switch to "What if" to bowl other balls from the same release point.</p>
+                </div>
+              ) : (
               <div className="face-controls">
                 <label><span>Pace <b>{kmh} km/h</b>{measuredKmh !== null ? <em> measured on this clip: {measuredKmh}{pace ? ` (${Math.round(pace.lo)}–${Math.round(pace.hi)})` : ""}</em> : <em> not measured on this clip: set it here</em>}</span>
                   <input type="range" min={70} max={160} step={1} value={kmh} onChange={(e) => setKmh(Number(e.target.value))} aria-valuetext={`${kmh} kilometres an hour`} /></label>
@@ -414,6 +435,7 @@ export default function FaceIt({ result, name, pace, onClose }: {
                   <input type="range" min={-MAX_SWING} max={MAX_SWING} step={0.01} value={swing} onChange={(e) => setSwing(Math.abs(Number(e.target.value)) < 0.015 ? 0 : Number(e.target.value))}
                     aria-valuetext={swungCm < 1 ? "no swing" : `${swungCm} centimetres ${swing > 0 ? "away" : "in"}`} /></label>
               </div>
+              )}
               {read ? (
                 <dl className="face-read">
                   <div><dt>Release point</dt><dd><b>{release.from[1].toFixed(2)} m</b> high, {cm(release.from[0])} wide of middle stump</dd></div>
@@ -429,7 +451,7 @@ export default function FaceIt({ result, name, pace, onClose }: {
             </div>
             <div className="face-bands" role="table" aria-label="The release angle each length needs from this release point, at this pace">
               {bands.map((b, i) => (
-                <div key={b.name} role="row" className={lengthName(length) === b.name ? "on" : ""}>
+                <div key={b.name} role="row" className={lengthName(shownLength) === b.name ? "on" : ""}>
                   <span role="cell" className="sw" style={{ background: BAND_CSS[i] }} />
                   <span role="cell" className="nm">{b.name}</span>
                   <span role="cell" className="rg">{b.from}–{b.to} m</span>
@@ -437,12 +459,21 @@ export default function FaceIt({ result, name, pace, onClose }: {
                 </div>
               ))}
             </div>
+            {isReal && tracked ? (
+            <p className="faint bio-note">
+              This flight is measured, not simulated: the camera was worked out from the pitch's markings, the ball found in {tracked.used} frames, and one path through the air and off the pitch fitted through every sighting ({tracked.rmsPx.toFixed(1)} px off, on average).
+              Speed is good to about ± {tracked.release.kmh.sigma.toFixed(1)} km/h on this clip{tracked.pitch ? `, the length to ± ${cm(tracked.pitch.length.sigma)}` : ""}{tracked.stumps ? `, the height at the stumps to ± ${cm(tracked.stumps.height.sigma)}` : ""}.
+              The margin and height-pays figures, and the angle table, come from the flight model for the same hand, pace and spot. The bowler is stood where this ball was let go.
+              The batter's-eye picture starts on a long lens and opens out as the ball comes; the ball is true to size, drawn with a glow; the amber dot marks where it is 0.2 s before it arrives.
+            </p>
+            ) : (
             <p className="faint bio-note">
               From the clip: the bowler's action, and where the hand is at release ({release.heightMeasured ? "its height is measured on the video" : "its height is the 3D estimate's"}{ownHeight ? "" : `, for a bowler taken as ${stature.toFixed(2)} m tall`}){measuredKmh !== null ? "; the pace, from the frames you marked" : ""}.
               How wide of the stumps the bowler stands is not measured. The flight is physics, not footage: gravity, air drag on a new ball, swing as a steady side force until it pitches, and a firm pitch
               that keeps 55% of the ball's vertical speed and 87% of its speed along the ground; seam movement and spin are left out. The line, the length and the swing are yours to set.
               The batter's-eye picture starts on a long lens and opens out as the ball comes; the ball is true to size, drawn with a glow; the amber dot marks where it is 0.2 s before it arrives.
             </p>
+            )}
           </>
         )}
       </div>

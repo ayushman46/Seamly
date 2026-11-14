@@ -134,6 +134,7 @@ export interface AnalysisMeta {
   source_id?: string | null;   // split from another analysis' video (several deliveries in one clip)
   pair?: string | null;   // the same ball filmed by a second camera (side-on with behind / in front)
   angled?: boolean | null;   // the camera was at an angle to the pitch (view.oblique), kept for lists
+  track?: import("./lib/tracker").TrackRecord | null;   // the ball's measured flight: the pitch marks, the sightings and the headline figures
 }
 
 /** Front-foot no-ball check (lib/crease.ts): the crease edge marked on the landing frame (display px) and the call. */

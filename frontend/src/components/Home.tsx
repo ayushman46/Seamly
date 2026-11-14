@@ -502,7 +502,7 @@ function Uploader({ go, disabled, health, players, current, onChoose, onCreate, 
               <span className="faint"> · </span>
               <button type="button" className="link-btn" disabled={disabled || demoBusy !== null} onClick={() => onDemo("synthetic")}>
                 {demoBusy === "synthetic" ? "Opening…" : "3D test bowler"}</button>
-              {([["netsBehind", "nets from behind"], ["clubFront", "club match from in front"]] as const).map(([k, label]) => (
+              {([["netsBehind", "nets from behind"], ["clubFront", "club match from in front"], ["trackedBall", "tracked test ball"]] as const).map(([k, label]) => (
                 <span key={k}><span className="faint"> · </span>
                   <button type="button" className="link-btn" disabled={disabled || demoBusy !== null} onClick={() => onDemo(k)}>{demoBusy === k ? "Opening…" : label}</button></span>
               ))}

@@ -1346,3 +1346,87 @@ body.pace-measuring { padding-bottom: 150px; }
   .face-grid { grid-template-columns: minmax(0, 1fr); }
   .face-bands { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* ---------- Track the ball (components/BallTracker.tsx) ---------- */
+.bio-overlay:has(.trk-sheet) { background: #04060b; place-items: start center; }
+.trk-sheet { width: min(1500px, 100%); }
+.trk-steps { display: inline-flex; gap: 6px; margin-left: 14px; vertical-align: 2px; font-family: var(--font-body, inherit); }
+.trk-steps b { font-size: 12px; font-weight: 500; letter-spacing: 0; color: var(--c-text-3); padding: 3px 9px; border: 1px solid var(--c-line); border-radius: 999px; }
+.trk-steps b.on { color: var(--c-text); border-color: var(--c-line-3); background: var(--c-surface-2); }
+.trk-body { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(320px, 1fr); gap: 18px; align-items: start; }
+.trk-left { position: sticky; top: 0; }
+.trk-stage { position: relative; border-radius: 12px; overflow: hidden; background: #000; border: 1px solid var(--c-line); }
+.trk-canvas { display: block; width: 100%; height: auto; cursor: crosshair; touch-action: none; }
+.trk-loupe { position: absolute; top: 8px; width: min(170px, 30%); height: auto; aspect-ratio: 1; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.5); box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6); pointer-events: none; display: none; image-rendering: pixelated; }
+.trk-wait { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 10px; background: rgba(4, 6, 11, 0.72); color: #fff; font-size: 14px; }
+.trk-wait progress { width: 220px; accent-color: var(--c-accent); }
+.trk-scrub { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.trk-scrub input[type=range] { flex: 1; min-width: 0; }
+.trk-when { font-size: 12px; color: var(--c-text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.trk-side { display: grid; gap: 12px; align-content: start; font-size: 13px; color: var(--c-text-2); }
+.trk-side .btn.primary { justify-self: start; }
+.trk-lead { margin: 0; line-height: 1.5; }
+.trk-lead b { color: var(--c-text); font-weight: 600; }
+.trk-diagram { width: min(100%, 300px); height: auto; justify-self: center; }
+.trk-diagram .turf { fill: #1c2a22; stroke: var(--c-line-2); }
+.trk-diagram .lines line { stroke: #e5e7eb; stroke-width: 1.4; }
+.trk-diagram .lines .stump { stroke: #fcd34d; stroke-width: 2.4; }
+.trk-diagram .lines text { fill: var(--c-text-3); font-size: 9px; }
+.trk-diagram .pt { cursor: pointer; outline: none; }
+.trk-diagram .pt .hit { fill: transparent; }
+.trk-diagram .pt circle:last-child { fill: #0b0b0c; stroke: #f472b6; stroke-width: 1.6; }
+.trk-diagram .pt.done circle:last-child { fill: #f472b6; }
+.trk-diagram .pt.cur circle:last-child { fill: #fbbf24; stroke: #fbbf24; }
+.trk-diagram .pt:focus-visible .hit { stroke: var(--c-accent); stroke-width: 1.5; }
+.trk-now { margin: 0; display: flex; align-items: center; gap: 8px; min-height: 30px; color: var(--c-text); }
+.trk-now .pulse { width: 9px; height: 9px; border-radius: 50%; background: #fbbf24; flex: none; animation: trk-pulse 1.2s ease-in-out infinite; }
+.trk-now .btn { margin-left: auto; }
+@keyframes trk-pulse { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .trk-now .pulse { animation: none; } }
+.trk-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.trk-row.end { justify-content: flex-end; padding-top: 4px; border-top: 1px solid var(--c-line); margin-top: 2px; padding-top: 12px; }
+.trk-cam { display: grid; gap: 4px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--c-line-2); line-height: 1.45; }
+.trk-cam b { color: var(--c-text); font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+.trk-cam.ok { border-color: rgba(61, 220, 151, 0.35); background: var(--c-accent-soft); }
+.trk-cam.ok b { color: var(--c-accent-text); }
+.trk-cam.bad { border-color: rgba(251, 191, 36, 0.32); background: rgba(251, 191, 36, 0.07); }
+.trk-edit { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--c-line); border-radius: 12px; }
+.trk-edit p { margin: 0; font-size: 12px; }
+.trk-result { display: grid; gap: 12px; }
+.trk-headline { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.trk-headline > div { padding: 12px 14px; border: 1px solid var(--c-line); border-radius: 12px; background: var(--c-surface-1); display: grid; gap: 2px; }
+.trk-headline b { font-family: "Barlow Condensed", "Roboto Condensed", "Arial Narrow", Inter, sans-serif; font-size: 40px; line-height: 1; font-weight: 600; color: var(--c-text); font-variant-numeric: tabular-nums; }
+.trk-headline span { font-size: 12px; color: var(--c-text-2); }
+.trk-headline em { font-style: normal; color: var(--c-text-3); }
+.trk-pics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.trk-pics svg { width: 100%; height: auto; max-height: 300px; border: 1px solid var(--c-line); border-radius: 12px; background: #0d1512; }
+.trk-map .strip { fill: #cdb98f; }
+.trk-map .crease line { stroke: #fff; stroke-width: 1; }
+.trk-map .stump { fill: #fcd34d; }
+.trk-map .pre { fill: none; stroke: #0ea5e9; stroke-width: 1.8; }
+.trk-map .post { fill: none; stroke: #b45309; stroke-width: 1.8; }
+.trk-map .hit { fill: #dc2626; stroke: #fff; stroke-width: 0.8; }
+.trk-map .doubt, .trk-wicket .doubt { fill: rgba(220, 38, 38, 0.2); stroke: rgba(220, 38, 38, 0.7); stroke-width: 0.8; stroke-dasharray: 3 2; }
+.trk-map .cap, .trk-wicket .cap { fill: #9ca3af; font-size: 8px; }
+.trk-wicket .ground { stroke: #3f6b4f; stroke-width: 2; }
+.trk-wicket .stump { fill: #fcd34d; }
+.trk-wicket .ball { fill: #e0333f; stroke: #fff; stroke-width: 0.8; }
+.trk-wicket .ball.missing { fill: #64748b; }
+.trk-wicket .ball.close { fill: #f59e0b; }
+.trk-read { margin: 0; display: grid; font-size: 13px; border: 1px solid var(--c-line); border-radius: 12px; overflow: hidden; }
+.trk-read > div { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 10px; padding: 7px 12px; border-top: 1px solid var(--c-line); }
+.trk-read > div:first-child { border-top: 0; }
+.trk-read dt { color: var(--c-text-3); }
+.trk-read dd { margin: 0; color: var(--c-text-2); }
+.trk-read dd b { color: var(--c-text); font-weight: 600; }
+.trk-read dd em { font-style: normal; color: var(--c-text-3); }
+.btn.has { border-color: rgba(61, 220, 151, 0.4); color: var(--c-accent-text); }
+.face-real p { margin: 0; font-size: 13px; color: var(--c-text-2); }
+.face-real p b { color: var(--c-text); }
+@media (max-width: 980px) {
+  .trk-body { grid-template-columns: minmax(0, 1fr); }
+  .trk-left { position: static; }
+  .trk-steps { display: flex; margin: 6px 0 0; flex-wrap: wrap; }
+}
+.trk-rel { margin-top: 6px; font-size: 12px; color: var(--c-text-3); display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.trk-headline > div.loose b { color: var(--c-text-2); }

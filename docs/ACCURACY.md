@@ -397,6 +397,50 @@ bouncer and a 70 km/h lob all play and report; the dialog closes on Esc and retu
 - The batter's-eye picture uses a long lens on the bowler that opens out as the ball comes, and the ball has a glow,
   so it can be seen on a phone. Timing is real; apparent size early in the flight is not.
 
+## 9f. Ball tracking from one camera (2026-11-15)
+
+**What it is.** `frontend/src/lib/camcal.ts` solves a pinhole camera (zoom, direction, position: seven unknowns) from marked crease corners and stumps, whose places on the ground are fixed by Laws 7 and 8. `lib/ballfind.ts` cancels the camera's own zoom and pan between frames by matching patches, takes a three-frame difference to find small moving blobs, and links them into smooth chains. `lib/balltrack.ts` fits one flight through the sightings by least squares: position and velocity in the air (gravity, drag coefficient 0.45, a swing side-force), the bounce where the flight meets the ground, and a free velocity off the pitch. `lib/tracker.ts` ties them together; `components/BallTracker.tsx` is the screen.
+
+**What one camera cannot see, and what stands in for it.** A picture gives a line of sight, not a distance. Three things fix the distance: the ball is on the known ground when it pitches; gravity and the frame clock; and the release, which is near the popping crease (the front foot the analysis found, on the ground, and the Laws' own 1.22 m). After the bounce the speed kept along the ground leans on a prior (0.87 ± 0.08 of the speed in). In sunshine the ball's shadow is a second line of sight; through a long lens it still leaves one direction open (how far along the pitch the sun pushes shadows), which marking the shadow of something upright closes.
+
+**Uncertainties.** Each figure's ± is the least-squares covariance pushed through to that figure, scaled up when the flight fits worse than a pixel and a half, plus the spread from re-fitting twelve times with the pitch marks nudged by their own misfit, plus 1.5% of the speed for the drag coefficient.
+
+### Checks with exact truth
+
+| Check | Result |
+|---|---|
+| Camera from 12 exact marks, five camera placements (phone low and high, broadcast long lens, behind the batter) | marks reproduced to < 0.02 px; any point above the pitch lands within 0.3 px |
+| Flight from exact sightings (broadcast 25 fps, phone 60 and 30 fps) | speed within 0.5 km/h, length within 5 cm, path within 8 cm everywhere |
+| 120 simulated deliveries with 1.5 px noise on the ball and the marks, release known to ± 0.4 frame and ± 0.3 m | root-mean-square error: speed 5.8 km/h (broadcast 25 fps), 3.8 (phone, high tripod, 60 fps), 1.9 (phone, low, 60 fps); length 6, 7, 12 cm; line 1.2 cm; height at the stumps 8, 5, 3 cm. The truth is inside 2 sigma 88 to 100% of the time |
+| Whole pipeline on frames rendered in the test suite (`tests/tracker.test.ts`: textured turf, painted creases, ball and shadow, 60 fps; 30 fps with no shadow; a camera zooming 1.6x at 50 fps) | every case inside: speed 6 to 9 km/h and 3 sigma, length 30 cm, line 5 cm, height at the stumps 15 cm |
+| Whole product in Chrome on rendered films with the mannequin bowler (`backend/tools/synth_delivery.py`) | phone, 60 fps: 127.3 ± 5.5 km/h (truth 128), length 6.45 m (6.50), swing 12 cm (12.6), height 61 cm (60.5). Full HD, 60 fps (the bundled example): 129.0 ± 4.2 (131), 6.79 m (6.80), line -20 cm (-19.9), swing 14 cm (14.4), height 64 cm (63.1). Broadcast-style zoom at 25 fps, in the test harness: 141.2 ± 3.2 (141), 8.20 m (8.20), height 76.9 cm (76.9) |
+| Camera-movement chain across a 1.7x zoom | the pitch marks carried to within 0.3 px |
+| A release frame deliberately 9 or 14 frames wrong | the ball is still found; the release is taken from the ball; the length is unchanged and the speed's ± widens (to ± 13 to 31 km/h) |
+| Frames with no ball | nothing is reported |
+
+### Real footage: five international deliveries with the speed gun on screen
+
+Clips cut from official BCCI highlights (25 fps, 1080p, a high camera behind the bowler's arm that zooms through the delivery). They are not in the repository. Each was run through the product in Chrome: the analysis, then eight crease corners clicked from coordinates read off a frame, then "Find the ball" with no further help. The gun figure is the broadcaster's graphic for that ball.
+
+| Delivery | Gun (km/h) | Tracked (km/h) | Error | Sightings, fit | Notes |
+|---|---|---|---|---|---|
+| Pace, red ball, sunshine | 133.0 | 142.6 ± 9.1 | +7.2% (1.1 sigma) | 10, 0.8 px | pitched 9.22 m ± 5 cm. In the test harness, where the shadow was matched in 10 frames: 143.4 ± 6.0, and 138.9 ± 2.9 with the umpire's shadow marked for the sun's direction |
+| Spin, red ball | 82.2 | 78.9 ± 4.2 | -4.0% (0.8 sigma) | 22, 1.2 px | pitched 7.05 m; 5° of turn |
+| Spin, red ball | 80.9 | 86.4 ± 4.1 | +6.8% (1.3 sigma) | 23, 1.2 px | pitched 6.41 m; camera marks agreed to 2.0 px |
+| Spin, white ball | 91.6 | about 83 ± 13 | -9.4% (0.7 sigma) | 19, 0.5 px | the analysis had the release 7 frames early (the wrong arm); the release was taken from the ball, and the speed flagged as rough |
+| Spin, white ball | 86.8 | none | | | not found on its own: the analysis had the release 10 frames late. Marked by hand the ball was never seen to pitch before the bat, and the fit gave 55 to 58 ± 21 to 24: no speed worth quoting |
+
+Mean absolute error on the four that tracked: 6.9%. All four are within 1.3 of their own sigma, so the error bars are doing their job; but this is four deliveries, one ground type of camera, and one frame rate. Length, line, swing and height at the stumps have **no ground truth** on real footage here (there is no Hawk-Eye data to compare with); what can be said is that the fitted flights pass within 0.5 to 1.2 px of every sighting, before and after the bounce, with gravity fixed at 9.81, and that scanning the assumed frame rate on the first clip gives the tightest fit at exactly 25 fps.
+
+### What it does not do
+
+- It is not Hawk-Eye: one camera, 25 to 60 frames a second, against six cameras at 340. Speed is the weakest figure; expect ± 4 to 9 km/h from broadcast footage and, by simulation only, ± 2 to 4 from a phone at 60 fps on a high tripod. No phone footage with a radar reading has been tested.
+- It needs both ends' markings (or stumps) in shot on one frame, and a ball that stands out for at least seven frames. A white ball on a pale pitch under cloud, nets with no creases, or a side-on camera will not track.
+- A track that pitches at the bat (a half-volley) has nothing on the ground to fix its distance: the speed is shown as rough or not at all.
+- The pose analysis can pick the wrong arm or moment on broadcast clips (two of five here). The tracker checks the flight against the release and falls back to the ball itself, but a speed needs the release frame: step to it and set it.
+- "Hitting the stumps" is where the fitted flight goes, as if nothing were in the way, with the bounce's kept speed leaning on a prior when few frames follow the bounce.
+- Finding the ball takes 4 to 20 seconds (longer for full HD at 60 fps).
+
 ## 10. Still to do
 
 - Lab validation against marker-based motion capture (real bodies, real knees): the synthetic body can't say whether
