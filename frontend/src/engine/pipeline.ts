@@ -376,7 +376,7 @@ async function stageA(src: FrameSource, opts: Options, models: Models, prog: Pro
   const fps = realFps;   // filters and the lifter work in real time
   kc = hampel(kp, kc, fps);
   let nSwaps: number;
-  [kp, kc, nSwaps] = fixSwaps(kp, kc);
+  [kp, kc, nSwaps] = fixSwaps(kp, kc, 0.25, true);   // a flicker is fixed; limbs that really cross are left
   [kp, kc] = interpolateGaps(kp, kc, fps);
   let kpS = smoothKeypoints(kp, fps);
   // broadcast cameras zoom in after release (phone clips can lose the bowler off the frame edge): end the

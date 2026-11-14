@@ -42,3 +42,17 @@ def test_butterworth_keeps_slow_signal():
     x = np.sin(2 * np.pi * 2 * t)[:, None]
     y = butter_smooth(x, fps=120, cutoff_hz=10)
     assert np.max(np.abs(y - x)) < 0.05
+
+
+def test_fix_swaps_leaves_really_crossed_forearms():
+    """A real front-on delivery: the smoothest path relabels the forearms for 31 of 66 frames and hangs them from the
+    far shoulders; with the check they stay as detected, where a much larger model puts them."""
+    import json
+    from pathlib import Path
+    f = json.loads((Path(__file__).resolve().parents[2] / "frontend/tests/fixtures/front_on_forearms.json").read_text())
+    kp, kc, ref, torso = np.array(f["kp"]), np.array(f["kc"]), np.array(f["ref_wrists"]), np.array(f["torso"])
+    err = lambda k: np.linalg.norm(k[:, [9, 10]] - ref, axis=2) / torso[:, None]
+    bad, _, n_bad = fix_swaps(kp, kc)
+    assert n_bad == 31 and (err(bad) > 0.4).all(1).sum() > 25
+    good, _, n_good = fix_swaps(kp, kc, check_attach=True)
+    assert n_good == 0 and err(good).mean() < 0.2 and (err(good) > 0.4).all(1).sum() <= 1

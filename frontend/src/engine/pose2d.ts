@@ -330,13 +330,28 @@ export function hampel(kp: Arr3, kcIn: Arr2, fps: number, nSigma = 3.0): Arr2 {
 /** Per-chain 2-state Viterbi: choose, per frame, whether the detector's left/right labels are swapped, minimising
  * frame-to-frame keypoint motion (normalised by body height). Returns corrected arrays and the number of frames
  * changed. */
-export function fixSwaps(kpIn: Arr3, kcIn: Arr2, switchCost = 0.25): [Arr3, Arr2, number] {
+// The checks on a relabelled run: the chain's first joint on each side, and the joints that tie it to the body
+// (the shoulders over the hips, the elbows under the shoulders). The legs are not checked: seen side-on the hips and
+// shoulders sit on top of each other and say nothing, and a leg flicker there is the commonest thing this repairs.
+const ATTACH: Record<string, [number, number, number, number]> = { arm: [5, 6, 11, 12], forearm: [7, 8, 5, 6] };
+const ATTACH_MARGIN = 1.25;   // the relabelled tie must be this much longer before the detector is believed over the path
+
+/** checkAttach: following the smoothest motion is right for a detector that flickers, and wrong when the arms really
+ * cross in the picture: a bowler seen from in front turns through the delivery and the arms change sides, and the
+ * smoothest path then relabels the wrong arm for a second (a real front-on clip: 31 of 66 frames, the arms drawn
+ * crossed, against a much larger model that agreed with the detector). So each relabelled run
+ * of the arms is checked against the body: the shoulders against the hips (as the leg chain would label them in those
+ * frames, so a detector that mirrors the whole body is still repaired), the elbows against the shoulders. If
+ * relabelling hangs the limb clearly further from its own side, the detector was right and the run is left alone. */
+export function fixSwaps(kpIn: Arr3, kcIn: Arr2, switchCost = 0.25, checkAttach = false): [Arr3, Arr2, number] {
   const kp = kpIn.map((f) => f.map((p) => p.slice())), kc = kcIn.map((r) => r.slice());
   const T = kp.length;
   if (T < 3) return [kp, kc, 0];
   const h = bodyHeightPx(kp, kc);
   let changed = 0;
-  for (const [L, R] of Object.values(CHAINS)) {
+  let legStates: number[] = [];
+  const chains: [string, [number[], number[]]][] = [...(checkAttach ? [["leg*", CHAINS.leg] as [string, [number[], number[]]]] : []), ...Object.entries(CHAINS)];
+  for (const [name, [L, R]] of chains) {
     const idxA = [...L, ...R], idxB = [...R, ...L];
     const ids = (s: number) => (s === 0 ? idxA : idxB);
     const cost: Arr2 = Array.from({ length: T }, () => [0, 0]);
@@ -371,8 +386,27 @@ export function fixSwaps(kpIn: Arr3, kcIn: Arr2, switchCost = 0.25): [Arr3, Arr2
     for (let t = T - 1; t >= 0; t--) { states[t] = s; s = back[t][s]; }
     // never flip the majority labelling: if most frames are "swapped", the detector labels are consistent
     const flip = states.reduce((a, v) => a + v, 0) / T > 0.5;
+    if (flip) for (let t = 0; t < T; t++) states[t] = 1 - states[t];
+    if (name === "leg*") { legStates = states; continue; }   // only to know how the legs will be labelled when the arms are checked
+    const tie = checkAttach ? ATTACH[name] : undefined;
+    if (tie) {
+      const [jl, jr, al, ar] = tie;
+      const dist = (t: number, a: number, b: number) => Math.hypot(kp[t][a][0] - kp[t][b][0], kp[t][a][1] - kp[t][b][1]);
+      for (let t = 0; t < T;) {
+        if (!states[t]) { t++; continue; }
+        let e = t;
+        while (e < T && states[e]) e++;
+        const asIs: number[] = [], swapped: number[] = [];
+        for (let k = t; k < e; k++) {
+          const flip = name === "arm" && legStates[k] === 1, pl = flip ? ar : al, pr = flip ? al : ar;
+          asIs.push(dist(k, jl, pl) + dist(k, jr, pr)); swapped.push(dist(k, jr, pl) + dist(k, jl, pr));
+        }
+        if (npMedian(swapped) > ATTACH_MARGIN * npMedian(asIs)) for (let k = t; k < e; k++) states[k] = 0;
+        t = e;
+      }
+    }
     for (let t = 0; t < T; t++) {
-      if ((flip ? 1 - states[t] : states[t]) === 0) continue;
+      if (states[t] === 0) continue;
       const pts = idxB.map((j) => kp[t][j].slice()), cs = idxB.map((j) => kc[t][j]);
       idxA.forEach((j, k) => { kp[t][j] = pts[k]; kc[t][j] = cs[k]; });
       changed += 1;

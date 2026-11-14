@@ -3,7 +3,7 @@ import * as THREE from "three";
 import { api } from "../api";
 import type { AnalysisResult } from "../types";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
-import { J, armSpeed, buildMotion, gaussian, kineticChain, replayScript, replayState, sampleJoints, sampleTrack, sides, speedColor, LANDING_X, LANDING_Z, type Callout, type V3 } from "../lib/biomech";
+import { J, armSpeed, buildMotion, gaussian, kineticChain, swingPlane, velocityAt, replayScript, replayState, sampleJoints, sampleTrack, sides, speedColor, LANDING_X, LANDING_Z, type Callout, type V3 } from "../lib/biomech";
 import { BoneBody, SimpleBody, loadBones, type Body, type BoneData, type Limb } from "../lib/bones";
 import { clipExt, clipMime } from "../lib/clip";
 import { IDownload, IPause, IPlay, IRefresh, IUpload, IX } from "./Icons";
@@ -105,6 +105,9 @@ export default function BioReplay({ id, result, name, others = [], onClose }: {
   // a fixed camera chosen by the viewer, instead of the directed sequence's
   const [view, setView] = useState<"director" | "side" | "behind" | "batter" | "top">("director");
   const viewRef = useRef(view);
+  const [vectors, setVectors] = useState(true);   // the swing plane and the hand's velocity arrow
+  const vectorsRef = useRef(vectors);
+  vectorsRef.current = vectors;
   viewRef.current = view;
   // another delivery in the same scene: a second skeleton, in step from its own release, landing on the same spot
   const [ghostId, setGhostId] = useState("");
@@ -229,6 +232,42 @@ export default function BioReplay({ id, result, name, others = [], onClose }: {
     ball.castShadow = true;
     scene.add(ball);
     const T = frames.length, br = script.br, t0 = script.trailFrom;
+    // the swing plane: a sheet of glass through the bowling shoulder that holds the pitch's line and the arm at release,
+    // with its rim and the pitch's line across it; and an arrow on the hand, as long as the hand is fast
+    const plane = swingPlane(result);
+    const glass = new THREE.Group();
+    const glassMats: THREE.MeshBasicMaterial[] = [];
+    if (plane) {
+      const mat = (opacity: number) => { const m = new THREE.MeshBasicMaterial({ color: 0xbfe9ff, transparent: true, opacity, side: THREE.DoubleSide, depthWrite: false, toneMapped: false }); m.userData.o = opacity; glassMats.push(m); return m; };
+      const R = plane.radius;
+      const sheet = new THREE.Mesh(new THREE.CircleGeometry(R, 96), mat(0.17));
+      const rim = new THREE.Mesh(new THREE.RingGeometry(R - 0.02, R, 128), mat(0.9));
+      const inner = new THREE.Mesh(new THREE.RingGeometry(R * 0.5 - 0.004, R * 0.5, 96), mat(0.22));
+      const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), new THREE.Vector3(plane.normal[0], plane.normal[1], plane.normal[2]));
+      for (const o of [sheet, rim, inner]) { o.quaternion.copy(q); o.renderOrder = 3; glass.add(o); }
+      const axis = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.008, 2 * R), mat(0.5));   // the pitch's line, which the plane turns about
+      axis.renderOrder = 3; glass.add(axis);
+      // spokes every 30 degrees, from the pitch's line round the plane
+      const up = new THREE.Vector3(0, 0, 1).cross(new THREE.Vector3(plane.normal[0], plane.normal[1], 0)).normalize();
+      if (up.y < 0) up.negate();
+      for (let i = 1; i < 6; i++) {
+        const a = (i * Math.PI) / 6, d = new THREE.Vector3(0, 0, Math.cos(a)).addScaledVector(up, Math.sin(a));
+        for (const sgn of [1, -1]) {
+          const tick = new THREE.Mesh(new THREE.BoxGeometry(0.006, 0.006, 0.07), mat(0.55));
+          tick.position.copy(d).multiplyScalar(sgn * (R - 0.035)); tick.lookAt(d.clone().multiplyScalar(sgn * 2 * R)); tick.renderOrder = 3; glass.add(tick);
+        }
+      }
+    }
+    glass.visible = false;
+    scene.add(glass);
+    const arrowMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95, toneMapped: false, depthTest: false });
+    const arrow = new THREE.Group();
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, 1, 12), arrowMat), tip = new THREE.Mesh(new THREE.ConeGeometry(0.038, 0.11, 16), arrowMat);
+    shaft.renderOrder = tip.renderOrder = 6;
+    arrow.add(shaft, tip);
+    arrow.visible = false;
+    scene.add(arrow);
+    const yAxis = new THREE.Vector3(0, 1, 0), vDir = new THREE.Vector3();
     // (a slow-motion clip has many frames in the swing: fewer samples a frame keep the ribbon to a few hundred)
     const perFrame = Math.max(1, Math.min(SUB, Math.round(480 / Math.max(1, br - t0))));
     const nS = Math.max(2, (br - t0) * perFrame + 1);
@@ -570,6 +609,40 @@ export default function BioReplay({ id, result, name, others = [], onClose }: {
       tinted = key;
       body.tint([...limbs], limbs.size ? (good ? 0x4ade80 : 0xb4c8ea) : null);
     };
+    // the arm slot, read off the swing plane at release: upright from the shoulder, the arm, and the angle between them
+    let planeShow = 0;
+    const drawSlot = (P: V3[], a: number) => {
+      if (!plane || a < 0.02) return;
+      const o = P[S.shoulder], R = plane.radius, lean = (plane.tilt * Math.PI) / 180;
+      const out = Math.sign(P[S.wrist][0] - o[0]) || 1;
+      const at = (ang: number, r: number): V3 => [o[0] + out * Math.sin(ang) * r, o[1] + Math.cos(ang) * r, o[2]];
+      ctx.save();
+      ctx.globalAlpha = a;
+      ctx.strokeStyle = "rgba(255,255,255,0.85)"; ctx.lineWidth = 1.6 * k; ctx.setLineDash([5 * k, 5 * k]);
+      path([o, at(0, R + 0.1)]); ctx.stroke();
+      ctx.setLineDash([]);
+      if (plane.measured !== null) {
+        const arc: V3[] = [o];
+        for (let i = 0; i <= 16; i++) arc.push(at((lean * i) / 16, R * 0.62));
+        ctx.fillStyle = "rgba(143,216,255,0.32)"; path(arc, true); ctx.fill();
+        ctx.strokeStyle = "#8fd8ff"; ctx.lineWidth = 2 * k; path(arc.slice(1)); ctx.stroke();
+      }
+      const [x, y0, ok] = project(at(0, R + 0.2)), y = Math.max(44 * k, y0);
+      if (ok) {
+        const head = plane.measured !== null ? `ARM SLOT  ${Math.round(plane.measured)}°` : "SWING PLANE";
+        const foot = plane.measured !== null ? "from upright, measured on the video" : "its lean is along this camera's view: film from behind";
+        ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.font = font(19, 600); spaced(0.8);
+        const w = Math.max(ctx.measureText(head).width, 0) + 22 * k;
+        ctx.fillStyle = "rgba(14,20,26,0.78)"; ctx.beginPath(); ctx.roundRect(x - w / 2, y - 30 * k, w, 30 * k, 5 * k); ctx.fill();
+        ctx.fillStyle = "#8fd8ff"; ctx.fillRect(x - w / 2, y - 30 * k, 3 * k, 30 * k);
+        ctx.fillStyle = "#ffffff"; ctx.fillText(head, x, y - 14 * k);
+        spaced(0);
+        ctx.font = semi(11.5, 500); ctx.fillStyle = "rgba(226,232,240,0.85)";
+        ctx.fillText(foot, x, y + 10 * k);
+      }
+      ctx.restore();
+    };
     const hingeTracks = [0, 1, 2, 3].map((l) => motion.hinges.map((h) => h[l]));
     const P: V3[] = frames[0].map(() => [0, 0, 0]);
     let raf = 0, last = performance.now(), lastShown = -1, lastCaption = "";
@@ -625,6 +698,26 @@ export default function BioReplay({ id, result, name, others = [], onClose }: {
         }
         const strobe = st.segment.strobe ? Math.min(1, (st.u * st.segment.dur) / 1.4) * Math.min(1, ((1 - st.u) * st.segment.dur) / 0.5) : 0;
         ghosts.forEach((g) => g.body.fade(strobe * 0.34));
+        // the swing plane rides on the bowling shoulder: it comes up as the arm comes over the top and stays through release
+        planeShow = plane && vectorsRef.current ? Math.max(0, Math.min(1, (st.tf - (br - Math.max(2, 0.12 * fps))) / Math.max(1, 0.06 * fps))) * Math.max(0, Math.min(1, 1 - (st.tf - br - 0.1 * fps) / Math.max(1, 0.1 * fps))) : 0;
+        glass.visible = planeShow > 0.01;
+        if (glass.visible) {
+          const o = P[S.shoulder];
+          glass.position.set(o[0], o[1], o[2]);
+          for (const m of glassMats) m.opacity = (m.userData.o as number) * planeShow;
+        }
+        // the hand's velocity: an arrow from the ball, its length the speed (hidden once the ball has gone)
+        const vel = velocityAt(frames, S.wrist, st.tf, fps), spd = Math.hypot(vel[0], vel[1], vel[2]);
+        arrow.visible = vectorsRef.current && st.segment.trail && st.tf >= t0 && st.tf <= br + 0.01 && spd > 2;
+        if (arrow.visible) {
+          const len = Math.min(1.3, 0.05 * spd), c = speedColor(Math.min(1, (speeds[Math.min(T - 1, Math.round(st.tf))] ?? 0) / top));
+          vDir.set(vel[0] / spd, vel[1] / spd, vel[2] / spd);
+          arrow.position.set(h[0], h[1], h[2]);
+          arrow.quaternion.setFromUnitVectors(yAxis, vDir);
+          shaft.scale.set(1, Math.max(0.01, len - 0.11), 1); shaft.position.set(0, (len - 0.11) / 2, 0);
+          tip.position.set(0, len - 0.055, 0);
+          arrowMat.color.setRGB(Math.min(1, c[0] * 0.8 + 0.2), Math.min(1, c[1] * 0.8 + 0.2), Math.min(1, c[2] * 0.8 + 0.2));
+        }
         if (rival) {
           // the same moment relative to release, in real time
           const t2 = rival.br + ((st.tf - br) / fps) * rival.fps;
@@ -637,12 +730,14 @@ export default function BioReplay({ id, result, name, others = [], onClose }: {
         ctx.drawImage(renderer.domElement, 0, 0, W, H);
         if (strobe > 0.02) drawGhostLabels(strobe);
         drawChain(st.tf, 1 - st.video);
+        if (planeShow > 0.02 && strobe < 0.02) drawSlot(P, planeShow * Math.max(0, Math.min(1, 1 - Math.abs(st.tf - br) / Math.max(1, 0.05 * fps))));
         if (st.callout > 0) drawCallouts(st.segment.callouts, P, st.callout);
       }
       if (st.video > 0) drawVideo(st.tf, st.video, st.segment.trail);
       drawHud(st.title, st.sub, 1 - st.video);
       if (Math.abs(time.current - lastShown) > 0.1 || !playingRef.current) { lastShown = time.current; setShown(time.current); }
-      const cap = st.video >= 1 ? "The video" : [st.title, ...(st.callout > 0.5 ? st.segment.callouts.map((c) => `${c.title}: ${c.detail}`) : [])].filter(Boolean).join(". ");
+      const cap = st.video >= 1 ? "The video" : [st.title, ...(st.callout > 0.5 ? st.segment.callouts.map((c) => `${c.title}: ${c.detail}`) : []),
+        ...(plane?.measured != null && vectorsRef.current && st.callout > 0.5 && Math.abs(st.tf - br) < 0.5 ? [`Arm slot: ${Math.round(plane.measured)} degrees from upright`] : [])].filter(Boolean).join(". ");
       if (cap !== lastCaption) { lastCaption = cap; setCaption(cap); }
     };
     const start = () => { last = performance.now(); raf = requestAnimationFrame(frame); };
@@ -738,6 +833,8 @@ export default function BioReplay({ id, result, name, others = [], onClose }: {
                     onClick={() => { user.current = { az: 0, el: 0 }; setView(v); }}>{label}</button>
                 ))}
               </div>
+              <button type="button" className={"btn sm" + (vectors ? " on" : "")} aria-pressed={vectors} onClick={() => setVectors((v) => !v)}
+                title="The plane the bowling arm comes over in, and the hand's velocity as an arrow">Swing plane</button>
               {others.length > 0 && (
                 <label className="bio-ghost">
                   <span>Compare in 3D</span>

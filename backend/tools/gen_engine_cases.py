@@ -180,6 +180,8 @@ for n in NAMES:
     cases.append({"fn": "fix_swaps", "args": {"kp": kps, "kc": kcs}, "out": [k2, c2, ch]})
     k2, c2, ch = P2.fix_swaps(kps, kcs, 0.05)
     cases.append({"fn": "fix_swaps", "args": {"kp": kps, "kc": kcs, "switch_cost": 0.05}, "out": [k2, c2, ch]})
+    k2, c2, ch = P2.fix_swaps(kps, kcs, 0.05, check_attach=True)   # as the pipeline calls it
+    cases.append({"fn": "fix_swaps", "args": {"kp": kps, "kc": kcs, "switch_cost": 0.05, "check_attach": True}, "out": [k2, c2, ch]})
     # gaps: interior short/long, leading, trailing, joints with 2 / 1 valid samples
     kcg = kc.copy()
     kcg[10:13, 15] = 0; kcg[20:20 + int(0.4 * fps), 16] = 0; kcg[:4, 13] = 0; kcg[T - 5:, 14] = 0
@@ -220,7 +222,7 @@ for n in NAMES:
     # the stage-A chain twice: on float64 copies (TS arithmetic) and on the float32 arrays stage A really uses
     for dtype, (k0, c0) in (("float64", (akp.astype(np.float64), akc.astype(np.float64))), ("float32", (akp, akc))):
         hk = P2.hampel(k0, c0, fps)
-        sk, sc, nsw = P2.fix_swaps(k0, hk)
+        sk, sc, nsw = P2.fix_swaps(k0, hk, check_attach=True)
         ik, ic = P2.interpolate_gaps(sk, sc, fps)
         ks = P2.smooth_keypoints(ik, fps)
         cases.append({"fn": "chain", "args": {"fps": fps, "dtype": dtype},

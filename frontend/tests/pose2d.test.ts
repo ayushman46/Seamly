@@ -89,7 +89,7 @@ describe.each(FIXTURES)("pose2d parity: %s", (name) => {
         sameConf(hampel(a.kp, a.kc, a.fps, a.n_sigma), c.out);
         break;
       case "fix_swaps": {
-        const [kp, kc, n] = fixSwaps(a.kp, a.kc, a.switch_cost);
+        const [kp, kc, n] = fixSwaps(a.kp, a.kc, a.switch_cost, a.check_attach ?? false);
         expect(n).toBe(c.out[2]);
         if (a.switch_cost !== undefined) expect(n).toBeGreaterThan(0);   // the injected swaps are found
         expect(maxDiff(kp, c.out[0])).toBeLessThan(EXACT);
@@ -127,7 +127,7 @@ describe.each(FIXTURES)("pose2d parity: %s", (name) => {
         const [akp, akc] = assemble(asm.args.refined, tracked, asm.args.f0, asm.args.f1);
         const hk = hampel(akp, akc, a.fps);
         sameConf(hk, c.out.kc_hampel);
-        const [sk, sc, nsw] = fixSwaps(akp, hk);
+        const [sk, sc, nsw] = fixSwaps(akp, hk, 0.25, true);
         expect(nsw).toBe(c.out.swaps);
         const [ik, ic] = interpolateGaps(sk, sc, a.fps);
         expect(maxDiff(ik, c.out.kp)).toBeLessThan(tol);
@@ -149,5 +149,48 @@ describe.each(FIXTURES)("pose2d parity: %s", (name) => {
     // stored values are float32 (rounded to 7 decimals in the fixture): ~5e-8 px everywhere, ~3e-5 px where float32
     // padding arithmetic differs; bumrah_behind's window was trimmed after smoothing, which shows near its end
     expect(maxDiff(ks.slice(0, n), sa.kp_s.slice(0, n))).toBeLessThan(1e-4);
+  });
+});
+
+describe("fixSwaps: a flicker is fixed, limbs that really cross are left alone", () => {
+  // shoulders at x = 100 (left) and 160 (right); each elbow and wrist hangs under its own shoulder. In some frames
+  // the detector hands the forearms back swapped.
+  const frame = (swapped: boolean) => {
+    const p: number[][] = Array.from({ length: 17 }, () => [130, 200]);
+    p[5] = [100, 100]; p[6] = [160, 100]; p[11] = [105, 220]; p[12] = [155, 220];
+    p[7] = swapped ? [165, 150] : [95, 150]; p[8] = swapped ? [95, 150] : [165, 150];
+    p[9] = swapped ? [170, 200] : [90, 200]; p[10] = swapped ? [90, 200] : [170, 200];
+    return p;
+  };
+  const conf = (T: number) => Array.from({ length: T }, () => Array(17).fill(0.9) as number[]);
+  it("puts back a two-frame swap of the forearms (the fix shortens their tie to the shoulders)", () => {
+    const kp = Array.from({ length: 40 }, (_, t) => frame(t === 20 || t === 21));
+    for (const check of [false, true]) {
+      const [out, , n] = fixSwaps(kp, conf(40), 0.25, check);
+      expect(n).toBeGreaterThan(0);
+      expect(out[20][7]).toEqual([95, 150]);
+      expect(out[21][10]).toEqual([170, 200]);
+    }
+  });
+  it("leaves the forearms alone when relabelling would hang them from the far shoulders (a real front-on delivery)", () => {
+    // the detector's own keypoints for 66 frames of a club bowler seen from in front; a much larger model's wrists
+    // on the same frames are the reference
+    const f = JSON.parse(readFileSync(join(__dirname, "fixtures", "front_on_forearms.json"), "utf8"));
+    const wristError = (kp: number[][][]) => {
+      let sum = 0, both = 0;
+      kp.forEach((p, t) => {
+        const e = [9, 10].map((j, i) => Math.hypot(p[j][0] - f.ref_wrists[t][i][0], p[j][1] - f.ref_wrists[t][i][1]) / f.torso[t]);
+        sum += (e[0] + e[1]) / 2; if (e[0] > 0.4 && e[1] > 0.4) both++;
+      });
+      return [sum / kp.length, both];
+    };
+    const [bad, , nBad] = fixSwaps(f.kp, f.kc, 0.25, false);
+    expect(nBad).toBe(31);                           // the smoothest path relabels the first half of the clip
+    expect(wristError(bad)[1]).toBeGreaterThan(25);  // ... and puts both wrists on the wrong arms there
+    const [good, , nGood] = fixSwaps(f.kp, f.kc, 0.25, true);
+    expect(nGood).toBe(0);
+    const [err, both] = wristError(good);
+    expect(err).toBeLessThan(0.2);                   // torso lengths
+    expect(both).toBeLessThanOrEqual(1);
   });
 });

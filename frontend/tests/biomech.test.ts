@@ -1,8 +1,9 @@
 /** Bio-mech replay (lib/biomech.ts): the body's travel, the arm's speed, the callouts and the timeline. */
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "fs";
-import { armSpeed, backLegDip, buildMotion, kineticChain, calloutsAt, findFlight, gaussian, replayScript, replayState, sampleJoints, sceneJoints, sides, speedColor, LANDING_Z } from "../src/lib/biomech";
+import { armSpeed, backLegDip, swingPlane, velocityAt, buildMotion, kineticChain, calloutsAt, findFlight, gaussian, replayScript, replayState, sampleJoints, sceneJoints, sides, speedColor, LANDING_Z } from "../src/lib/biomech";
 import type { AnalysisResult } from "../src/types";
+const J_HEAD = 10;
 
 const club = JSON.parse(readFileSync(new URL("../public/samples/club/bundle.json", import.meta.url), "utf8")).result as AnalysisResult;
 const at = (k: "bfc" | "ffc" | "br") => club.events[k]!.frame - club.frames.start;
@@ -280,5 +281,64 @@ describe("the skeleton agrees with what was measured", () => {
       const l = (P: number[][]) => Math.hypot(P[j][0] - P[parents[j]][0], P[j][1] - P[parents[j]][1], P[j][2] - P[parents[j]][2]);
       expect(l(m2.joints[at("br")])).toBeCloseTo(l(m.joints[0]), 2);   // the arm is turned, not stretched
     }
+  });
+});
+
+describe("the swing plane and the vectors", () => {
+  const behind = JSON.parse(readFileSync(new URL("../public/samples/nets-behind/bundle.json", import.meta.url), "utf8")).result as AnalysisResult;
+  const front = JSON.parse(readFileSync(new URL("../public/samples/club-front/bundle.json", import.meta.url), "utf8")).result as AnalysisResult;
+  const slot = (r: AnalysisResult) => r.metrics.find((q) => q.key === "arm_slot_br")!.value!;
+  it("leans the skeleton's bowling arm by the arm slot measured on the video, behind and in front", () => {
+    for (const r of [behind, front]) {
+      const m = buildMotion(r), sp = swingPlane(r)!;
+      expect(m.slotMeasured).toBe(true);
+      expect(sp.measured).toBeCloseTo(slot(r), 6);
+      expect(Math.abs(sp.tilt - slot(r))).toBeLessThan(0.5);      // the arm drawn is the arm measured
+      // ... and the hand stays as high as it was without the lean, to within a few centimetres (leaning an arm that
+      // is already at full stretch lowers it by 1 - cos of the lean)
+      const s = sides(r.bowling_arm.arm === "right");
+      const plain = buildMotion({ ...r, metrics: r.metrics.filter((q) => q.key !== "arm_slot_br") } as AnalysisResult);
+      expect(plain.slotMeasured).toBe(false);
+      expect(Math.abs(m.joints[sp.release][s.wrist][1] - plain.joints[sp.release][s.wrist][1])).toBeLessThan(0.05);
+      // the arm leans out to its own side, away from the head
+      const P = m.joints[sp.release];
+      expect(Math.sign(P[s.wrist][0] - P[s.shoulder][0])).toBe(Math.sign(P[s.shoulder][0] - P[J_HEAD][0]));
+    }
+  });
+  it("changes the arm only round release, and stretches no bone", () => {
+    const m = buildMotion(behind), s = sides(behind.bowling_arm.arm === "right"), br = swingPlane(behind)!.release;
+    const len = (t: number, a: number, b: number) => Math.hypot(m.joints[t][a][0] - m.joints[t][b][0], m.joints[t][a][1] - m.joints[t][b][1], m.joints[t][a][2] - m.joints[t][b][2]);
+    for (const t of [0, br - 3, br, Math.min(m.joints.length - 1, br + 3)]) {
+      expect(len(t, s.shoulder, s.elbow)).toBeCloseTo(len(0, s.shoulder, s.elbow), 2);
+      expect(len(t, s.elbow, s.wrist)).toBeCloseTo(len(0, s.elbow, s.wrist), 2);
+    }
+    // frame to frame the wrist never jumps: the turn is eased in and out
+    const fps = behind.fps_real;
+    for (let t = 1; t < m.joints.length; t++) expect(len(t, s.wrist, s.wrist) + Math.hypot(...[0, 1, 2].map((i) => m.joints[t][s.wrist][i] - m.joints[t - 1][s.wrist][i]))).toBeLessThan(45 / fps);
+  });
+  it("gives the plane that holds the pitch's line and the arm at release: a level unit normal, square to the arm", () => {
+    for (const r of [club, behind, front]) {
+      const sp = swingPlane(r)!, P = sceneJoints(r)[sp.release], s = sides(r.bowling_arm.arm === "right");
+      expect(Math.hypot(...sp.normal)).toBeCloseTo(1, 9);
+      expect(sp.normal[2]).toBe(0);                                  // the pitch's line lies in the plane
+      const a = [0, 1, 2].map((i) => P[s.wrist][i] - P[s.shoulder][i]);
+      expect(Math.abs(a[0] * sp.normal[0] + a[1] * sp.normal[1])).toBeLessThan(1e-9);   // so does the arm
+      expect(sp.radius).toBeGreaterThan(0.5);
+      expect(sp.radius).toBeLessThan(1.0);
+    }
+  });
+  it("gives no number side-on (the lean is along the camera's line of sight), and no plane without a release", () => {
+    expect(buildMotion(club).slotMeasured).toBe(false);
+    expect(swingPlane(club)!.measured).toBeNull();
+    expect(swingPlane({ ...club, events: { ...club.events, br: null } } as AnalysisResult)).toBeNull();
+  });
+  it("gives the hand's velocity as a vector whose length is its speed, eased between frames", () => {
+    const J2 = sceneJoints(club), s = sides(club.bowling_arm.arm === "right"), fps = club.fps_real;
+    const v = velocityAt(J2, s.wrist, at("br"), fps), speed = Math.hypot(...v);
+    expect(speed).toBeGreaterThan(8);
+    expect(speed).toBeLessThan(40);
+    expect(v[2]).toBeLessThan(0);              // towards the batter
+    const a = velocityAt(J2, s.wrist, at("br") - 1, fps), b = velocityAt(J2, s.wrist, at("br") - 0.5, fps);
+    expect(b[2]).toBeCloseTo((a[2] + v[2]) / 2, 6);
   });
 });

@@ -1299,3 +1299,4 @@ body.pace-measuring { padding-bottom: 150px; }
 .bio-tools { display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap; margin-top: 10px; }
 .bio-ghost { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--c-text-2); }
 .bio-ghost select { max-width: 220px; padding: 5px 8px; font-size: 13px; }
+.bio-tools .btn.on { border-color: var(--c-accent); color: var(--c-accent); }

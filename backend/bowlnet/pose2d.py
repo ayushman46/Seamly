@@ -87,17 +87,35 @@ def hampel(kp: np.ndarray, kc: np.ndarray, fps: float, n_sigma: float = 3.0) -> 
     return kc
 
 
-def fix_swaps(kp: np.ndarray, kc: np.ndarray, switch_cost: float = 0.25) -> tuple[np.ndarray, np.ndarray, int]:
+# The checks on a relabelled run: the chain's first joint on each side, and the joints that tie it to the body
+# (the shoulders over the hips, the elbows under the shoulders). The legs are not checked: seen side-on the hips and
+# shoulders sit on top of each other and say nothing, and a leg flicker there is the commonest thing this repairs.
+ATTACH = {"arm": (5, 6, 11, 12), "forearm": (7, 8, 5, 6)}
+ATTACH_MARGIN = 1.25   # the relabelled tie must be this much longer before the detector is believed over the path
+
+
+def fix_swaps(kp: np.ndarray, kc: np.ndarray, switch_cost: float = 0.25,
+              check_attach: bool = False) -> tuple[np.ndarray, np.ndarray, int]:
     """Per-chain 2-state Viterbi: choose, per frame, whether the detector's left/right labels are swapped,
     minimising frame-to-frame keypoint motion (normalised by body height). Returns corrected arrays and the
-    number of frames changed."""
+    number of frames changed.
+
+    check_attach: following the smoothest motion is right for a detector that flickers, and wrong when the arms
+    really cross in the picture: a bowler seen from in front turns through the delivery and the arms change sides,
+    and the smoothest path then relabels the wrong arm for a second (a real front-on clip: 31 of 66 frames, the
+    arms drawn crossed, against a much larger model that agreed with the detector). So each
+    relabelled run of the arms is checked against the body: the shoulders against the hips (as the leg chain would
+    label them in those frames, so a detector that mirrors the whole body is still repaired), the elbows against
+    the shoulders. If relabelling hangs the limb clearly further from its own side, the detector was right and the
+    run is left alone."""
     kp, kc = kp.copy(), kc.copy()
     T = len(kp)
     if T < 3:
         return kp, kc, 0
     h = body_height_px(kp, kc)
     changed = 0
-    for name, (L, R) in CHAINS.items():
+    leg_states = None
+    for name, (L, R) in [("leg*", CHAINS["leg"])] * bool(check_attach) + list(CHAINS.items()):
         idx_a = L + R
         idx_b = R + L
         def pos(t, s):
@@ -130,6 +148,28 @@ def fix_swaps(kp: np.ndarray, kc: np.ndarray, switch_cost: float = 0.25) -> tupl
         # never flip the majority labelling: if most frames are "swapped", the detector labels are consistent
         if states.mean() > 0.5:
             states = 1 - states
+        if name == "leg*":   # only to know how the legs will be labelled when the arms are checked
+            leg_states = states
+            continue
+        if check_attach and name in ATTACH:
+            jl, jr, al, ar = ATTACH[name]
+            t = 0
+            while t < T:
+                if not states[t]:
+                    t += 1
+                    continue
+                e = t
+                while e < T and states[e]:
+                    e += 1
+                f = np.arange(t, e)
+                flip = (leg_states[f] == 1) if name == "arm" else np.zeros(len(f), bool)
+                pl = np.where(flip[:, None], kp[f, ar], kp[f, al])
+                pr = np.where(flip[:, None], kp[f, al], kp[f, ar])
+                as_is = np.linalg.norm(kp[f, jl] - pl, axis=1) + np.linalg.norm(kp[f, jr] - pr, axis=1)
+                swapped = np.linalg.norm(kp[f, jr] - pl, axis=1) + np.linalg.norm(kp[f, jl] - pr, axis=1)
+                if float(np.median(swapped)) > ATTACH_MARGIN * float(np.median(as_is)):
+                    states[t:e] = 0
+                t = e
         for t in np.nonzero(states)[0]:
             kp[t, idx_a] = kp[t, idx_b].copy()
             kc[t, idx_a] = kc[t, idx_b].copy()

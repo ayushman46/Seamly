@@ -301,6 +301,46 @@ What this shows, and what was done:
   side-bend, and the camera's height isn't estimated. From this camera the numbers are good for timing and for
   comparing the same bowler ball to ball, not as absolute values.
 
+## 9d. Joint positions against a much larger pose model (2026-11-14)
+
+How close the browser's keypoints are to the best free reference available here: YOLO11x-pose on a 960 px crop,
+flip-averaged (about 20 times the browser model's size, far too slow for a phone). 550 frames from 15 real clips
+(ten international deliveries, two IPL net clips, three club and net clips). Error is the distance to the reference
+keypoint in torso lengths (shoulders-to-hips), over keypoints the reference is confident about. This is agreement
+with a stronger model, not with motion capture.
+
+| | Whole body | Arms, within 4 frames of release |
+|---|---|---|
+| Browser model as shipped (YOLO11s on a 384 px crop) | 0.111 | 0.137 |
+| The same model on a 640 px crop | 0.102 | 0.127 |
+| YOLO11m on a 640 px crop | 0.094 | 0.115 |
+
+- **The model was not the main problem; the clean-up was.** On 13 of the 15 clips the keypoints the app stores are as
+  good as the detector's own. On the two clips filmed from in front they were far worse (wrists 0.61 and 0.86 of a
+  torso length out, against 0.15 from the detector): the left/right swap repair follows the smoothest motion, and a
+  bowler seen from in front really does cross sides as they turn, so the repair relabelled the arms for 31 of 66
+  frames on one clip and the whole body for 160 of 361 on the other.
+- **Fixed on one, not on the other.** A repair to the arms is now checked against the body (shoulders against hips,
+  elbows against shoulders) and refused where it would hang the limb from the far side. Club clip from in front,
+  re-analysed in Chrome: wrists 0.61 → 0.19, elbows 0.52 → 0.14, frames with both wrists on the wrong arms 20 → 2 of
+  45; its key moments did not move. The bundled "club match from in front" example is that clip and was regenerated.
+  The 100 fps net clip from in front is unchanged (wrists 0.86): there every limb is relabelled together, which looks
+  the same as the whole-body mirroring the repair exists to undo on a figure seen from behind, and a rule that told
+  them apart by the face failed on the faceless test figure. Its key moments and arm are unaffected; its drawn arms
+  are crossed for part of the clip.
+- **A larger crop was tried and not shipped.** Running the same model on a 640 px crop (WebGPU only) is 8% closer to
+  the reference on average, but in Chrome it moved two releases that had been checked by eye on the international
+  clips (one bowler's arm flipped to the wrong side, another's release went three frames late and tripped the
+  hand-height warning), so the gain did not survive contact with the events. Unchanged key moments on six re-run
+  clips (two international, Bumrah, two club, one net) was the bar for the fix that did ship.
+
+**Arm slot in the 3D replay.** From behind or in front, the skeleton's bowling arm at release leaned by a different
+angle from the one measured on the video (ten rear-view analyses: differences of 0 to 39°, because the arm's circle is edge-on
+to the camera and the 3D estimate has least to go on). The replay now turns the arm about the pitch's line to the
+measured arm slot, eased in and out round release, and draws the swing plane through it; the hand ends within 5 cm of
+where it was. Side-on, where the lean lies along the camera's view, the plane is drawn from the 3D estimate and no
+angle is quoted.
+
 ## 10. Still to do
 
 - Lab validation against marker-based motion capture (real bodies, real knees): the synthetic body can't say whether

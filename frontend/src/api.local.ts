@@ -496,7 +496,7 @@ export const SAMPLES = {
 
 export type SampleName = keyof typeof SAMPLES;
 // bump when the bundled sample analyses are regenerated, so a browser that imported an older copy gets the new one
-const SAMPLE_VERSION = 16;
+const SAMPLE_VERSION = 17;
 
 /** A link to one of the built-in examples opens anywhere: import it on first use (the ids are fixed). */
 const sampleImports = new Map<string, Promise<unknown>>();   // the report asks for an analysis and its insights at once

@@ -291,7 +291,7 @@ def analyse(video_path: str, out_dir: Path, opts: Options | None = None,
     kp, kc = assemble(refined_frames, refined_list, det_by_frame, f0, f1)
     fps = real_fps   # filters and the lifter work in real time (slow-motion clips have more frames per second)
     kc = hampel(kp, kc, fps)
-    kp, kc, n_swaps = fix_swaps(kp, kc)
+    kp, kc, n_swaps = fix_swaps(kp, kc, check_attach=True)   # a flicker is fixed; limbs that really cross are left
     kp, kc = interpolate_gaps(kp, kc, fps)
     kp_s = smooth_keypoints(kp, fps)
 

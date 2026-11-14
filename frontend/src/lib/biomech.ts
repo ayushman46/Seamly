@@ -58,6 +58,7 @@ export interface Motion {
   kneesMeasured: boolean;          // the skeleton's knees follow the angles measured on the video (a square side-on camera)
   assumed: boolean;                // the camera can't see along the pitch (behind or in front): the run-in and the
                                    // stride's length are assumed, and the legs are re-solved over the planted feet
+  slotMeasured: boolean;           // the bowling arm leans at release by the arm slot measured on the video (behind or in front)
 }
 
 const ANKLE = 0.08;   // an ankle joint's height when its foot is flat on the ground (m)
@@ -199,10 +200,11 @@ export function buildMotion(result: AnalysisResult): Motion {
   // and if the arm alone can't reach, the trunk is stood up about the hips by what is missing. The change fades
   // out either side of release, so the swing stays the measured swing.
   const rh = result.metrics?.find((q) => q.key === "release_height_pct");
-  if (rh && rh.value !== null && rh.reliability === "measured" && rh.rating !== "unrated") {
+  const sg = Math.max(1.5, 0.07 * fps);
+  const raise = () => {
+    if (!(rh && rh.value !== null && rh.reliability === "measured" && rh.rating !== "unrated")) return;
     const target = (rh.value / 100) * result.skeleton.stature_m;
     const err = target - (rel[br][s.wrist][1] + rootY[br]);
-    const sg = Math.max(1.5, 0.07 * fps);
     /** Turn `joints` about `pivot` so that `tip` rises by dy (as far as its length allows), in its own vertical plane. */
     const lift = (fr: V3[], pivot: number, tip: number, joints: number[], dy: number): number => {
       const O = fr[pivot], v: V3 = [fr[tip][0] - O[0], fr[tip][1] - O[1], fr[tip][2] - O[2]], L = Math.hypot(v[0], v[1], v[2]);
@@ -228,6 +230,34 @@ export function buildMotion(result: AnalysisResult): Motion {
         if (left <= 0.005) break;
         lift(rel[t], J.pelvis, J.thorax, upper, left);
       }
+    }
+  };
+  raise();
+  // 3c. The arm slot (how far the bowling arm leans from upright at release, seen down the pitch) is measured on the
+  // video when the camera is behind or in front. The 3D estimate is weakest exactly there (the arm's circle is edge-on
+  // to the camera), so round release the arm is turned about the pitch's line through the shoulder until it leans by
+  // the measured angle, to the arm's own side; the change fades out either side of release like the height's. Leaning
+  // the arm lowers the hand a little, so the height and the lean are settled together over a few rounds.
+  const slotM = result.metrics?.find((q) => q.key === "arm_slot_br");
+  let slotMeasured = false;
+  if (result.view.view !== "side_on" && slotM && slotM.value !== null && slotM.reliability === "measured" && slotM.rating !== "unrated") {
+    const out = Math.sign(rel[br][s.shoulder][0] - rel[br][J.head][0]) || Math.sign(rel[br][s.wrist][0] - rel[br][s.shoulder][0]) || 1;
+    const leanNow = () => { const a = rel[br][s.wrist], o = rel[br][s.shoulder]; return Math.atan2((a[0] - o[0]) * out, a[1] - o[1]); };
+    const leanTo = () => {
+      const d = (Math.min(85, slotM.value!) * Math.PI) / 180 - leanNow();
+      if (Math.abs(d) < 1e-4) return;
+      for (let t = Math.max(0, Math.floor(br - 3 * sg)); t <= Math.min(T - 1, Math.ceil(br + 3 * sg)); t++) {
+        const ph = d * Math.exp(-0.5 * ((t - br) / sg) ** 2), c = Math.cos(ph), sn = Math.sin(ph), O = rel[t][s.shoulder];
+        for (const j of [s.elbow, s.wrist]) {
+          const x = rel[t][j][0] - O[0], y = rel[t][j][1] - O[1];
+          rel[t][j] = [O[0] + x * c + out * y * sn, O[1] - out * x * sn + y * c, rel[t][j][2]];
+        }
+      }
+    };
+    if (rel[br][s.wrist][1] > rel[br][s.shoulder][1]) {
+      for (let round = 0; round < 3; round++) { leanTo(); raise(); }
+      leanTo();
+      slotMeasured = true;
     }
   }
 
@@ -338,7 +368,7 @@ export function buildMotion(result: AnalysisResult): Motion {
     for (let t = fl.takeoff + 1; t < fl.land; t++) { const low = Math.min(joints[t][s.backAnkle][1], joints[t][s.frontAnkle][1]) - ANKLE; if (low > c) { c = low; apex = t; } }
     flight = { ...fl, apex, clearance: c, length: d };
   }
-  const out: Motion = { joints, hinges, focus, flight, speed, assumed, kneesMeasured };
+  const out: Motion = { joints, hinges, focus, flight, speed, assumed, kneesMeasured, slotMeasured };
   motions.set(result, out);
   return out;
 }
@@ -512,6 +542,50 @@ export function kineticChain(result: AnalysisResult): Chain {
   const timed = fps * (1 - (result.quality?.repeated_frames ?? 0)) >= 90;
   const ordered = timed ? peak.every((p, i) => i === 0 || p >= peak[i - 1] - 0.5) : null;
   return { names: ["Hips", "Trunk", "Arm", "Hand"], speed: raw.map((v, i) => v.map((x) => Math.max(0, Math.min(1, x / Math.max(1e-6, top[i]))))), top, peak, timed, ordered };
+}
+
+export interface SwingPlane {
+  normal: V3;                // the plane's unit normal: level, square to the arm, pointing out to the arm's side
+  radius: number;            // shoulder to the ball at release, metres
+  tilt: number;              // how far the skeleton's arm leans from upright at release, seen down the pitch (degrees)
+  measured: number | null;   // the arm slot measured on the video (a camera behind or in front): the number to quote.
+                             // The skeleton's arm is turned to it, so the plane drawn is the plane measured.
+  release: number;           // the release frame (in the analysis window)
+}
+
+/** The plane the bowling arm comes over in: the one that holds the line of the pitch and the arm at release. An
+ * over-the-top action swings in an upright plane, a round-arm or slinging one in a leaning plane; the lean is the arm
+ * slot. A camera behind or in front sees that lean directly, and it is measured on the video. Side-on the lean is
+ * along the camera's line of sight: the plane is drawn where the 3D estimate puts the arm, and no number is given. */
+export function swingPlane(result: AnalysisResult): SwingPlane | null {
+  const m = buildMotion(result), P = m.joints, T = P.length;
+  const s = sides(result.bowling_arm.arm === "right");
+  if (!result.events.br) return null;
+  const br = Math.max(0, Math.min(T - 1, result.events.br.frame - result.frames.start));
+  const a: V3 = [P[br][s.wrist][0] - P[br][s.shoulder][0], P[br][s.wrist][1] - P[br][s.shoulder][1], P[br][s.wrist][2] - P[br][s.shoulder][2]];
+  const len = Math.hypot(a[0], a[1], a[2]), lat = Math.hypot(a[0], a[1]);
+  if (len < 0.2 || lat < 0.05 || a[1] <= 0) return null;   // no arm, or it points down the pitch or below the shoulder: no plane to speak of
+  // the normal: the pitch's line (z) crossed with the arm, pointed away from the head
+  let n: V3 = [-a[1] / lat, a[0] / lat, 0];
+  const h = P[br][J.head], sh = P[br][s.shoulder];
+  if (n[0] * (sh[0] - h[0]) + n[1] * (sh[1] - h[1]) < 0) n = [-n[0], -n[1], 0];
+  const slot = result.metrics.find((q) => q.key === "arm_slot_br");
+  return {
+    normal: n, radius: len + 0.13, release: br,
+    tilt: (Math.atan2(Math.abs(a[0]), a[1]) * 180) / Math.PI,
+    measured: m.slotMeasured && usable(slot) ? slot!.value! : null,
+  };
+}
+
+/** How fast a joint is moving over the ground at a moment between frames, as a vector (m/s): the difference over the
+ * frames either side, eased between frames. */
+export function velocityAt(frames: V3[][], j: number, tf: number, fps: number): V3 {
+  const T = frames.length, v = (t: number): V3 => {
+    const a = Math.max(0, t - 1), b = Math.min(T - 1, t + 1), k = fps / Math.max(1, b - a);
+    return [(frames[b][j][0] - frames[a][j][0]) * k, (frames[b][j][1] - frames[a][j][1]) * k, (frames[b][j][2] - frames[a][j][2]) * k];
+  };
+  const i = Math.max(0, Math.min(T - 1, Math.floor(tf))), u = Math.max(0, Math.min(1, tf - i)), p = v(i), q = v(Math.min(T - 1, i + 1));
+  return [p[0] + (q[0] - p[0]) * u, p[1] + (q[1] - p[1]) * u, p[2] + (q[2] - p[2]) * u];
 }
 
 /** The lowest the back knee gets between back-foot and front-foot contact, on the skeleton whose knees follow the
