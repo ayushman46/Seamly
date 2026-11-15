@@ -4,6 +4,7 @@ import { api } from "../api";
 import { FrameSource } from "../engine/video";
 import { solveCamera, isCamera, project, cameraEnd, lookDown, worldOf as worldOfMark, PITCH_LEN, POPPING, RETURN_X, STUMP_TOP, STUMP_X, type Camera, type CameraProblem, type Mark, type MarkKind, type End, type Pt } from "../lib/camcal";
 import { snapCorner } from "../lib/snap";
+import { findPitch, pitchFound } from "../lib/autopitch";
 import { poseHints, scan, autoTrack, refit, withDoubt, recordOf, shiftsOf, priorsOf, type Scan, type Sighting, type Upright, type TrackRecord } from "../lib/tracker";
 import { isTracked, type Tracked, type TrackProblem } from "../lib/balltrack";
 import { applyShift, invertShift, STILL, type Shift } from "../lib/ballfind";
@@ -88,6 +89,14 @@ export default function BallTracker({ id, result, meta, name, onClose, onMeta, o
   const [dirty, setDirty] = useState(false);
   const [aim, setAim] = useState<Pt | null>(null);
   const cancel = useRef(false);
+  // how the pitch gets marked: found from its creases with no help, around two taps on the stumps, or corner by corner
+  const [pitchMode, setPitchMode] = useState<"auto" | "taps" | "hand">("auto");
+  const [looking, setLooking] = useState(false);
+  const [taps, setTaps] = useState<Pt[]>([]);
+  const [foundBy, setFoundBy] = useState<"auto" | "taps" | null>(null);
+  const [tapsFailed, setTapsFailed] = useState(false);
+  const goOn = useRef(false);
+  const canView = result.view.view !== "side_on";
 
   // the video, frame by frame
   useEffect(() => {
@@ -133,8 +142,8 @@ export default function BallTracker({ id, result, meta, name, onClose, onMeta, o
   }, [src]);
 
   // what the painter needs, always current
-  const V = useRef({ frame, markFrame, pm, target, step, camera, sc, sightings, upright, tr, mode, shown: -1, aim });
-  V.current = { ...V.current, frame, markFrame, pm, target, step, camera, sc, sightings, upright, tr, mode, aim };
+  const V = useRef({ frame, markFrame, pm, target, step, camera, sc, sightings, upright, tr, mode, shown: -1, aim, taps });
+  V.current = { ...V.current, frame, markFrame, pm, target, step, camera, sc, sightings, upright, tr, mode, aim, taps };
 
   const shiftOf = (f: number): Shift | null => V.current.sc?.shifts.get(f) ?? (f === V.current.markFrame ? STILL : null);
   const paint = useCallback(() => {
@@ -157,6 +166,7 @@ export default function BallTracker({ id, result, meta, name, onClose, onMeta, o
       if (fill) { g.fillStyle = fill; g.fill(); }
       if (stroke) { g.strokeStyle = stroke; g.lineWidth = lw * k; g.stroke(); }
     };
+    if (v.step === "marks") for (const tp of v.taps) { dot(tp, 9, null, "#fbbf24", 2); dot(tp, 2, "#fbbf24", null); }
     if (v.step === "marks" && v.frame === v.markFrame) {
       v.pm.forEach((mk) => {
         const cur = TARGETS[v.target] && TARGETS[v.target].near === mk.near && TARGETS[v.target].kind === mk.kind;
@@ -215,11 +225,11 @@ export default function BallTracker({ id, result, meta, name, onClose, onMeta, o
 
   // show the current frame
   useEffect(() => {
-    if (!src || progress !== null) return;
+    if (!src || progress !== null || looking) return;
     let live = true;
     enqueue(async () => { if (!live) return; await grab(frame); V.current.shown = frame; paint(); }).catch(() => undefined);
     return () => { live = false; };
-  }, [src, frame, progress, enqueue, grab, paint]);
+  }, [src, frame, progress, looking, enqueue, grab, paint]);
   useEffect(() => { paint(); });
 
   // a saved track: put everything back as it was left
@@ -229,6 +239,7 @@ export default function BallTracker({ id, result, meta, name, onClose, onMeta, o
     if (!src || !hints || restored.current) return;
     restored.current = true;
     if (!rec || rec.v !== 1 || !rec.marks?.length) return;
+    setPitchMode("hand");
     const k = src.w / rec.w, sp = (p: Pt): Pt => [p[0] * k, p[1] * k];
     const ms: Mark[] = rec.marks.map((m) => ({ ...m, px: sp(m.px) }));
     const c0 = solveCamera(ms, src.w, src.h);
@@ -244,6 +255,40 @@ export default function BallTracker({ id, result, meta, name, onClose, onMeta, o
     const t = refit(c0, st, shifts, h0, up);
     setTracked(isTracked(t) ? withDoubt(t, c0, ms, st, shifts, h0, up) : t);
   }, [src, hints, meta.track]);
+
+  // marks from the pitch finder, as if they had been tapped
+  const adopt = (ms: Mark[], f: number, by: "auto" | "taps") => {
+    setPm(ms.map((m) => ({ near: m.end === "bowler", kind: m.kind as PKind, px: m.px })));
+    setMarkFrame(f); setFrame(f); setTarget(TARGETS.length); setFoundBy(by); setTaps([]); setTapsFailed(false);
+    setSc(null); setSightings([]); setTracked(null);
+  };
+  // on opening: look for the pitch with no help, on a few frames around the release (a crease hidden behind the
+  // bowler in one is clear in another). Found: straight on to the ball. Not found: ask for two taps.
+  const looked = useRef(false);
+  useEffect(() => {
+    if (!src || !hints || looked.current) return;
+    looked.current = true;
+    if (meta.track?.marks?.length || !canView) { if (!meta.track?.marks?.length) setPitchMode("taps"); return; }
+    let live = true;
+    setLooking(true);
+    (async () => {
+      const clamp = (f: number) => Math.max(hints.first, Math.min(hints.last, f));
+      const tries = [...new Set([hints.releaseFrame - Math.round(0.45 * hints.fps), hints.releaseFrame + Math.round(0.12 * hints.fps), hints.releaseFrame - Math.round(0.9 * hints.fps)].map(clamp))];
+      let got: { marks: Mark[]; f: number } | null = null;
+      for (const f of tries) {
+        const img = await enqueue(async () => (await grab(f)).getImageData(0, 0, src.w, src.h).data);
+        await new Promise((r) => setTimeout(r, 0));
+        if (!live) return;
+        const r = findPitch(img, src.w, src.h);
+        if (pitchFound(r)) { got = { marks: r.marks, f }; break; }
+      }
+      if (!live) return;
+      V.current.shown = -1;
+      if (got) { adopt(got.marks, got.f, "auto"); setPitchMode("auto"); goOn.current = true; } else setPitchMode("taps");
+      setLooking(false);
+    })().catch(() => { if (live) { setPitchMode("taps"); setLooking(false); } });
+    return () => { live = false; };
+  }, [src, hints]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   // the dialog: Esc closes, the page behind stays put, arrows step frames
   const frames = step === "ball" && sc ? sc.frames : null;
@@ -282,6 +327,19 @@ export default function BallTracker({ id, result, meta, name, onClose, onMeta, o
   };
   const place = (p: Pt) => {
     if (!src || V.current.shown !== frame) return;
+    if (step === "marks" && pitchMode !== "hand") {
+      if (pm.length || looking) return;
+      const two = [...taps, p].slice(-2);
+      setTaps(two);
+      if (two.length < 2) return;
+      // two taps on the stumps: find the creases around them
+      const [far, near] = two[0][1] <= two[1][1] ? two : [two[1], two[0]];
+      const img = frameCanvas.current!.getContext("2d", { willReadFrequently: true })!.getImageData(0, 0, src.w, src.h);
+      const r = Math.hypot(near[0] - far[0], near[1] - far[1]) > 0.08 * src.h ? findPitch(img.data, src.w, src.h, { near, far }) : null;
+      if (pitchFound(r, true)) adopt(r.marks, frame, "taps");
+      else { setTaps([]); setTapsFailed(true); }
+      return;
+    }
     if (step === "marks") {
       if (frame !== markFrame && pm.length) return;
       const tg = TARGETS[Math.min(target, TARGETS.length - 1)];
@@ -369,6 +427,7 @@ export default function BallTracker({ id, result, meta, name, onClose, onMeta, o
   const remove = async () => {
     try { onMeta(await api.patch(id, { track: null })); } catch (e) { flash((e as Error).message, true); return; }
     setPm([]); setTarget(0); setSc(null); setSightings([]); setUpright(null); setTracked(null); setStep("marks"); setDirty(false);
+    setPitchMode("taps"); setFoundBy(null); setTaps([]);
     setFrame(hints?.releaseFrame ?? frame);
   };
 
@@ -381,13 +440,16 @@ export default function BallTracker({ id, result, meta, name, onClose, onMeta, o
     return wi >= 0 ? { err: w, label: TARGETS.find((t) => t.near === pm[wi]?.near && t.kind === pm[wi]?.kind)?.label ?? "" } : null;
   }, [camera, marks, pm]);
   const usable = camera && camera.rms < Math.max(4, (src?.w ?? 1920) / 300);
-  const canView = result.view.view !== "side_on";
+  // the pitch was found with no help: go straight on to the ball
+  useEffect(() => {
+    if (goOn.current && camera && usable && progress === null && step === "marks") { goOn.current = false; void findBall(); }
+  });
 
   return (
     <div className="bio-overlay trk-overlay" role="dialog" aria-modal="true" aria-labelledby="trk-title" ref={dialogRef}>
       <div className="bio-sheet trk-sheet">
         <div className="bio-head">
-          <h2 id="trk-title">Track the ball <span className="trk-steps"><b className={step === "marks" ? "on" : ""}>1 Mark the pitch</b><b className={step === "ball" && !tr ? "on" : ""}>2 Find the ball</b><b className={tr ? "on" : ""}>3 The delivery</b></span></h2>
+          <h2 id="trk-title">Track the ball <span className="trk-steps"><b className={step === "marks" ? "on" : ""}>1 Find the pitch</b><b className={step === "ball" && !tr ? "on" : ""}>2 Find the ball</b><b className={tr ? "on" : ""}>3 The delivery</b></span></h2>
           <button type="button" className="btn icon sm ghost" onClick={onClose} aria-label="Close (Esc)"><IX size={16} /></button>
         </div>
         {error ? <div className="notice warn" role="alert">{error}</div> : !hints && src ? <div className="notice warn" role="alert">This analysis has no release frame, so there is nowhere to start looking for the ball.</div> : (
@@ -402,11 +464,12 @@ export default function BallTracker({ id, result, meta, name, onClose, onMeta, o
                   onPointerLeave={() => setAim(null)} />
                 <canvas ref={loupeRef} width={170} height={170} className="trk-loupe" aria-hidden="true" />
                 {!src && <div className="trk-wait">Opening the video…</div>}
+                {looking && <div className="trk-wait"><div>Looking for the pitch…</div></div>}
                 {progress !== null && <div className="trk-wait"><div>Looking for the ball… {Math.round(progress * 100)}%</div><progress value={progress} max={1} /><button type="button" className="btn sm" onClick={() => { cancel.current = true; }}>Stop</button></div>}
               </div>
               <div className="trk-scrub">
                 <button type="button" className="btn icon sm" onClick={() => stepFrame(-1)} aria-label="Previous frame"><IPrev size={15} /></button>
-                <input type="range" aria-label="Frame" disabled={progress !== null || (step === "marks" && pm.length > 0)}
+                <input type="range" aria-label="Frame" disabled={progress !== null || looking || (step === "marks" && pm.length > 0)}
                   min={frames ? 0 : hints?.first ?? 0} max={frames ? frames.length - 1 : hints?.last ?? 0} value={frames ? Math.max(0, frames.indexOf(frame)) : frame}
                   onChange={(e) => setFrame(frames ? frames[Number(e.target.value)] : Number(e.target.value))} />
                 <button type="button" className="btn icon sm" onClick={() => stepFrame(1)} aria-label="Next frame"><INext size={15} /></button>
@@ -422,23 +485,53 @@ export default function BallTracker({ id, result, meta, name, onClose, onMeta, o
               {step === "marks" ? (
                 <>
                   {!canView && <div className="notice warn">This clip was filmed from the side. Tracking the ball needs the camera behind the bowler's arm or behind the batter, with both ends of the pitch in view.</div>}
-                  <p className="trk-lead">Tap the crease corners and stumps you can see, <b>at least four, from both ends</b>. More marks make a better camera. Press, slide to aim with the magnifier, let go.{pm.length === 0 ? " Pick a frame where both ends are in view first (the slider)." : ""}</p>
-                  <PitchDiagram pm={pm} target={target} onPick={setTarget} />
-                  <p className="trk-now">{target < TARGETS.length ? <><span className="pulse" /> {TARGETS[target].label}</> : "All points marked."}
-                    {target < TARGETS.length && <button type="button" className="btn sm ghost" onClick={() => setTarget((target + 1) % TARGETS.length)}>Skip</button>}</p>
-                  <div className="trk-row">
-                    <button type="button" className="btn sm" disabled={!pm.length} onClick={() => { const last = pm[pm.length - 1]; setPm(pm.slice(0, -1)); setTarget(TARGETS.findIndex((t) => t.near === last.near && t.kind === last.kind)); }}>Undo</button>
-                    <button type="button" className="btn sm" disabled={!pm.length} onClick={() => { setPm([]); setTarget(0); }}>Clear</button>
-                  </div>
-                  {cam && !isCamera(cam) && <div className="notice warn" role="status">{cam.text}</div>}
-                  {camera && (
+                  {looking ? <p className="trk-lead"><span className="pulse" /> Looking for the pitch: its creases are painted at distances the Laws fix, and that is all the camera needs.</p>
+                    : pitchMode !== "hand" && !pm.length ? (
+                      <>
+                        <p className="trk-lead"><b>Tap the middle stump at each end</b>, where it meets the ground. Seamly finds the creases around your two taps and works the camera out from them.{" "}
+                          {taps.length === 1 ? "Now the other end." : "Pick a frame where both ends are in view first (the slider)."}</p>
+                        {tapsFailed && <div className="notice warn" role="status">The creases could not be picked out around those taps: they may be faint, worn or hidden in this frame. Try another frame, or mark the corners yourself.</div>}
+                        <div className="trk-row">
+                          <button type="button" className="btn sm" disabled={!taps.length} onClick={() => setTaps([])}>Clear</button>
+                          <button type="button" className="btn sm ghost" onClick={() => { setPitchMode("hand"); setTaps([]); }}>Mark the corners by hand instead</button>
+                        </div>
+                      </>
+                    ) : pitchMode !== "hand" ? (
+                      <>
+                        <p className="trk-lead"><ICheck size={14} /> <b>Pitch found {foundBy === "auto" ? "on its own" : "around your two taps"}.</b> The blue lines are the pitch as the camera sees it: they should sit on the creases at both ends.</p>
+                        <div className="trk-row">
+                          <button type="button" className="btn sm" onClick={() => { setPm([]); setTarget(0); setFoundBy(null); setTaps([]); setPitchMode("taps"); }}>Not right: tap the stumps</button>
+                          <button type="button" className="btn sm ghost" onClick={() => setPitchMode("hand")}>Adjust the corners by hand</button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <p className="trk-lead">Tap the crease corners and stumps you can see, <b>at least four, from both ends</b>. More marks make a better camera. Press, slide to aim with the magnifier, let go.{pm.length === 0 ? " Pick a frame where both ends are in view first (the slider)." : ""}</p>
+                        <PitchDiagram pm={pm} target={target} onPick={setTarget} />
+                        <p className="trk-now">{target < TARGETS.length ? <><span className="pulse" /> {TARGETS[target].label}</> : "All points marked."}
+                          {target < TARGETS.length && <button type="button" className="btn sm ghost" onClick={() => setTarget((target + 1) % TARGETS.length)}>Skip</button>}</p>
+                        <div className="trk-row">
+                          <button type="button" className="btn sm" disabled={!pm.length} onClick={() => { const last = pm[pm.length - 1]; setPm(pm.slice(0, -1)); setTarget(TARGETS.findIndex((t) => t.near === last.near && t.kind === last.kind)); }}>Undo</button>
+                          <button type="button" className="btn sm" disabled={!pm.length} onClick={() => { setPm([]); setTarget(0); }}>Clear</button>
+                        </div>
+                        {cam && !isCamera(cam) && <div className="notice warn" role="status">{cam.text}</div>}
+                        {camera && (
+                          <div className={`trk-cam ${usable ? "ok" : "bad"}`} role="status">
+                            <b>{usable ? <><ICheck size={14} /> Camera found</> : "The marks don't agree yet"}</b>
+                            <span>{pm.length} marks agree to {camera.rms.toFixed(1)} px. The camera is {camera.pos[1].toFixed(1)} m up, {Math.abs(cameraEnd(camera) === "bowler" ? camera.pos[2] : camera.pos[2] + PITCH_LEN).toFixed(0)} m behind the {cameraEnd(camera) === "bowler" ? "bowler's" : "batter's"} stumps, looking down {lookDown(camera).toFixed(0)}°.</span>
+                            <span>The blue lines are the pitch as this camera sees it: they should sit on the creases and stumps.{!usable && worstMark ? ` Furthest out: ${worstMark.label.toLowerCase()} (${worstMark.err.toFixed(0)} px). Tap it in the diagram and mark it again.` : ""}</span>
+                          </div>
+                        )}
+                        <div className="trk-row"><button type="button" className="btn sm ghost" onClick={() => { setPm([]); setTarget(0); setFoundBy(null); setTaps([]); setPitchMode("taps"); }}>Start again with two taps on the stumps</button></div>
+                      </>
+                    )}
+                  {pitchMode !== "hand" && camera && (
                     <div className={`trk-cam ${usable ? "ok" : "bad"}`} role="status">
-                      <b>{usable ? <><ICheck size={14} /> Camera found</> : "The marks don't agree yet"}</b>
-                      <span>{pm.length} marks agree to {camera.rms.toFixed(1)} px. The camera is {camera.pos[1].toFixed(1)} m up, {Math.abs(cameraEnd(camera) === "bowler" ? camera.pos[2] : camera.pos[2] + PITCH_LEN).toFixed(0)} m behind the {cameraEnd(camera) === "bowler" ? "bowler's" : "batter's"} stumps, looking down {lookDown(camera).toFixed(0)}°.</span>
-                      <span>The blue lines are the pitch as this camera sees it: they should sit on the creases and stumps.{!usable && worstMark ? ` Furthest out: ${worstMark.label.toLowerCase()} (${worstMark.err.toFixed(0)} px). Tap it in the diagram and mark it again.` : ""}</span>
+                      <b>{usable ? <><ICheck size={14} /> Camera found</> : "The camera does not fit yet"}</b>
+                      <span>The camera is {camera.pos[1].toFixed(1)} m up, {Math.abs(cameraEnd(camera) === "bowler" ? camera.pos[2] : camera.pos[2] + PITCH_LEN).toFixed(0)} m behind the {cameraEnd(camera) === "bowler" ? "bowler's" : "batter's"} stumps, looking down {lookDown(camera).toFixed(0)}°.</span>
                     </div>
                   )}
-                  <button type="button" className="btn primary" disabled={!usable || progress !== null || !canView} onClick={findBall}><ITarget size={15} /> Find the ball</button>
+                  <button type="button" className="btn primary" disabled={!usable || progress !== null || !canView || looking} onClick={findBall}><ITarget size={15} /> Find the ball</button>
                 </>
               ) : (
                 <>

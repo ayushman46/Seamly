@@ -435,11 +435,48 @@ Mean absolute error on the four that tracked: 6.9%. All four are within 1.3 of t
 ### What it does not do
 
 - It is not Hawk-Eye: one camera, 25 to 60 frames a second, against six cameras at 340. Speed is the weakest figure; expect ± 4 to 9 km/h from broadcast footage and, by simulation only, ± 2 to 4 from a phone at 60 fps on a high tripod. No phone footage with a radar reading has been tested.
-- It needs both ends' markings (or stumps) in shot on one frame, and a ball that stands out for at least seven frames. A white ball on a pale pitch under cloud, nets with no creases, or a side-on camera will not track.
+- It needs both ends' markings (or stumps) in shot on one frame (found automatically, around two taps, or marked by hand: §9g), and a ball that stands out for at least seven frames. A white ball on a pale pitch under cloud, nets with no creases, or a side-on camera will not track.
 - A track that pitches at the bat (a half-volley) has nothing on the ground to fix its distance: the speed is shown as rough or not at all.
 - The pose analysis can pick the wrong arm or moment on broadcast clips (two of five here). The tracker checks the flight against the release and falls back to the ball itself, but a speed needs the release frame: step to it and set it.
 - "Hitting the stumps" is where the fitted flight goes, as if nothing were in the way, with the bounce's kept speed leaning on a prior when few frames follow the bounce.
 - Finding the ball takes 4 to 20 seconds (longer for full HD at 60 fps).
+
+## 9g. Finding the pitch without marking it, and two guards against false tracks (2026-11-15)
+
+**What it is.** `frontend/src/lib/autopitch.ts` finds the crease pattern in one frame. Whiteness is smoothed along each line's own direction and thin ridges are kept; lines across the picture are voted for one at a time (each one's pixels removed before the next, so a bold popping crease does not hide the faint bowling crease beside it); sets of four whose spacing is the Laws' spacing in perspective (0, 1.22, 18.90, 20.12 m) are kept, with a hidden bowling crease filled in from the other three; return creases are short upright ridges that cross the bowling crease, reach the popping crease and carry on behind (a wide guide line or a stump does not); four corners give a ground homography, the whole pattern is scored against the paint, and the camera is polished against every stretch of crease that can be seen. A fit is refused if the bowling crease runs on past a "return crease" (the pattern laid over part of the pitch), if the strip between the creases is grass-green, or if the camera would be tilted sideways or somewhere no camera could be. The answer is the same eight corner marks a person would tap, so everything downstream is unchanged.
+
+Two ways in: with no help (accepted only at a high bar: both ends, all four return creases), or around **two taps on the middle stumps**, which tell it where to look and let fainter paint through. Corner-by-corner marking remains.
+
+| Check | Result |
+|---|---|
+| Rendered pitches with exact truth (`tests/autopitch.test.ts`: noise, mowing stripes, wide guide lines, blocks standing where the umpire, bowler, batter and keeper hide the creases) | every corner within 1.5 px (empty pitch) and 2 px (with people); faint paint with two taps 9 px off: within 2.5 px. No pitch in view, or a strip with no creases: nothing found, with or without taps |
+| Rendered broadcast-style film (`synth_delivery.py`), no taps | corners 1.5 px from the truth on average, worst 2.1 |
+| Four BCCI frames marked by hand earlier, two taps | 0.9, 2.0, 1.9 and 3.8 px from the hand marks on average (the hand marks are themselves good to a pixel or two) |
+| Fifteen real broadcast frames, no taps | 2 accepted, both right; 13 declined; none accepted wrongly |
+| Thirteen real broadcast frames, two taps read off the frame by eye | 7 accepted, all right by eye; 6 declined (soft, heavily compressed pictures in which the creases are barely there) |
+| In Chrome on the five BCCI clips | pitch found with no taps on three, with two taps on the other two |
+| 22 more clips from a public set of compressed broadcast deliveries (Hugging Face `taha1418/Cricket_Delivery_Videos`, test use only, not in the repository), no taps | pitch found on 1; the rest asked for taps. On the five of these tried with two taps, found on 1. These pictures are too soft for the finder; it says so rather than guessing |
+
+**What it does not do.** It is built for a camera that looks down the pitch from height (a broadcast camera, a club's streaming camera, a phone on the pavilion balcony). From a phone at head height behind the stumps the far creases are a few pixels apart and it will usually decline; mark the stumps and corners by hand there. An earlier version accepted a half-width fit on one real frame and a wrong fit on the rendered phone view; the checks above are what refuse those now, and both are in the tests or were re-run.
+
+**Two guards added to the ball finder,** both from a real failure: with the pitch found on a different frame, one spin delivery came back as 160 km/h.
+
+- *A limb is not a ball.* The bowling analysis's skeleton is carried into the tracker. A flight with more than a quarter of its sightings on the bowler's body (within 0.3 of a torso length of a limb) is refused.
+- *A flight cannot start before the release, and a release taken from the ball must start at the bowler.* With the analysis's release frame, sightings more than 1.2 frames ahead of it are refused. When the release has to be taken from the ball itself, the first sighting must be within a torso and a half of the bowler in a frame where the bowler was found: a ball first picked up half-way down the pitch fits just as well as one released there at twice the speed, and that is exactly what the 160 km/h was.
+
+`tests/tracker.test.ts` covers both. The five BCCI deliveries, re-run in Chrome through the new flow (pitch found by the app, no corner marking):
+
+| Delivery | Gun (km/h) | Tracked (km/h) | Error | Pitch found |
+|---|---|---|---|---|
+| Pace, red ball | 133.0 | 142.3 ± 9.1 | +7.0% | two taps |
+| Spin, red ball | 82.2 | 78.9 ± 4.2 | -4.0% | two taps |
+| Spin, red ball | 80.9 | 86.8 ± 4.1 | +7.3% | on its own |
+| Spin, white ball | 91.6 | about 97 ± 13 (flagged rough) | +5.9% | on its own |
+| Spin, white ball | 86.8 | none: "could not be picked out" | | on its own |
+
+Mean absolute error on the four that tracked: 6.1%, each within 1.5 of its own sigma. The speeds match the hand-marked runs in §9f to within 0.4 km/h on three; the fourth moved from 83 to 97 because the pitch was found on a different frame of a zooming shot, which is the size of change its ± 13 allows. The accuracy of the speed itself has not improved: it is still a single 25 fps camera. What changed is that nobody has to mark the pitch, and a wrong answer that used to be possible is now refused.
+
+**Hugging Face.** Searched for a model that could do this job better (2026-11-15): there is no cricket ball tracker or pitch-keypoint model of usable quality (one hobby YOLOv8 ball detector trained on a Kaggle set, with weights under a licence that does not suit a product; TrackNet weights for tennis and badminton only). The public delivery-video set above was the useful find: about a third of its clips show the speed gun, but most are too compressed for the creases to be found, so it did not enlarge the speed-gun table.
 
 ## 10. Still to do
 

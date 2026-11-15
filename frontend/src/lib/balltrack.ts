@@ -624,6 +624,8 @@ export interface PickOpts {
   sigma?: number;             // how well a found ball's centre is known, pixels (default 1.5)
   hand?: Pt | null;           // the bowling hand in the picture at release: the flight starts there
   handTol?: number;           // how near, pixels
+  startOk?: (first: { frame: number; px: Pt }, second: { frame: number; px: Pt }) => boolean;   // may this flight begin where it does?
+  onBody?: (s: { frame: number; px: Pt }) => boolean;   // is this sighting on the bowler's body? A flight that mostly is, is a limb
   crossPx?: number;           // how close two chains must come to count as crossing (default 18)
   /** Take the release from each chain itself (a frame before its first sighting, give or take a frame and a half)
    * rather than from the bowling analysis: for when the analysis has the release frame wrong. */
@@ -764,8 +766,11 @@ export function pickBall<T extends { t: number; px: Pt; weight?: number }>(cam: 
       }
       // found on its own, a ball has to earn it: at least seven sightings, and the flight within a pixel and a half of them
       let ok = believable(g, pri) && seen.length >= 7 && g.rmsPx <= Math.max(1.6, sigma);
+      let limb = 0;
+      if (ok && o.onBody) { limb = (seen as unknown as { frame: number; px: Pt }[]).filter(o.onBody).length; ok = limb <= Math.max(2, 0.25 * seen.length); }
+      if (ok && o.startOk && seen.length > 1) { const fs = seen as unknown as { frame: number; px: Pt }[]; ok = o.startOk(fs[0], fs[1]); if (!ok) o.debug?.("  does not start at the bowler"); }
       if (ok && o.hand) { const q = project(cam, g.rel); ok = !!q && Math.hypot(q[0] - o.hand[0], q[1] - o.hand[1]) < (o.handTol ?? 60); }
-      o.debug?.(`chain of ${n} -> ${seen.length} (t ${seen[0].t.toFixed(3)}-${seen[seen.length - 1].t.toFixed(3)}): ${g.kmh.toFixed(0)} km/h from ${g.rel.map((v) => v.toFixed(2))} pitch ${g.pitch?.map((v) => v.toFixed(2))} lastZ ${g.lastZ.toFixed(1)} rms ${g.rmsPx.toFixed(2)} ok ${ok} miss ${seen.map((x) => { const q = predictPx(sol!, x.t); return q ? Math.hypot(q[0] - x.px[0], q[1] - x.px[1]).toFixed(1) : "-"; }).join(",")} up ${g.up?.toFixed(2)} after ${g.after}`);
+      o.debug?.(`chain of ${n} -> ${seen.length} (t ${seen[0].t.toFixed(3)}-${seen[seen.length - 1].t.toFixed(3)}): ${g.kmh.toFixed(0)} km/h from ${g.rel.map((v) => v.toFixed(2))} pitch ${g.pitch?.map((v) => v.toFixed(2))} lastZ ${g.lastZ.toFixed(1)} rms ${g.rmsPx.toFixed(2)} ok ${ok} miss ${seen.map((x) => { const q = predictPx(sol!, x.t); return q ? Math.hypot(q[0] - x.px[0], q[1] - x.px[1]).toFixed(1) : "-"; }).join(",")} up ${g.up?.toFixed(2)} after ${g.after} on body ${limb}`);
       // more sightings are better, but not ones the flight has to bend to reach (the ball off the bat, say)
       const score = g.used - 6 * Math.max(0, g.rmsPx - 1);
       if (ok && (!best || score > best.score)) best = { seen, score, pri };

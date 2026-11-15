@@ -201,3 +201,33 @@ export function lookDown(c: Camera): number {
 }
 /** Which end the camera is behind. */
 export const cameraEnd = (c: Camera): End => (c.pos[2] > -PITCH_LEN / 2 ? "bowler" : "batter");
+
+/** What the camera saw of a known place: a point, or (with `n`, a unit normal in the picture) a point on a line across `n`. */
+export interface Sight { world: V3; px: Pt; n?: Pt }
+/**
+ * Polish a camera against sightings, some of which are only known to lie on a line in the picture (a point somewhere
+ * along a painted crease says where the crease is across its width, not where along it). Far-off sightings are held
+ * back (their pull levels off beyond `clip` pixels) so that one bad one cannot drag the camera.
+ */
+export function refineCamera(start: Camera, sights: Sight[], clip = 3): Camera | null {
+  if (sights.length < 6) return null;
+  const { w, h } = start;
+  const soft = (r: number) => { const a = Math.abs(r) / clip; return a <= 1 ? r : Math.sign(r) * clip * Math.sqrt(2 * a - 1); };
+  const resid = (q: number[]) => {
+    const c = fromParams(q, w, h), out: number[] = [];
+    for (const s of sights) {
+      const p = project(c, s.world);
+      if (!p) { if (s.n) out.push(1e3); else out.push(1e3, 1e3); continue; }
+      const dx = p[0] - s.px[0], dy = p[1] - s.px[1];
+      if (s.n) out.push(soft(dx * s.n[0] + dy * s.n[1])); else out.push(soft(dx), soft(dy));
+    }
+    return out;
+  };
+  const fit = levenbergMarquardt(resid, [Math.log(start.f), ...rotVec(start.R), ...start.t], [1e-4, 1e-5, 1e-5, 1e-5, 1e-3, 1e-3, 1e-3], 60);
+  const c = fromParams(fit.x, w, h), R = c.R;
+  const pos: V3 = [-(R[0] * c.t[0] + R[3] * c.t[1] + R[6] * c.t[2]), -(R[1] * c.t[0] + R[4] * c.t[1] + R[7] * c.t[2]), -(R[2] * c.t[0] + R[5] * c.t[1] + R[8] * c.t[2])];
+  const r = resid(fit.x);
+  const rms = Math.sqrt(r.reduce((s, v) => s + v * v, 0) / r.length);
+  if (!(pos[1] > 0.05) || !Number.isFinite(rms)) return null;
+  return { ...c, pos, rms, worst: Math.max(...r.map(Math.abs)), marks: sights.length };
+}

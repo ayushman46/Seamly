@@ -34,6 +34,8 @@ export interface PoseHints {
   time: (frame: number) => number; // real seconds (slow motion undone)
   fps: number;                     // real frames per second
   first: number; last: number;     // the frames of this shot (inclusive)
+  body?: (frame: number, px: Pt) => boolean;   // is this point (that frame's pixels) on the bowler's body?
+  bodyGap?: (frame: number, px: Pt) => number | null;   // how far from the bowler's body, in torso lengths (null: no pose in that frame)
 }
 
 /** What the bowling analysis knows that the tracker needs, in the tracker's pixels (a picture `w` wide). */
@@ -65,7 +67,27 @@ export function poseHints(r: AnalysisResult, w: number): PoseHints | null {
   const slow = Math.max(1, r.options.slowmo_factor || 1), fpsV = r.video.fps || r.fps;
   const t0 = r.frames.times[t] ?? br / fpsV;
   const shot = r.video.shots?.find((s) => br >= s.start && br < s.end) ?? { start: 0, end: r.video.frame_count };
+  // The bowler's body, frame by frame: within a limb's width of the skeleton. A swinging arm or a trailing leg is
+  // a small fast thing that falls and rises much as a ball does; the ball leaves the body within a frame or two.
+  const BONES = [[5, 7], [7, 9], [6, 8], [8, 10], [5, 6], [5, 11], [6, 12], [11, 12], [11, 13], [13, 15], [12, 14], [14, 16], [0, 5], [0, 6]];
+  const bodyGap = (f: number, px: Pt): number | null => {
+    const q = r.keypoints2d.xy[f - r.frames.start], c = r.keypoints2d.conf[f - r.frames.start];
+    if (!q || !c) return null;
+    const ok = (j: number) => c[j] > 0.2;
+    if (![5, 6, 11, 12].every(ok)) return null;
+    const torso = Math.max(8, Math.hypot((q[5][0] + q[6][0] - q[11][0] - q[12][0]) / 2, (q[5][1] + q[6][1] - q[11][1] - q[12][1]) / 2) * k);
+    let best = Infinity;
+    for (const [a, b] of BONES) {
+      if (!ok(a) || !ok(b)) continue;
+      const ax = q[a][0] * k, ay = q[a][1] * k, bx = q[b][0] * k, by = q[b][1] * k, dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy;
+      const t = L > 0 ? Math.max(0, Math.min(1, ((px[0] - ax) * dx + (px[1] - ay) * dy) / L)) : 0;
+      best = Math.min(best, Math.hypot(px[0] - ax - t * dx, px[1] - ay - t * dy));
+    }
+    return best / torso;
+  };
+  const body = (f: number, px: Pt): boolean => { const g = bodyGap(f, px); return g !== null && g <= 0.3; };
   return {
+    body, bodyGap,
     releaseFrame: br, hand, ankles, releaseHeight,
     time: (f) => { const i = f - r.frames.start; return (r.frames.times[i] ?? t0 + (f - br) / fpsV) / slow; },
     fps: r.fps_real || fpsV * slow, first: shot.start, last: shot.end - 1,
@@ -230,12 +252,28 @@ export function autoTrack(cam: Camera, sc: Scan, h: PoseHints, upright?: Upright
   // can have the wrong arm or the wrong moment), the best flight from that release without the hand; and failing
   // that, the best flight anywhere after it, with the release taken from the ball itself.
   const cross = Math.max(18, 0.3 * scale);
+  const onBody = h.body ? (s: { frame: number; px: Pt }) => h.body!(s.frame, applyShift(invertShift(sc.shifts.get(s.frame) ?? STILL), s.px)) : undefined;
   const pool = fs.flatMap((f) => sc.cands.get(f)!.map((c) => ({ frame: f, t: h.time(f), px: c.px, blob: c.blob, weight: 1 })));
-  let pick = pickBall(cam, trimmed, P.pri, { hand: P.hand, handTol: P.handTol, crossPx: cross, budgetMs: 3000, pool, debug })
-    ?? (P.hand ? pickBall(cam, trimmed, P.pri, { crossPx: cross, budgetMs: 1500, pool, debug }) : null);
+  // Taking the release from the ball's first sighting is only right when that sighting is the ball leaving the
+  // hand. A ball first picked up half-way down the pitch fits just as well as a ball released there twice as
+  // fast, so the first sighting must be at the bowler: within a torso and a half of the body (plus what the ball
+  // covers in a frame), in a frame where the bowler was found.
+  const back0 = (s: { frame: number; px: Pt }): Pt => applyShift(invertShift(sc.shifts.get(s.frame) ?? STILL), s.px);
+  const startOk = h.bodyGap ? (a: { frame: number; px: Pt }, b: { frame: number; px: Pt }) => {
+    const g = h.bodyGap!(a.frame, back0(a));
+    if (g === null) return false;
+    const g2 = h.bodyGap!(b.frame, back0(b));
+    // leaving, not passing: the next sighting is no nearer the body
+    return g <= 1.5 && (g2 === null || g2 >= g - 0.2);
+  } : undefined;
+  // With the analysis's release, a flight cannot begin before it: sightings more than a frame ahead of the release
+  // are something else (an arm coming over, a fielder).
+  const frameT = 1 / h.fps, notEarly = (a: { frame: number; px: Pt }, b: { frame: number; px: Pt }) => h.time(a.frame) >= P.pri.releaseT - 1.2 * frameT && (!startOk || startOk(a, b));
+  let pick = pickBall(cam, trimmed, P.pri, { hand: P.hand, handTol: P.handTol, crossPx: cross, budgetMs: 3000, pool, onBody, startOk: (a) => h.time(a.frame) >= P.pri.releaseT - 1.2 * frameT, debug })
+    ?? (P.hand ? pickBall(cam, trimmed, P.pri, { crossPx: cross, budgetMs: 1500, pool, onBody, startOk: notEarly, debug }) : null);
   let hints = h;
   if (!pick) {
-    pick = pickBall(cam, trimmed, { ...P.pri, releaseZ: -0.9, releaseZSigma: 0.45 }, { crossPx: cross, fromChain: true, budgetMs: 3000, pool, debug });
+    pick = pickBall(cam, trimmed, { ...P.pri, releaseZ: -0.9, releaseZSigma: 0.45 }, { crossPx: cross, fromChain: true, budgetMs: 3000, pool, onBody, startOk, debug });
     if (pick) {
       // the frame nearest the release the ball implies; nothing else is taken from the pose
       const tRel = pick.pri.releaseT;

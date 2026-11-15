@@ -157,6 +157,26 @@ describe("ball tracking, end to end, on a rendered delivery", () => {
     expect(Math.abs(a.tracked.pitch!.length.value - 7.5)).toBeLessThan(0.35);   // the length does not need the release
     expect(a.tracked.release.kmh.sigma).toBeGreaterThan(4);
   }, 60000);
+  it("will not take a flight that rides on the bowler's body: a swinging arm is not a ball", async () => {
+    const F = film({ fps: 60, kmh: 126, length: 6.4, line: 0.06, swing: 0.12 }), { cam, getter, hints } = setup(F, F.release - 2);
+    const sc = (await scan(getter, cam, F.release - 2, hints))!;
+    expect(autoTrack(cam, sc, { ...hints, body: () => true }, null)).toBeNull();
+    // the ball leaving the hand is on the body for a frame or two, and that is allowed
+    const early = autoTrack(cam, sc, { ...hints, body: (f) => f <= F.release + 2 }, null);
+    expect(early).not.toBeNull();
+  }, 60000);
+  it("takes the release from the ball only when the ball is first seen at the bowler, not half-way down the pitch", async () => {
+    const F = film({ fps: 30, kmh: 112, length: 7.5, line: -0.1, swing: -0.1 }), { cam, getter, hints } = setup(F, F.release - 2);
+    const wrong: PoseHints = { ...hints, releaseFrame: F.release + 14, hand: [100, 100], ankles: [] };
+    const sc = (await scan(getter, cam, F.release - 2, wrong))!;
+    // the bowler is nowhere near where the flight starts (or was not found in that frame): no flight is offered
+    expect(autoTrack(cam, sc, { ...wrong, bodyGap: () => 6 }, null)).toBeNull();
+    expect(autoTrack(cam, sc, { ...wrong, bodyGap: () => null }, null)).toBeNull();
+    // the flight starts at the bowler: taken, with the release marked as rough
+    const a = autoTrack(cam, sc, { ...wrong, bodyGap: (f) => 0.4 + 0.5 * Math.max(0, f - F.release) }, null);
+    expect(a).not.toBeNull();
+    expect(a!.hints.releaseTSigma).toBe(1.5);
+  }, 60000);
   it("finds nothing in frames with no ball, rather than something", async () => {
     const F = film({ fps: 30, kmh: 112, length: 7.5, line: -0.1, swing: 0 }), { cam, hints } = setup(F, F.release - 2);
     const empty: FrameGetter = { w: W, h: H, get: async (f) => F.frames[Math.min(f, F.release)] };   // the same picture, over and over
