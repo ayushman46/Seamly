@@ -294,7 +294,7 @@ export function SiteFooter({ compact = false }: { compact?: boolean }) {
           <a href={`${REPO_URL}/issues`} target="_blank" rel="noreferrer">Report a problem</a>
         </div>
         <p className="footer-credits">
-          {DISCLAIMER} Pose: <a href="https://github.com/ultralytics/ultralytics" target="_blank" rel="noreferrer">YOLO11</a> (AGPL-3.0).
+          {DISCLAIMER} Pose: <a href="https://github.com/open-mmlab/mmpose/tree/main/projects/rtmpose" target="_blank" rel="noreferrer">RTMPose and RTMO</a> (OpenMMLab, Apache-2.0).
           3D: <a href="https://github.com/Walter0807/MotionBERT" target="_blank" rel="noreferrer">MotionBERT</a> and <a href="https://github.com/naver/anny" target="_blank" rel="noreferrer">Anny</a> (NAVER LABS Europe).
           3D replay bones: <a href="https://simtk.org/projects/full_body" target="_blank" rel="noreferrer">OpenSim full-body model</a> (Rajagopal et al. 2016).
           Example clips:{" "}

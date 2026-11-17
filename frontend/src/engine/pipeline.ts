@@ -332,14 +332,21 @@ async function stageA(src: FrameSource, opts: Options, models: Models, prog: Pro
   // interpolate boxes over short tracker gaps so the refiner still gets a crop
   const known = [...detByFrame.keys()].sort((a, b) => a - b);
   const boxes = new Map<number, number[]>();
+  // How visible each joint is, from the full-frame model. The crop model (RTMPose) places a joint it cannot see
+  // about as confidently as one it can (it is trained to guess occluded joints), while the full-frame model's
+  // confidence falls to near nothing on a hidden joint: a face seen from behind, an arm behind the trunk. The
+  // engine's reading of which way the bowler faces and which arm bowls rests on that, so the crop model's
+  // confidence is capped by it.
+  const seen = new Map<number, number[]>();
   for (let fr = f0; fr < f1; fr++) {
     const d = detByFrame.get(fr);
-    if (d) { boxes.set(fr, d.box); continue; }
+    if (d) { boxes.set(fr, d.box); seen.set(fr, d.kcs); continue; }
     let prev: number | null = null, next: number | null = null;
     for (const k of known) { if (k < fr) prev = k; else if (k > fr && next === null) next = k; }
     if (prev !== null && next !== null && next - prev <= Math.trunc(0.5 * info.fps)) {
-      const a = (fr - prev) / (next - prev), pb = detByFrame.get(prev)!.box, nb = detByFrame.get(next)!.box;
-      boxes.set(fr, pb.map((v, i) => (1 - a) * v + a * nb[i]));
+      const a = (fr - prev) / (next - prev), pd = detByFrame.get(prev)!, nd = detByFrame.get(next)!;
+      boxes.set(fr, pd.box.map((v, i) => (1 - a) * v + a * nd.box[i]));
+      seen.set(fr, pd.kcs.map((v, i) => (1 - a) * v + a * nd.kcs[i]));
     }
   }
 
@@ -367,7 +374,18 @@ async function stageA(src: FrameSource, opts: Options, models: Models, prog: Pro
     const jp = jpeg(disp, FRAME_JPEG_QUALITY);
     if (onFrame) onFrame(fr, jp); else frames.set(fr, jp);
     const b = boxes.get(fr);
-    refined.push(b ? await models.pose.refineCrop(v, W, H, b, fr) : null);
+    const rp = b ? await models.pose.refineCrop(v, W, H, b, fr) : null, vis = seen.get(fr);
+    if (rp && vis) rp.kcs = rp.kcs.map((c, j) => Math.min(c, 0.15 + 1.2 * vis[j]));
+    // A crop holds whoever is in it. When the umpire or the non-striker overlaps the bowler, a top-down model can
+    // take one of their limbs for the bowler's; the full-frame model finds each person whole. Where the two put a
+    // joint far apart (more than 15% of the bowler's height) and the full-frame model is sure of its own, the crop
+    // model's joint is marked down, and the full-frame one is used in its place when the keypoints are assembled.
+    const whole = detByFrame.get(fr);
+    if (rp && whole) {
+      const far = 0.15 * (whole.box[3] - whole.box[1]);
+      rp.kcs = rp.kcs.map((c, j) => (whole.kcs[j] >= 0.5 && Math.hypot(rp.kps[j][0] - whole.kps[j][0], rp.kps[j][1] - whole.kps[j][1]) > far ? Math.min(c, 0.1) : c));
+    }
+    refined.push(rp);
     prog.stage("pose2d", (fr - f0 + 1) / nWin);
   }
   checkRepeats(info, f0, f1, realFps, opts);
