@@ -83,7 +83,7 @@ export function armAngles(dets: Detection[], sh: number, wr: number, minConf = 0
   return [frames, ang];
 }
 
-export function bestSweep(dets: Detection[], fps: number, side: Arm): ArmSweep | null {
+export function bestSweep(dets: Detection[], fps: number, side: Arm, peakInside = false): ArmSweep | null {
   const [sh, wr] = side === "left" ? [L_SH, L_WR] : [R_SH, R_WR];
   const [f, a] = armAngles(dets, sh, wr);
   if (f.length < 5) return null;
@@ -115,8 +115,11 @@ export function bestSweep(dets: Detection[], fps: number, side: Arm): ArmSweep |
   const pw = Math.max(3, pyRound(0.05 * fps));
   let peak = 0.0, peakF = s0;
   for (let j = 0; j < steps.length; j++) {
+    // the fastest moment of this sweep: the arm can turn faster somewhere else in the clip (the other way in the
+    // follow-through, or on a misread frame), and that is not when the ball is bowled
+    if (peakInside && (steps[j][0] < s0 || steps[j][1] > s1)) continue;
     let acc = 0.0, k = j;
-    while (k < steps.length && (k === j || steps[k][1] - steps[j][0] <= pw)) {
+    while (k < steps.length && (!peakInside || steps[k][1] <= s1) && (k === j || steps[k][1] - steps[j][0] <= pw)) {
       acc += steps[k][2];
       k += 1;
     }
@@ -144,13 +147,13 @@ export function overhead(dets: Detection[]): number {
 }
 
 export function scoreTracks(tracks: Map<number, Detection[]>, shot: number, fps: number, frameH: number,
-  stride = 1): TrackScore[] {
+  stride = 1, peakInside = false): TrackScore[] {
   const out: TrackScore[] = [];
   const minLen = Math.max(5, pyRound((0.5 * fps) / stride));
   for (const [tid, dets] of tracks) {
     if (dets.length < minLen) continue;
     const hs = dets.map((d) => d.box[3] - d.box[1]);
-    const sweeps = [bestSweep(dets, fps, "left"), bestSweep(dets, fps, "right")].filter((s): s is ArmSweep => !!s);
+    const sweeps = [bestSweep(dets, fps, "left", peakInside), bestSweep(dets, fps, "right", peakInside)].filter((s): s is ArmSweep => !!s);
     const sweep = sweeps.length ? sweeps.reduce((m, s) => (s.sweep_deg > m.sweep_deg ? s : m)) : null;
     const over = overhead(dets);
     let score = 0.0;

@@ -15,7 +15,7 @@ import { FrameSource, repeatedFraction, segmentShots, signature, sigDistance, vi
 import { IDENTITY, MotionEstimator, appearance, detectionsByTrack, toGrey, track, type FrameDets, FLOW_SIZE } from "./tracking";
 import { isDelivery, scoreTracks, trackScoreDict, type Detection, type TrackScore, type TrackScoreDict } from "./bowler";
 import { assemble, bodyHeightPx, fixSwaps, hampel, interpolateGaps, smoothKeypoints } from "./pose2d";
-import { armPeakSpeed, classifyView, decideBowlingArm, detectEvents, facingDirection, stabilise, strideAcross, wristLift } from "./events";
+import { armPeakSpeed, bestUpswing, classifyView, decideBowlingArm, detectEvents, facingDirection, stabilise, strideAcross, wristLift } from "./events";
 import { estimateWorldFrame, reconstruct } from "./kinematics";
 import { FEET_OUT_TIP, HAND_OUT_TIP, compute, feetOutOfFrame, handOutOfFrame, type Ctx } from "./metrics";
 import { coach } from "./coaching";
@@ -87,7 +87,7 @@ export interface StageA {
 export interface Models { pose: PoseModels; lifter: Lifter }
 
 let modelsP: Promise<Models> | null = null;
-/** Load (once) the detection and lifting models; ~70 MB, cached by the browser after the first visit. */
+/** Load (once) the detection and lifting models; ~110 MB, cached by the browser after the first visit. */
 export function loadModels(onProgress?: (f: number) => void): Promise<Models> {
   if (!modelsP) {
     let a = 0, b = 0;
@@ -158,18 +158,35 @@ function usableLength(kc: Arr2, motions: (number[][] | undefined)[], peak: numbe
   const T = kc.length;
   const start = Math.max(0, Math.min(T, peak + Math.max(2, Math.round(0.1 * fps))));
   let zoom = 1;
+  // "Collapses" is against the clip's own level: in a close-up the legs are out of the picture from the first frame,
+  // so the average over the body is low throughout, and that is not the tracking failing.
+  const body = (t: number) => kc[t].slice(5).reduce((a, b) => a + b, 0) / 12;
+  const lead = kc.slice(0, Math.max(1, Math.min(T, peak + 1))).map((_, t) => body(t)).sort((a, b) => a - b);
+  const floor = Math.min(minConf, 0.75 * lead[lead.length >> 1]);
   for (let t = Math.max(1, peak + 1); t < T; t++) {
     const m = motions[t];
     if (m) zoom *= Math.sqrt(Math.abs(m[0][0] * m[1][1] - m[0][1] * m[1][0]));
-    const mc = kc[t].slice(5).reduce((a, b) => a + b, 0) / 12;
-    if (t >= start && (mc < minConf || zoom > maxZoom)) return t;
+    if (t >= start && (body(t) < floor || zoom > maxZoom)) return t;
   }
   return T;
 }
 
+/** The ball is bowled before it is played. A batter lifting and swinging the bat turns the arms through as wide an
+ * arc as a bowler does, and can outscore the bowler; but the swing comes a fraction of a second after the release.
+ * So when a second person, in the picture at the same time, made a comparable arm sweep 0.25 to 1.2 s before the
+ * top-scoring one, that earlier person is the bowler and the top scorer is the batter. `list` is best first. */
+function bowlerFirst(list: TrackScore[], stride: number, fps: number): TrackScore[] {
+  const top = list[0];
+  if (!top?.sweep) return list;
+  const earlier = list.find((d) => d !== top && !!d.sweep && d.shot === top.shot && d.track !== top.track && d.score >= 0.6 * top.score
+    && d.legs_visibility >= 0.5 && Math.min(d.last, top.last) - Math.max(d.first, top.first) >= 5 * stride
+    && top.sweep!.peak_frame - d.sweep.peak_frame >= 0.25 * fps && top.sweep!.peak_frame - d.sweep.peak_frame <= 1.2 * fps);
+  return earlier ? [earlier, ...list.filter((d) => d !== earlier)] : list;
+}
+
 function select(info: VideoInfo, perShot: Map<number, Detection[]>, opts: Options, stride: number, fps: number): [TrackScore[], TrackScore] {
   let scores: TrackScore[] = [];
-  for (const [si, dets] of perShot) scores = scores.concat(scoreTracks(detectionsByTrack(dets), si, fps, info.height, stride));
+  for (const [si, dets] of perShot) scores = scores.concat(scoreTracks(detectionsByTrack(dets), si, fps, info.height, stride, true));
   scores.sort((a, b) => b.score - a.score);
   let deliveries = scores.filter((s) => isDelivery(s));
   if (opts.shot !== null && perShot.has(opts.shot)) {
@@ -178,12 +195,13 @@ function select(info: VideoInfo, perShot: Map<number, Detection[]>, opts: Option
   }
   if (!deliveries.length) {
     // a clip that starts (or ends) mid-swing measures only part of the arm's sweep (short clips cut from edited footage)
-    const top = scores[0], sw = top?.sweep;
+    const top = bowlerFirst(scores, stride, fps)[0], sw = top?.sweep;
     const cut = !!sw && (sw.start_frame - top.first <= stride || top.last - sw.end_frame <= stride);
     if (sw && (sw.sweep_deg > 150 || (cut && sw.sweep_deg >= 120 && sw.peak_speed >= 450))) deliveries = [top];
     else throw new AnalysisError("We couldn't find a bowling delivery in this video. Make sure the bowler's full body is visible "
       + "from run-up to follow-through, ideally filmed side-on or from behind the bowler.");
   }
+  deliveries = bowlerFirst(deliveries, stride, fps);
   const best = deliveries[0].score;
   deliveries = deliveries.filter((d, i) => i === 0 || (d.legs_visibility >= 0.5 && d.score >= 0.4 * best));
   const uniq: TrackScore[] = [];
@@ -226,7 +244,7 @@ export async function analyseVideo(file: Blob, options: Partial<Options>, onProg
   let lastProgress: Parameters<ProgressCb>[0] | null = null;
   const prog = new Progress((p) => { lastProgress = p; onProgress?.(p); });
   const t0 = performance.now();
-  const loading = (await modelsCached()) ? "Loading the analysis models" : "Downloading the analysis models (first time only, about 70 MB)";
+  const loading = (await modelsCached()) ? "Loading the analysis models" : "Downloading the analysis models (first time only, about 110 MB)";
   prog.stage("probe", 0, loading);
   const models = await loadModels((f) => prog.stage("probe", 0.9 * f, loading));
   prog.stage("probe", 0.92, "Reading video");
@@ -271,7 +289,7 @@ async function stageA(src: FrameSource, opts: Options, models: Models, prog: Pro
     const [h, p] = sigDistance(sigs.get(scanFrames[i - 1])!, sigs.get(scanFrames[i])!);
     hd.push(h); pd.push(p);
   }
-  info.shots = segmentShots(hd, pd, scanFrames, n, info.fps);
+  info.shots = segmentShots(hd, pd, scanFrames, n, info.fps, true);
   // a stride-1 scan has seen consecutive frames: the repeated-frame check can run before the expensive 2D pass
   if (scanStride === 1) scanFrames.slice(1).forEach((f, i) => info.frameDiff.set(f, pd[i]));
   const usable = info.shots.map((s, i) => [i, s] as const).filter(([, s]) => s.end - s.start >= Math.max(10, Math.trunc(0.4 * info.fps)));
@@ -287,6 +305,7 @@ async function stageA(src: FrameSource, opts: Options, models: Models, prog: Pro
   const shot = info.shots[chosen.shot];
   const tracks = detectionsByTrack(perShot.get(chosen.shot)!);
   let bowlerDets = tracks.get(chosen.track)!;
+  let others: Map<number, Detection[]> = new Map([...tracks].filter(([id]) => id !== chosen.track));   // everyone else, at the best rate scanned
   if (scanStride > 1) {
     const pk0 = chosen.sweep!.peak_frame;
     const w0 = Math.max(shot.start, bowlerDets[0].frame, pk0 - Math.trunc(2.5 * realFps));
@@ -303,22 +322,41 @@ async function stageA(src: FrameSource, opts: Options, models: Models, prog: Pro
       whd.push(h); wpd.push(p);
       info.frameDiff.set(wf[i], p);
     }
-    const sub = segmentShots(whd, wpd, wf, w1, info.fps).find((x) => x.start <= pk0 && pk0 < x.end);
+    const sub = segmentShots(whd, wpd, wf, w1, info.fps, true).find((x) => x.start <= pk0 && pk0 < x.end);
     const lo = Math.max(w0, sub?.start ?? w0), hi = Math.min(w1, sub?.end ?? w1);
     if (lo > w0 || hi < w1) fds = fds.filter((fd) => fd.frame >= lo && fd.frame < hi);
     fds[0] = { ...fds[0], motion: IDENTITY };
-    const full = detectionsByTrack(track(fds, info.fps));
     for (const fd of fds) motions.set(fd.frame, fd.motion);
-    const scanBoxes = new Map(bowlerDets.map((d) => [d.frame, d.box]));
-    const overlap = (dets: Detection[]) => {
-      const ious = dets.filter((d) => scanBoxes.has(d.frame)).map((d) => boxIou(d.box, scanBoxes.get(d.frame)!));
-      return (ious.length ? ious.reduce((a, b) => a + b, 0) / ious.length : 0) * Math.min(1, ious.length / 5);
-    };
-    let best: Detection[] | null = null, bo = -1;
-    for (const v of full.values()) { const o = overlap(v); if (o > bo) { bo = o; best = v; } }
-    if (best && bo > 0.3) {
-      const got = new Set(best.map((d) => d.frame));
-      bowlerDets = [...best, ...bowlerDets.filter((d) => !got.has(d.frame) && d.frame >= lo && d.frame < hi)].sort((a, b) => a.frame - b.frame);
+    // The strided scan chose the bowler; every frame of the window now has its own detections. Each frame's bowler
+    // is the detection that lies where the scan's bowler is at that moment (between the two scanned frames either
+    // side of it). Tracking the window afresh instead can swap two people as they cross: a bowler running past the
+    // umpire came out of it as the umpire.
+    const scanned = bowlerDets.filter((d) => d.frame >= lo - scanStride && d.frame < hi + scanStride);
+    const picked: Detection[] = [];
+    const rest: Detection[] = [];
+    for (const fd of fds) {
+      let p: Detection | null = null, q: Detection | null = null;
+      for (const d of scanned) { if (d.frame <= fd.frame) p = d; else if (q === null) q = d; }
+      p ??= q; q ??= p;
+      if (!p || !q || Math.abs(fd.frame - p.frame) > 2 * scanStride || Math.abs(q.frame - fd.frame) > 2 * scanStride) continue;
+      const a = q.frame === p.frame ? 0 : clip((fd.frame - p.frame) / (q.frame - p.frame), 0, 1);
+      const box = p.box.map((v, i) => (1 - a) * v + a * q!.box[i]);
+      const kps = p.kps.map((v, i) => [(1 - a) * v[0] + a * q!.kps[i][0], (1 - a) * v[1] + a * q!.kps[i][1]]);
+      const hgt = Math.max(1, box[3] - box[1]);
+      let bi = -1, bc = Infinity;
+      fd.boxes.forEach((b, i) => {
+        if (boxIou(b, box) < 0.2) return;
+        const c = fd.kps[i].reduce((s2, k, j2) => s2 + Math.hypot(k[0] - kps[j2][0], k[1] - kps[j2][1]), 0) / 17 / hgt;
+        if (c < bc) { bc = c; bi = i; }
+      });
+      fd.boxes.forEach((b, i) => {
+        const d: Detection = { frame: fd.frame, track: i === bi && bc < 0.25 ? chosen.track : -1 - i, box: b, conf: fd.confs[i], kps: fd.kps[i], kcs: fd.kcs[i] };
+        (d.track === chosen.track ? picked : rest).push(d);
+      });
+    }
+    if (picked.length >= 5) {
+      bowlerDets = picked;
+      others = new Map([[-1, rest]]);
     } else if (lo > w0 || hi < w1) {
       const inShot = bowlerDets.filter((d) => d.frame >= lo && d.frame < hi);
       if (inShot.length) bowlerDets = inShot;
@@ -360,6 +398,11 @@ async function stageA(src: FrameSource, opts: Options, models: Models, prog: Pro
   const sigc = canvas(64, 36).getContext("2d", { willReadFrequently: true })!;
   const frames = new Map<number, Blob>();
   const refined: (RefinedPose | null)[] = [];
+  // For tuning the rules offline: a test page can set window.__seamlyRaw to receive the models' raw output for a
+  // clip (see docs/ACCURACY.md 9h). Nothing sets it in the app.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const dbgRaw = (globalThis as any).__seamlyRaw as ((x: unknown) => void) | undefined;
+  const rawRefined: unknown[] = [];
   let prevSig: Signature | null = null;
   if (f0 > 0) { await src.seek(f0 - 1); prevSig = signature(sigc, src.video, W, H); }
   const nWin = f1 - f0;
@@ -375,16 +418,8 @@ async function stageA(src: FrameSource, opts: Options, models: Models, prog: Pro
     if (onFrame) onFrame(fr, jp); else frames.set(fr, jp);
     const b = boxes.get(fr);
     const rp = b ? await models.pose.refineCrop(v, W, H, b, fr) : null, vis = seen.get(fr);
+    if (rp && dbgRaw) rawRefined.push({ frame: fr, kps: rp.kps.map((p) => [...p]), kcs: [...rp.kcs], extra: rp.extra ?? null });
     if (rp && vis) rp.kcs = rp.kcs.map((c, j) => Math.min(c, 0.15 + 1.2 * vis[j]));
-    // A crop holds whoever is in it. When the umpire or the non-striker overlaps the bowler, a top-down model can
-    // take one of their limbs for the bowler's; the full-frame model finds each person whole. Where the two put a
-    // joint far apart (more than 15% of the bowler's height) and the full-frame model is sure of its own, the crop
-    // model's joint is marked down, and the full-frame one is used in its place when the keypoints are assembled.
-    const whole = detByFrame.get(fr);
-    if (rp && whole) {
-      const far = 0.15 * (whole.box[3] - whole.box[1]);
-      rp.kcs = rp.kcs.map((c, j) => (whole.kcs[j] >= 0.5 && Math.hypot(rp.kps[j][0] - whole.kps[j][0], rp.kps[j][1] - whole.kps[j][1]) > far ? Math.min(c, 0.1) : c));
-    }
     refined.push(rp);
     prog.stage("pose2d", (fr - f0 + 1) / nWin);
   }
@@ -432,6 +467,8 @@ async function stageA(src: FrameSource, opts: Options, models: Models, prog: Pro
     },
   };
   prog.stage("lift", 1);
+  if (dbgRaw) dbgRaw({ hd, pd, others: [...others.values()].map((v) => v.filter((d) => d.frame >= f0 - 30 && d.frame < f1 + 30)).filter((v) => v.length), stageA, rawRefined, f0, f1: f0 + (f1 - f0), pk, scanStride, dets: [...detByFrame.values()].map((d) => ({ frame: d.frame, box: d.box, kps: d.kps, kcs: d.kcs })),
+    scan: fdsAll.map((fd) => ({ frame: fd.frame, boxes: fd.boxes, confs: fd.confs, kps: fd.kps, kcs: fd.kcs, appearance: fd.appearance.map((x) => Array.from(x as ArrayLike<number>)), motion: fd.motion })) });
   return { stageA, frames };
 }
 
@@ -519,8 +556,29 @@ export async function stageB(A: StageA, overrides: Overrides = {}, onProgress?: 
   const sweep = meta.sweep;
   const depthW = meta.pose3d === "sam3d" ? 20 : null;
   prog.stage("events", 0.1);
-  const sweepLo = Math.trunc(clip(sweep.start - f0, 0, T - 1));
-  const sweepHi = Math.trunc(clip(sweep.end - f0, 0, T - 1));
+  let sweepLo = Math.trunc(clip(sweep.start - f0, 0, T - 1));
+  let sweepHi = Math.trunc(clip(sweep.end - f0, 0, T - 1));
+  let sweepSide: string | null = sweep.side;
+  {
+    // The scan places the delivery by the widest turn of an arm in the picture. Filmed from in front or behind,
+    // the bowling arm turns in a plane the camera sees edge-on, and the widest turn can be the gather before the
+    // delivery or the other arm's swing after it (a 100 fps net clip put it 0.35 s late, on the follow-through).
+    // What shows from every side is the wrist going up and over. When either arm has a clear one near the scan's
+    // window but outside it, the delivery is there: the window moves to it, and the scan's guess at the arm is dropped.
+    const w = Math.trunc(0.8 * realFps);
+    const [vr, tr] = bestUpswing(kpS, kc, 6, 8, 10, sweepLo - w, sweepHi + w, realFps);
+    const [vl, tl] = bestUpswing(kpS, kc, 5, 7, 9, sweepLo - w, sweepHi + w, realFps);
+    let [v, at] = vr >= vl ? [vr, tr] : [vl, tl];
+    const [v2, at2] = vr >= vl ? [vl, tl] : [vr, tr];
+    // the other arm went over first, 0.15 to 0.45 s earlier and nearly as strongly: this one is the trailing arm
+    if (v2 >= 2.5 && at - at2 >= 0.15 * realFps && at - at2 <= 0.45 * realFps && v - v2 <= 1.0) [v, at] = [v2, at2];
+    const m = Math.trunc(0.1 * realFps);
+    if (v >= 3.5 && (at < sweepLo - m || at > sweepHi + m)) {
+      sweepLo = Math.max(0, at - Math.trunc(0.25 * realFps));
+      sweepHi = Math.min(T - 1, at + m);
+      sweepSide = null;
+    }
+  }
   const armWindow: [number, number] = [sweepLo - Math.trunc(0.1 * realFps), sweepHi + Math.trunc(0.1 * realFps)];
   const h2d = (s: Arr3) => s.map((f) => f.map((p) => [p[0], p[1]]));
   const c2d = (s: Arr3) => s.map((f) => f.map((p) => p[2]));
@@ -529,12 +587,12 @@ export async function stageB(A: StageA, overrides: Overrides = {}, onProgress?: 
   let labelsSwapped = false;
   let arm: Arm, armConf: number, votes: Record<string, number>;
   if (opts.bowling_arm === "auto") {
-    [arm, armConf, votes] = decideBowlingArm(kpS, kc, P, realFps, sweep.side, armWindow);
+    [arm, armConf, votes] = decideBowlingArm(kpS, kc, P, realFps, sweepSide, armWindow, true);
   } else {
     arm = opts.bowling_arm; armConf = 1; votes = { user: 1 };
-    const [, , av] = decideBowlingArm(kpS, kc, P, realFps, sweep.side, armWindow);
+    const [, , av] = decideBowlingArm(kpS, kc, P, realFps, sweepSide, armWindow, true);
     const other = arm === "right" ? -1 : 1;
-    if (av.speed_2d === other && av.fast_high_2d === other) {
+    if (av.fast_high_2d === other && (av.speed_2d === other || av.over_top === other)) {
       // every cue says the *other* arm bowls: the detector labelled left/right as if the bowler faced the other
       // way (front/back ambiguity). Mirror the labels consistently in 2D and 3D.
       kpS = kpS.map((f) => COCO_FLIP.map((j) => f[j]));
@@ -558,7 +616,13 @@ export async function stageB(A: StageA, overrides: Overrides = {}, onProgress?: 
   };
   let side = sideForArm(arm);
   const ref = Math.min(T - 1, Math.max(0, sweepHi));
-  const peak = sweep.peak - f0;
+  // Where to look for the release. The scan's fastest moment belongs to whichever arm swept the wider arc, which
+  // from in front or behind is often the front arm; the bowling arm's own clearest up-and-over, on the refined
+  // keypoints, is the better anchor when there is one.
+  const anchorFor = (sd: ReturnType<typeof sideForArm>): number => {
+    const [v, at] = bestUpswing(kpS, kc, sd.c_sh, sd.c_el, sd.c_wr, armWindow[0] - Math.trunc(0.2 * realFps), armWindow[1] + Math.trunc(0.15 * realFps), realFps);
+    return v >= 2.5 ? at : sweep.peak - f0;
+  };
   // user-edited events (absolute frame numbers) are fixed; the others are detected around them
   const fixed: Partial<Record<EventKey, number>> = {};
   for (const [k, v] of Object.entries(overrides.events ?? {}))
@@ -571,9 +635,9 @@ export async function stageB(A: StageA, overrides: Overrides = {}, onProgress?: 
     const forwardHint = fwdHint(P);
     const kpStab = stabilise(kpS, mot, ref);
     const bodyPx = bodyHeightPx(kpS, kc);
-    let ev = detectEvents(kpS, kc, kpStab, P, side, up0, forwardHint, realFps, bodyPx, [sweepLo, sweepHi], peak, fixed);
+    let ev = detectEvents(kpS, kc, kpStab, P, side, up0, forwardHint, realFps, bodyPx, [sweepLo, sweepHi], anchorFor(side), fixed, true);
     let wf = estimateWorldFrame(P, ev.ffc, ev.bfc, side.front_ankle, side.back_ankle, forwardHint, hintReliable);
-    ev = detectEvents(kpS, kc, kpStab, P, side, wf.up, wf.forward, realFps, bodyPx, [sweepLo, sweepHi], peak, fixed);
+    ev = detectEvents(kpS, kc, kpStab, P, side, wf.up, wf.forward, realFps, bodyPx, [sweepLo, sweepHi], anchorFor(side), fixed, true);
     if (edited.length) {
       reconcileAutoEvents(ev, edited, T);
       checkEventOrder(ev, edited, f0, overrides.latest_events);
@@ -610,7 +674,7 @@ export async function stageB(A: StageA, overrides: Overrides = {}, onProgress?: 
     skel = reconstruct(X, h2d(seq), c2d(seq), height, realFps, { depthW });
     P = skel.joints;
     labelsSwapped = !labelsSwapped;
-    if (opts.bowling_arm === "auto") [arm, armConf, votes] = decideBowlingArm(kpS, kc, P, realFps, sweep.side, armWindow);
+    if (opts.bowling_arm === "auto") [arm, armConf, votes] = decideBowlingArm(kpS, kc, P, realFps, sweepSide, armWindow, true);
     else {
       // The arm and the view are separate facts. A bowling arm goes well above its shoulder around release: if after
       // the mirror the user's bowling arm never does and the other arm does, the detector had labelled the arms right

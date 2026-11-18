@@ -7,7 +7,7 @@ results, and `frontend/tests/pace_sim.test.ts` checks ball speed against simulat
 
 | What Seamly reports | How close it gets (side-on unless stated) | Trust it for |
 |---|---|---|
-| Ball release frame | Synthetic: 4 ms mean (worst 17 ms). Real clips: inside the hand-marked frame window on 6 of 8, one frame early on 1, three frames early on a spinner | Timing and anchoring every other measurement |
+| Ball release frame | Synthetic: 2 ms mean (worst 17 ms). Real clips: within one frame of the frame picked by eye on 22 of 23 (§9h) | Timing and anchoring every other measurement |
 | Foot contacts | 15–16 ms mean (worst 33 ms, one frame at 30 fps) | Stride timings |
 | Front knee at landing | 1.0° mean (worst 3.7°) | Braced vs bent |
 | Front knee at release | 3.5° mean (worst 8.3°) | Braced vs bent; not differences under ~5° |
@@ -34,7 +34,7 @@ that is less accurate, which is why no rating uses it.
 - bowler: 1.62 m (height not entered), 1.80 m and 1.95 m;
 - camera: bowler half the usual size (far away), and "phone quality" (480p, JPEG at quality 35, 25 px handheld shake).
 
-Each clip was analysed by the **browser engine** (what the live site runs: YOLO11n/s pose, MotionBERT-Lite int8) with the
+Each clip was analysed by the **browser engine** (at the time: YOLO11n/s pose, MotionBERT-Lite int8; the pose models have since been replaced, see §9h) with the
 bowling arm set, as a user answering the app's arm question would, and by the **Python reference engine** with the same
 3D model. Truth is measured on the rendered body with the same definitions the app uses.
 
@@ -477,6 +477,95 @@ Two ways in: with no help (accepted only at a high bar: both ends, all four retu
 Mean absolute error on the four that tracked: 6.1%, each within 1.5 of its own sigma. The speeds match the hand-marked runs in §9f to within 0.4 km/h on three; the fourth moved from 83 to 97 because the pitch was found on a different frame of a zooming shot, which is the size of change its ± 13 allows. The accuracy of the speed itself has not improved: it is still a single 25 fps camera. What changed is that nobody has to mark the pitch, and a wrong answer that used to be possible is now refused.
 
 **Hugging Face.** Searched for a model that could do this job better (2026-11-15): there is no cricket ball tracker or pitch-keypoint model of usable quality (one hobby YOLOv8 ball detector trained on a Kaggle set, with weights under a licence that does not suit a product; TrackNet weights for tennis and badminton only). The public delivery-video set above was the useful find: about a third of its clips show the speed gun, but most are too compressed for the creases to be found, so it did not enlarge the speed-gun table.
+
+## 9h. New pose models, free for any use, and the rules retuned on them (2026-11-18)
+
+The website's two pose models were replaced: **RTMO-s** (finds everyone in the frame) and **RTMPose-m** (reads the
+bowler's joints on a crop, 26 keypoints), both from OpenMMLab under Apache-2.0, in place of YOLO11n/s-pose
+(AGPL-3.0). The first download grows from about 70 MB to about 110 MB; analysis is faster (about 28 s against 40 s
+for a 1.5 s clip at 60 fps on the test laptop). The Python engine in `backend/` still uses YOLO and does not have
+the rules below.
+
+**Synthetic clips with exact truth** (same 17 clips as §1, same Chrome, bowling arm given):
+
+| Side-on, 11 clips | YOLO11 (before) | RTMO + RTMPose (now) |
+|---|---|---|
+| Release | 21 ms (worst 167) | 2 ms (worst 17) |
+| Back-foot / front-foot contact | 29 / 30 ms (worst 167) | 16 / 16 ms (worst 33) |
+| Front knee at landing | 3.5° (worst 19.4) | 3.6° (worst 6.0) |
+| Front knee at release | 8.7° (worst 29.2) | 9.4° (worst 14.0) |
+| Back knee at back-foot contact | 10.4° | 1.7° |
+| Trunk forward lean at release | 28.3° (worst 84.6) | 4.6° (worst 8.0) |
+| Stride length | 6.0% | 2.7% |
+| Release height | 10.3% | 6.6% |
+| 3D joints (PA-MPJPE) | 172 mm (worst 294) | 80 mm (worst 106) |
+
+The front knee at release reads about 9° too straight with every strong model tried (YOLO11x and RTMPose at two
+sizes as well), so that offset belongs to the test figure, not to the model. From behind (6 clips) the release is
+within a frame on 4 (mean 53 ms over the six, against 132 ms before); on the other two the faceless grey figure is
+read as facing the camera, which mirrors left and right. Real bowlers filmed from behind are not read that way
+(below).
+
+**Real clips.** 39 clips were run in Chrome on both versions: the three bundled examples, Bumrah and Shami broadcast
+clips, eleven Wikimedia Commons and Pexels clips, the ten international deliveries of §9c and the eleven IPL net cuts
+of §8. Release frame, bowling arm and camera side were checked by eye on the frames for 23 of them.
+
+| Clip | By eye | Before (YOLO11) | Now |
+|---|---|---|---|
+| Club match, side-on | 39–40, left arm | 39 | 39 |
+| Club match, front-on | 46, right arm | 46 | 46 |
+| Nets from behind, 60 fps | 54–55 | 55 | 54 |
+| Bumrah / Shami, broadcast | 47–48 / 32–33 | 47 / 32 | 47 / 32 |
+| Keedy / Hatfield / net session | 117–118 / 101–102 / 218–226 | 118 / 101 / 225 | 118 / 101 / 225 |
+| Bohemians, front-on | 148–149 | 147 | 147 |
+| Parry, spinner, front-on | 284–285 | 281 | 283 |
+| International, right-arm seamer (a) | 121–122, right, behind | 128, **left** (the other arm's swing in the follow-through) | 122, right, behind |
+| International (b) | 14, right, behind | 31, **left, in front** | 14, right, behind |
+| International (c) | 15, right | 15 | 15 |
+| International, left-arm spinner (j) | 31, left | 24, **right** | 31, left |
+| International, left-armer (k, Kharoti) | 27–28, left | 28 | 28 |
+| International (nz k) | 21, right | 30, **left** (follow-through arm) | 21, right |
+| International (nz g) | 17 | **no usable delivery** (3-frame window) | 17 |
+| Net clip, 100 fps, front-on | 590–594, right | 622 | 595 |
+| Aythorpe, club, front-on | 112, right | 105, **left** | 112 |
+| Rendered clip with a tracked ball, 60 fps | 56–57 | **35** | 56 |
+| IPL net cut 10 | 19, right | 18 | 19 |
+| IPL net cuts 4 and 11 (close-ups, legs out of frame) | about 10 and 25 | 8 and 16 | 9 and 16 |
+
+On these 23 checked clips the new version is within one frame of the eye on 22 and the old on 13; the one it misses
+is a close-up of a spinner whose clip both versions cut short. Bowling arm: 23 of 23 against 17 of 23 (one of
+the old six is the clip where it found no delivery). The "before" column is one run of the live version in headless Chrome on this laptop; §9c notes
+that its bowler-finding step could tip either way between browser builds, and some of its misses here are that.
+
+**What had to change besides the models** (all in the browser engine):
+
+- *One person, counted once.* RTMO often returns the same skeleton two or three times with different boxes. The
+  copies broke tracking (a broadcast clip's window ended 14 frames before the release). The same skeleton is now
+  kept once.
+- *The bowler through a crossing.* When the bowler ran past the umpire, re-tracking the delivery window swapped the
+  two and the skeleton finished on the umpire. Each frame's bowler is now the detection that lies where the scan's
+  bowler is, between the scanned frames either side.
+- *The bowler, not the batter.* A batter lifting the bat sweeps the arms as widely as a bowler. Of two people who
+  swing while both in the picture, the one who swings 0.25 to 1.2 s earlier is the bowler.
+- *A cut between two shots of the same ground* (outfield to pitch, both green) is now found; before, the window ran
+  back across it onto other players.
+- *The bowling arm is the one that goes up and over.* A new cue: the wrist rising from below the shoulder to well
+  above it and falling away within a third of a second. Seen from in front or behind the front arm can sweep the
+  wider arc, which misled the existing cues.
+- *The other arm's swing after the ball has gone* (ten of the clips show it, about 0.3 s after the release, often as
+  high as the release itself) is no longer taken for the delivery: bent double with an arm in the air is the
+  follow-through, and of two arms going over the top the first is the bowling arm.
+- *Where to look for the release.* The search is anchored on the bowling arm's own up-and-over, and moves to it
+  when the scan's widest arm turn was somewhere else (the gather, or the follow-through).
+- *A wrist the model barely saw* counts for less, and a wrist misread for one frame at the top no longer ends the
+  top early (the spinner in the table: three frames early before, one now).
+- *Close-ups*: with the legs out of the picture from the first frame, low confidence in the legs no longer ends the
+  window early.
+
+What is not better: close-ups with the feet and the hand out of the frame remain guesses in both versions; the
+faceless test figure from behind is still mirrored on two of six clips; and a spinner whose front arm goes over
+the top before the release is told from a trailing arm only by the other cues (one such clip in the set, read
+correctly, at 7% confidence, so the page asks which arm).
 
 ## 10. Still to do
 

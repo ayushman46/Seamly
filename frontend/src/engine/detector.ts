@@ -41,10 +41,10 @@ async function hasWebGPU(): Promise<boolean> {
 // models are kept in Cache Storage after the first download (the HTTP cache alone can drop 40 MB files)
 
 // Where the models are downloaded from, in order. jsDelivr serves them straight from the public GitHub repo, pinned
-// to the commit that added them (so the files never change under a URL), which keeps the ~70 MB first download off
+// to the commit that added them (so the files never change under a URL), which keeps the ~110 MB first download off
 // the site's own bandwidth; the site's copy is the fallback. Files over 20 MB are stored in parts (jsDelivr's limit).
 // When a model file changes, point MODEL_CDN at a commit that contains the new file (or drop it until then).
-const MODEL_CDN = "https://cdn.jsdelivr.net/gh/ayushman46/Seamly@8c7b916642ef10edd25713339d99c18ec225be3e/frontend/public/models/";
+const MODEL_CDN = "https://cdn.jsdelivr.net/gh/ayushman46/Seamly@0704330bc412b896ae9985268b9cb7bf5127e8b4/frontend/public/models/";
 export const MODEL_SOURCES: string[] = [MODEL_CDN, MODEL_BASE];
 export const SCAN_MODEL = "rtmo-s.onnx", REFINE_MODEL = "rtmpose-m-halpe26.onnx";
 const MODEL_PARTS: Record<string, string[]> = {
@@ -217,6 +217,16 @@ function toTensor(ctx: Ctx2D, w: number, h: number, order: "rgb" | "bgr", mean?:
 }
 
 /** RTMO output (people already de-duplicated inside the model): dets (1, N, 5) and keypoints (1, N, 17, 3), input pixels. */
+/** Two skeletons of one person: their joints lie, on average, within 12% of the skeleton's size of each other. */
+export function sameSkeleton(a: number[][], b: number[][]): boolean {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, sum = 0;
+  for (let j = 0; j < a.length; j++) {
+    x0 = Math.min(x0, a[j][0]); x1 = Math.max(x1, a[j][0]); y0 = Math.min(y0, a[j][1]); y1 = Math.max(y1, a[j][1]);
+    sum += Math.hypot(a[j][0] - b[j][0], a[j][1] - b[j][1]);
+  }
+  return sum / a.length < 0.12 * Math.max(1, Math.hypot(x1 - x0, y1 - y0));
+}
+
 function decode(dets: ort.Tensor, kpts: ort.Tensor, conf: number, maxDet = 100): PersonDets {
   const d = dets.data as Float32Array, k = kpts.data as Float32Array, N = dets.dims[1];
   const order = Array.from({ length: N }, (_, i) => i).filter((i) => d[i * 5 + 4] > conf).sort((a, b) => d[b * 5 + 4] - d[a * 5 + 4]).slice(0, maxDet);
@@ -224,9 +234,13 @@ function decode(dets: ort.Tensor, kpts: ort.Tensor, conf: number, maxDet = 100):
   for (const i of order) {
     const b = [d[i * 5], d[i * 5 + 1], d[i * 5 + 2], d[i * 5 + 3]];
     if (!(b[2] > b[0] && b[3] > b[1])) continue;
-    boxes.push(b); confs.push(d[i * 5 + 4]);
     const kk: number[][] = [], kc: number[] = [];
     for (let j = 0; j < 17; j++) { const o = (i * 17 + j) * 3; kk.push([k[o], k[o + 1]]); kc.push(Math.min(1, Math.max(0, k[o + 2]))); }
+    // RTMO's own suppression goes by box overlap, and it often returns one person two or three times: the same
+    // skeleton with a tight box and with a loose one. The same skeleton is the same person (strongest first, so
+    // the best-scored copy is the one kept); two people side by side have skeletons a body width apart.
+    if (kps.some((q) => sameSkeleton(q, kk))) continue;
+    boxes.push(b); confs.push(d[i * 5 + 4]);
     kps.push(kk); kcs.push(kc);
   }
   return { boxes, confs, kps, kcs };

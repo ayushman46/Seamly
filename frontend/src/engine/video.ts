@@ -302,7 +302,7 @@ export function sigDistance(a: Signature, b: Signature): [number, number] {
 }
 
 /** Hard cuts: a histogram jump that is large both absolutely and relative to the local motion level. */
-export function segmentShots(histD: number[], pixD: number[], frames: number[], n: number, fps: number): Shot[] {
+export function segmentShots(histD: number[], pixD: number[], frames: number[], n: number, fps: number, likeToLike = false): Shot[] {
   if (n < 2 || frames.length < 2) return [{ start: 0, end: n }];
   const cuts: number[] = [];
   for (let i = 0; i < histD.length; i++) {
@@ -312,7 +312,15 @@ export function segmentShots(histD: number[], pixD: number[], frames: number[], 
     const h = histD[i], p = pixD[i];
     const strong = (h > 0.45 && p > 18) || p > 45;
     const relative = h > 4.0 * local + 0.15 && p > 12;
-    if (strong || relative) cuts.push(frames[i + 1]);   // cut happens before this frame
+    // A cut between two shots of the same ground (green outfield to green pitch) barely moves the colour histogram.
+    // It still shows as one frame that differs from the last far more than the frames on either side of it do
+    // from theirs, with a histogram step several times the local level. (likeToLike: the app; not in the Python engine.)
+    let alike = false;
+    if (likeToLike && p >= 15 && h > 5.0 * local + 0.01) {
+      const before = pixD.slice(lo, i), after = pixD.slice(i + 1, hi);
+      alike = before.length >= 3 && after.length >= 3 && p > 1.8 * median(before) && p > 1.8 * median(after);
+    }
+    if (strong || relative || alike) cuts.push(frames[i + 1]);   // cut happens before this frame
   }
   const bounds = [0, ...cuts, n];
   let shots: Shot[] = [];

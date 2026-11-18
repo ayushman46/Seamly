@@ -492,7 +492,7 @@ function Uploader({ go, disabled, health, players, current, onChoose, onCreate, 
             </button>
             {MODE === "browser" && !cached && (
               <span className="faint" style={{ fontSize: 12, textAlign: "center" }}>
-                The first run downloads about 70 MB of models, once.
+                The first run downloads about 110 MB of models, once.
               </span>
             )}
             <div className="demo-link">

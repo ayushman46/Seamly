@@ -116,13 +116,13 @@ Film one delivery. A minute or two later you have what a broadcast analyst's des
 
 ```
 video ─► exact frame times from the container (MP4/MOV via mp4box), frame-accurate seeking
-      ─► YOLO11n-pose on every frame (ONNX Runtime Web: WebGPU, or WebAssembly as a fallback)
+      ─► RTMO-s on every frame: everyone in the picture, in one pass (ONNX Runtime Web: WebGPU, or WebAssembly as a fallback)
       ─► multi-person tracker: camera-motion compensation (coarse-to-fine block matching on the background, people and static
          overlays masked), constant-velocity prediction, colour appearance, pose similarity, Hungarian
          assignment, same-person duplicate boxes merged
       ─► bowler selection: the track whose arm makes a fast ~270-360° sweep with legs in view
-         (a batter's two-handed swing is discounted)
-      ─► YOLO11s-pose on bowler crops with flip test-time augmentation
+         (a batter's two-handed swing is discounted; of two people who swing, the one who swings first is the bowler)
+      ─► RTMPose-m (26 keypoints) on bowler crops with flip test-time augmentation
       ─► 2D clean-up: Hampel outliers, left/right swap repair (whole arm, then forearm; a repair that would hang the arm from the far side of the body is refused), gap filling, Butterworth
       ─► MotionBERT-Lite 3D lifting (int8 ONNX), resampled to its 50 fps training rate
       ─► metric skeleton (L-BFGS fit: constant symmetric bones, re-projection, knee hinge, physics priors)
@@ -132,7 +132,7 @@ video ─► exact frame times from the container (MP4/MOV via mp4box), frame-ac
 
 The analysis engine (`frontend/src/engine/`) is a TypeScript port of the Python pipeline in `backend/bowlnet/`. The test suite (`frontend/tests/`, 364 tests) checks every stage after pose detection against fixtures recorded from the Python pipeline. The results match Python exactly or to floating-point precision: events, metrics, coaching, insights, progress, the body-model binaries, and the skeleton fit to about 1 mm.
 
-The first analysis downloads about 70 MB of models, which the browser caches afterwards. On a recent laptop a short clip takes about 15–30 s; phones take longer.
+The first analysis downloads about 110 MB of models, which the browser caches afterwards. On a recent laptop a short clip takes about 15–30 s; phones take longer.
 
 ### Accuracy on a synthetic delivery with exact ground truth
 
@@ -159,7 +159,7 @@ pnpm test                # engine parity tests (vitest)
 pnpm build               # static site in frontend/dist (deploy anywhere: Vercel, Netlify, GitHub Pages)
 ```
 
-`frontend/public/` holds the browser models: YOLO11n/s-pose ONNX exports, MotionBERT-Lite int8 and the Anny body asset. It also holds two sample analyses (`samples/`). The tools that regenerate them are in `backend/tools/`: `export_body_asset.py`, `make_web_samples.py`, `export_web_sample.py` and `export_fixtures.py`.
+`frontend/public/` holds the browser models: RTMO-s and RTMPose-m ONNX exports (OpenMMLab, Apache-2.0; see `models/LICENSES.md`), MotionBERT-Lite int8 and the Anny body asset. It also holds two sample analyses (`samples/`). The tools that regenerate them are in `backend/tools/`: `export_body_asset.py`, `make_web_samples.py`, `export_web_sample.py` and `export_fixtures.py`.
 
 ### Deploy
 
@@ -172,7 +172,7 @@ vercel deploy dist --prod --project seamly
 
 Alternatively, connect the repository in Vercel with root directory `frontend` (framework: Vite). `frontend/public/vercel.json` sets the cache and security headers. For a sub-path such as GitHub Pages, build with `VITE_BASE=/<repo>/ pnpm build`.
 
-**Bandwidth.** The analysis models (about 70 MB, downloaded once per browser) are fetched from jsDelivr, straight from this public repository at a pinned commit (`MODEL_CDN` in `frontend/src/engine/detector.ts`); the site's own copy in `public/models/` is the fallback. jsDelivr serves files up to 20 MB, so the 40 MB detector is stored as `yolo11s-pose.onnx.part1/2` and joined in the browser. A first visit therefore costs the host only the app itself (~2 MB). If a model file changes, push it, then point `MODEL_CDN` at that commit.
+**Bandwidth.** The analysis models (about 110 MB, downloaded once per browser) are fetched from jsDelivr, straight from this public repository at a pinned commit (`MODEL_CDN` in `frontend/src/engine/detector.ts`); the site's own copy in `public/models/` is the fallback. jsDelivr serves files up to 20 MB, so the two pose models are stored in pieces (`rtmo-s.onnx.part1..2`, `rtmpose-m-halpe26.onnx.part1..3`) and joined in the browser. A first visit therefore costs the host only the app itself (~2 MB). If a model file changes, push it, then point `MODEL_CDN` at that commit.
 
 **Offline.** `vite.config.ts` generates `sw.js`, a service worker that precaches the built app; with the models in Cache Storage, Seamly works without a connection after the first analysis.
 
@@ -221,7 +221,7 @@ These are surfaced in the app rather than hidden:
 - **Analyses live in the browser that made them** (IndexedDB). Nothing is uploaded, so a link only opens on that device. Clearing site data deletes them, so use **Download backup** in your workspace to keep a copy or move players and analyses to another device (Restore a backup), and the PDF report to share one.
 - **The bowling arm is hard to tell from behind or front-on.** On rear-view broadcast clips the detector is often unsure, and a low-confidence call can differ between devices. Below 50% agreement Seamly asks "Is this a left-arm bowler?" with one-tap Yes/No (and marks the arm with a "?" up to 70%), and saves the answer to the player's profile so later clips don't have to guess. Setting the arm in the profile skips detection entirely.
 - **Browsers decode video slightly differently** (Safari's colours are a few percent brighter than Chrome's), so the same clip can land a foot contact a frame apart in different browsers. Release, upper-arm-horizontal and follow-through matched exactly in our Safari-engine (WebKit) test.
-- **The browser engine uses smaller models than the server** (YOLO11n/s instead of m/x, and int8 MotionBERT), so it can differ from the server by a frame on fast arm movements.
+- **The browser engine and the Python engine use different pose models** (RTMO-s and RTMPose-m in the browser; YOLO11m/x on the server, which also lacks the browser's newer release, bowling-arm and bowler-selection rules), so their answers can differ. The browser engine is the product; `docs/ACCURACY.md` §9h has the comparison.
 
 ## Project layout
 
@@ -241,8 +241,9 @@ legacy/     the original Streamlit + SPIN prototype
 
 | Component | Licence | Note |
 |---|---|---|
-| Seamly code | not chosen yet | No LICENSE file yet. The browser build ships the AGPL-3.0 YOLO11 weights, so AGPL-3.0 is the simplest compatible choice. |
-| Ultralytics YOLO11 (models in `frontend/public/models`) | **AGPL-3.0** | The source of this site is public in this repository |
+| Seamly code | not chosen yet | No LICENSE file yet. Everything the website ships (models, runtime, body asset) is under Apache-2.0, MIT, BSD or CC0, so the choice is open. |
+| RTMO-s and RTMPose-m (OpenMMLab MMPose; the pose models in `frontend/public/models`) | Apache-2.0 | unmodified ONNX exports from download.openmmlab.com; `frontend/public/models/LICENSES.md` |
+| Ultralytics YOLO11 (Python engine in `backend/` only; not in the website) | **AGPL-3.0** | weights are downloaded by you when you run the server |
 | MotionBERT (model code + weights) | Apache-2.0 | `backend/bowlnet/lifting/LICENSE-MotionBERT` |
 | ONNX Runtime Web | MIT | loaded from jsDelivr |
 | mp4box.js | BSD-3-Clause | |

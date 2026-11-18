@@ -143,8 +143,8 @@ The detection models are smaller than the server's:
 
 | Stage | Server | Browser |
 |---|---|---|
-| Tracking | YOLO11m-pose | YOLO11n-pose @ 640 |
-| Crops | YOLO11x-pose | YOLO11s-pose @ 384 |
+| Tracking | YOLO11m-pose | RTMO-s @ 640 (Apache-2.0; since 2026-11-18, was YOLO11n-pose) |
+| Crops | YOLO11x-pose | RTMPose-m, 26 keypoints @ 256x192 (Apache-2.0; since 2026-11-18, was YOLO11s-pose @ 384) |
 | Lifter | MotionBERT-Lite fp32 | MotionBERT-Lite int8 (root-relative error vs fp32 ≈ 0.5% of body height) |
 
 | Clip | Ground truth or server | Browser |

@@ -151,14 +151,93 @@ export function wristLift(kp: Arr3, sh: number, el: number, wr: number): Arr1 {
 
 /** Vote: (1) which arm makes the fast final upswing to the highest point, (2) 2D angular speed,
  * (3) 3D angular speed, (4) the tracker-level sweep hint. kc is unused (kept for the Python signature). */
-export function decideBowlingArm(kp: Arr3, _kc: Arr2, P: Arr3, fps: number, sweepHint: string | null | undefined,
-  window: [number, number]): [Arm, number, Record<string, number>] {
+/** Every rise of a wrist from below its shoulder to a peak above it, with what follows: [low frame, top frame,
+ * rise, fall after the top] in arm lengths. The fall is measured over the next 0.15 s. */
+export function upswings(lift: Arr1, lo: number, hi: number, fps: number): [number, number, number, number][] {
+  const T = lift.length, riseWin = Math.max(3, Math.trunc(0.3 * fps)), out: [number, number, number, number][] = [];
+  for (let tl = Math.max(1, lo); tl < Math.min(T - 1, hi); tl++) {
+    if (lift[tl] > -0.15 || lift[tl] > lift[tl - 1] || lift[tl] > lift[tl + 1]) continue;
+    let th = tl;
+    for (let t = tl + 1; t < Math.min(T, tl + riseWin + 1); t++) if (lift[t] > lift[th]) th = t;
+    if (lift[th] < 0.3) continue;
+    th = plateauEnd(lift, th, fps);
+    const after = lift.slice(th, Math.min(T, th + Math.max(2, Math.trunc(0.15 * fps))));
+    out.push([tl, th, lift[th] - lift[tl], after.length ? lift[th] - aminN(after) : 0]);
+  }
+  return out;
+}
+
+/** The frame an upswing tops out, given the frame of the highest reading.
+ * Seen from behind or in front the wrist stays at full height for several frames as the arm comes through the
+ * vertical, and which of those reads a hair higher is noise: the middle of the run (within 3% of an arm length
+ * of the highest) is when the arm is upright.
+ * And a wrist misread around the top (it reads high, drops half an arm length the next frame, and is back up
+ * within 0.1 s) did not go down and up again in that time: the top is then where it is last up. */
+function plateauEnd(lift: Arr1, th: number, fps: number): number {
+  const top = lift[th], end = Math.min(lift.length - 1, th + Math.max(2, Math.round(0.1 * fps)));
+  let a = th, b = th;
+  while (a > 0 && lift[a - 1] >= top - 0.03) a--;
+  while (b < lift.length - 1 && lift[b + 1] >= top - 0.03) b++;
+  let t = Math.round((a + b) / 2), low = Infinity, back = -Infinity;
+  for (let u = b + 1; u <= end; u++) {
+    low = Math.min(low, lift[u]);
+    if (low < top - 0.5 && lift[u] >= low + 0.5 && lift[u] >= back - 0.1) { t = u; back = Math.max(back, lift[u]); }
+  }
+  return t;
+}
+
+/** How far a wrist's keypoint can be believed around frame t: 1 from a confidence of 0.5 up, 0.3 at 0.3 or less. */
+const wristTrust = (kc: Arr2, wr: number, t: number): number =>
+  npClip((meanN(kc.slice(Math.max(0, t - 1), t + 2).map((r) => r[wr])) - 0.2) / 0.3, 0.3, 1);
+
+/** How upright the trunk is: 1 standing, 0 bent to the horizontal (shoulders level with the hips in the picture). */
+export function upright(p: Arr2): number {
+  const sx = (p[5][0] + p[6][0]) / 2, sy = (p[5][1] + p[6][1]) / 2, hx = (p[11][0] + p[12][0]) / 2, hy = (p[11][1] + p[12][1]) / 2;
+  return (hy - sy) / Math.max(norm2(sx - hx, sy - hy), 1);
+}
+
+/** An arm's strongest up-and-over between two frames: [strength, frame of the top]. Strength is the rise plus the
+ * fall after it (arm lengths, capped), marked down where the wrist was barely seen; 0 and -1 when there is none.
+ * Bent double with an arm in the air is the follow-through, so those are left out. */
+export function bestUpswing(kp: Arr3, kc: Arr2, sh: number, el: number, wr: number, lo: number, hi: number, fps: number): [number, number] {
+  const lift = wristLift(kp, sh, el, wr);
+  let v = 0, at = -1;
+  for (const [, th, amp, fall] of upswings(lift, lo, hi, fps)) {
+    if (upright(kp[th]) < 0.5) continue;
+    const c = wristTrust(kc, wr, th) * (Math.min(amp, 2.5) + Math.min(fall, 2.0));
+    if (c > v) { v = c; at = th; }
+  }
+  return [v, at];
+}
+
+/** tuned: adds the `over_top` vote (the app uses it; the Python reference engine does not have it). */
+export function decideBowlingArm(kp: Arr3, kc: Arr2, P: Arr3, fps: number, sweepHint: string | null | undefined,
+  window: [number, number], tuned = false): [Arm, number, Record<string, number>] {
   let lo = Math.max(0, window[0]), hi = Math.min(kp.length, window[1]);
   if (hi - lo < 3) {   // degenerate window (very low fps / sweep at the clip edge)
     lo = Math.max(0, Math.min(lo, kp.length - 3));
     hi = Math.min(kp.length, lo + 3);
   }
   const votes: Record<string, number> = {};
+  let overTop: number | null = null;
+  if (tuned) {
+    // The bowling arm is the one that goes up and over: its wrist rises from below the shoulder to well above it
+    // and falls away again, all within a third of a second. The front arm goes up and stays, or comes down
+    // slowly; seen from in front or behind it can still sweep a wider arc than the bowling arm, which fooled the
+    // other cues on real clips. A wrist the model could barely see counts for less.
+    const best = (sh: number, el: number, wr: number) => bestUpswing(kp, kc, sh, el, wr, lo - Math.trunc(0.2 * fps), hi + Math.trunc(0.15 * fps), fps);
+    const [vr, tr] = best(6, 8, 10), [vl, tl] = best(5, 7, 9);
+    overTop = Math.abs(vr - vl) > 0.5 ? npSign(vr - vl) : 0;
+    // After the ball has gone, the other arm swings up behind the bowler, about 0.3 s after the release and often
+    // as high and as fast (ten of the real test clips show it; one shows the front arm going over before the
+    // release instead). So when both arms go over the top, one 0.15 to 0.45 s after the other, the first is the
+    // bowling arm, and the other cues are read up to just after it, so the trailing arm's swing isn't in them.
+    // (The first must be a full one, 2.7 or more: a front arm reaching up before the release is weaker than that.)
+    if ((tr < tl ? vr : vl) >= 2.7 && Math.min(vr, vl) >= 2.0 && Math.abs(tr - tl) >= 0.15 * fps && Math.abs(tr - tl) <= 0.45 * fps) {
+      overTop = tr < tl ? 1 : -1;
+      hi = Math.max(lo + 3, Math.min(hi, Math.min(tr, tl) + Math.trunc(0.1 * fps) + 1));
+    }
+  }
   const wr = armSpeed2d(kp, 6, 10, fps).slice(lo, hi), wl = armSpeed2d(kp, 5, 9, fps).slice(lo, hi);
   votes.speed_2d = npSign(npPercentile(wr, 90) - npPercentile(wl, 90));
   const lr = wristLift(kp, 6, 8, 10).slice(lo, hi), ll = wristLift(kp, 5, 7, 9).slice(lo, hi);
@@ -169,7 +248,8 @@ export function decideBowlingArm(kp: Arr3, _kc: Arr2, P: Arr3, fps: number, swee
   const w3r = armAngularSpeed(P, R_SH, R_WR, fps).slice(lo, hi), w3l = armAngularSpeed(P, L_SH, L_WR, fps).slice(lo, hi);
   votes.speed_3d = npSign(npPercentile(w3r, 90) - npPercentile(w3l, 90));
   if (sweepHint === "left" || sweepHint === "right") votes.sweep_2d = sweepHint === "right" ? 1.0 : -1.0;
-  const weights: Record<string, number> = { speed_2d: 1.0, fast_high_2d: 1.4, speed_3d: 0.6, sweep_2d: 1.0 };
+  if (overTop !== null) votes.over_top = overTop;
+  const weights: Record<string, number> = { speed_2d: 1.0, fast_high_2d: 1.4, speed_3d: 0.6, sweep_2d: 1.0, over_top: 1.6 };
   let s = 0, total = 0;
   for (const [k, v] of Object.entries(votes)) { s += weights[k] * v; total += weights[k]; }
   return [s >= 0 ? "right" : "left", Math.abs(s) / total, votes];
@@ -217,7 +297,7 @@ export function contactOnsets(speed: Arr1, lo: number, hi: number, thr: number, 
  * moving back-foot contact re-searches front-foot contact after it instead of keeping a stale one. */
 export function detectEvents(kp: Arr3, kc: Arr2, kpStab: Arr3, P: Arr3, side: Side, up: number[], forward: number[],
   fps: number, bodyPx: Arr1, sweepWindow: [number, number], sweepPeak: number | null = null,
-  fixedIn?: Partial<Record<EventKey, number | null>> | null): Events {
+  fixedIn?: Partial<Record<EventKey, number | null>> | null, tuned = false): Events {
   const T = kp.length;
   const ms = 1000.0 / fps;
   const conf: Partial<Record<EventKey, number>> = {};
@@ -248,14 +328,22 @@ export function detectEvents(kp: Arr3, kc: Arr2, kpStab: Arr3, P: Arr3, side: Si
     let th = tl;
     for (let t = tl + 1; t < segHi; t++) if (lift[t] > lift[th]) th = t;
     if (lift[th] < 0.3) continue;
+    if (tuned) th = plateauEnd(lift, th, fps);
     const amp = lift[th] - lift[tl];
     const riseS = Math.max(1, th - tl) / fps;
     const after = lift.slice(th, Math.min(T, th + Math.max(2, Math.trunc(0.15 * fps))));
     const fall = after.length ? lift[th] - aminN(after) : 0.0;
     const prox = Math.abs(th - anchor) / fps;
-    const score = amp + 0.6 * Math.min(fall, 2.0) + 0.15 * Math.min(amp / riseS, 20) - 3.0 * prox;
+    let score = amp + 0.6 * Math.min(fall, 2.0) + 0.15 * Math.min(amp / riseS, 20) - 3.0 * prox;
+    if (tuned) {
+      // Bent double with an arm in the air is the follow-through, not the release (the trailing arm swings up
+      // behind the bowler a quarter of a second after the ball has gone). And a peak on a wrist the model could
+      // barely see (hidden behind the umpire, say) is worth less than one it saw clearly.
+      if (upright(kp[th]) < 0.5) continue;
+      score = wristTrust(kc, side.c_wr, th) * (score + 3.0 * prox) - 3.0 * prox;
+    }
     cands.push([score, tl, th]);
-    if (amp >= 1.5 && fall >= 1.5) full.add(`${tl},${th}`);
+    if (amp >= 1.5 && fall >= (tuned ? 1.3 : 1.5)) full.add(`${tl},${th}`);
     if (!bestC || score > bestC[0] || (score === bestC[0] && (tl > bestC[1] || (tl === bestC[1] && th > bestC[2])))) {
       bestC = [score, tl, th];
     }
