@@ -145,7 +145,12 @@ export function solveCameraPoints(marks: { world: V3; px: Pt }[], w: number, h: 
   const zs = world.map((p) => p[2]);
   const xs = world.map((p) => p[0]), spanX = Math.max(...xs) - Math.min(...xs);
   if (Math.max(...zs) - Math.min(...zs) < 10) return { reason: "spread", text: "Mark points at both ends of the pitch: one end alone cannot give the distance between them." };
-  if (spanX < 0.2) return { reason: "spread", text: "Mark points on both sides of the pitch as well as both ends." };
+  if (spanX < 0.2) {
+    // only the line of the stumps is marked (the foot and top of a stump at each end): enough for a camera held level
+    const ys = world.map((p) => p[1]);
+    if (Math.max(...ys) - Math.min(...ys) > 0.5 && world.filter((p) => p[1] > 0.5).length >= 2) return solveLevelCamera(marks, w, h, start);
+    return { reason: "spread", text: "Mark points on both sides of the pitch as well as both ends." };
+  }
   const cu = marks.reduce((s, m) => s + m.px[0], 0) / marks.length, cv = marks.reduce((s, m) => s + m.px[1], 0) / marks.length;
   const spreadPx = Math.sqrt(marks.reduce((s, m) => s + (m.px[0] - cu) ** 2 + (m.px[1] - cv) ** 2, 0) / marks.length);
   const cw: V3 = [0, 0, 0];
@@ -189,6 +194,64 @@ export function solveCameraPoints(marks: { world: V3; px: Pt }[], w: number, h: 
   for (let i = 0; i < marks.length; i++) worst = Math.max(worst, Math.hypot(r[2 * i], r[2 * i + 1]));
   const cam: Camera = { ...c, pos, rms: Math.sqrt(best.cost / marks.length), worst, marks: marks.length };
   if (!(pos[1] > 0.05) || !Number.isFinite(cam.rms)) return { reason: "fit", text: "Those marks put the camera under the ground. Check each one is on the right corner." };
+  return cam;
+}
+
+/**
+ * A camera held level (no roll: a phone on a tripod, a broadcast camera on its head), from as little as the foot and
+ * the top of the middle stump at each end. Six unknowns (zoom, which way it points, how far it tips down, where it
+ * is) against two equations a mark: four marks are enough, and the stumps' own height (71.1 cm) is the ruler.
+ */
+export function solveLevelCamera(marks: { world: V3; px: Pt }[], w: number, h: number, start?: Camera): Camera | CameraProblem {
+  if (marks.length < 4) return { reason: "few", text: "Mark the foot and the top of the middle stump at each end." };
+  const world = marks.map((m) => m.world);
+  const level = (q: number[]) => {
+    // q: log f, yaw, tilt (down is positive), x, y, z
+    const cy = Math.cos(q[1]), sy = Math.sin(q[1]), ct = Math.cos(q[2]), st = Math.sin(q[2]);
+    const zc = [sy * ct, -st, -cy * ct], xc = [cy, 0, sy], yc = [zc[1] * xc[2] - zc[2] * xc[1], zc[2] * xc[0] - zc[0] * xc[2], zc[0] * xc[1] - zc[1] * xc[0]];
+    const R = [...xc, ...yc, ...zc], pos: V3 = [q[3], q[4], q[5]];
+    const t: V3 = [-(R[0] * pos[0] + R[1] * pos[1] + R[2] * pos[2]), -(R[3] * pos[0] + R[4] * pos[1] + R[5] * pos[2]), -(R[6] * pos[0] + R[7] * pos[1] + R[8] * pos[2])];
+    return { f: Math.exp(q[0]), R, t, w, h, pos };
+  };
+  const resid = (q: number[]) => {
+    const c = level(q), out: number[] = [];
+    for (let i = 0; i < marks.length; i++) {
+      const p = project(c, world[i]);
+      if (!p) { out.push(1e4, 1e4); continue; }
+      out.push(p[0] - marks[i].px[0], p[1] - marks[i].px[1]);
+    }
+    return out;
+  };
+  const cu = marks.reduce((s, m) => s + m.px[0], 0) / marks.length, cv = marks.reduce((s, m) => s + m.px[1], 0) / marks.length;
+  const spreadPx = Math.sqrt(marks.reduce((s, m) => s + (m.px[0] - cu) ** 2 + (m.px[1] - cv) ** 2, 0) / marks.length);
+  let best: { q: number[]; cost: number } | null = null;
+  if (start) {
+    // from a camera already found (the same marks, nudged): its zoom, direction and place
+    const z = [start.R[6], start.R[7], start.R[8]];
+    const fit = levenbergMarquardt(resid, [Math.log(start.f), Math.atan2(z[0], -z[2]), Math.asin(Math.max(-1, Math.min(1, -z[1]))), ...start.pos], [1e-4, 1e-5, 1e-5, 1e-3, 1e-3, 1e-3], 60);
+    best = { q: fit.x, cost: fit.cost };
+  } else for (const side of [1, -1]) for (const dist of [4, 8, 16, 32, 64, 110]) for (const height of [1.0, 1.8, 3.5, 7, 14, 28]) for (const off of [0, -3, 3]) {
+    if (height > dist * 1.2) continue;
+    const pos: V3 = [off, height, side > 0 ? dist : -PITCH_LEN - dist];
+    const to = [0 - pos[0], 0.35 - pos[1], -PITCH_LEN / 2 - pos[2]], n = Math.hypot(to[0], to[1], to[2]);
+    const yaw = Math.atan2(to[0], -to[2]), tilt = Math.asin(-to[1] / n);
+    const unit = level([0, yaw, tilt, ...pos]);
+    const pr = world.map((p) => project({ ...unit, w: 0, h: 0 }, p));
+    if (pr.some((p) => !p)) continue;
+    const mu = pr.reduce((s, p) => s + p![0], 0) / pr.length, mv = pr.reduce((s, p) => s + p![1], 0) / pr.length;
+    const sp = Math.sqrt(pr.reduce((s, p) => s + (p![0] - mu) ** 2 + (p![1] - mv) ** 2, 0) / pr.length);
+    if (!(sp > 0)) continue;
+    const fit = levenbergMarquardt(resid, [Math.log(spreadPx / sp), yaw, tilt, ...pos], [1e-4, 1e-5, 1e-5, 1e-3, 1e-3, 1e-3], 80);
+    if (!(level(fit.x).pos[1] > 0.05)) continue;
+    if (!best || fit.cost < best.cost) best = { q: fit.x, cost: fit.cost };
+    if (best.cost / marks.length < 1e-6) break;
+  }
+  if (!best) return { reason: "fit", text: "Those marks do not fit a camera. Check each one is on the foot or the top of a middle stump." };
+  const c = level(best.q), r = resid(best.q);
+  let worst = 0;
+  for (let i = 0; i < marks.length; i++) worst = Math.max(worst, Math.hypot(r[2 * i], r[2 * i + 1]));
+  const cam: Camera = { f: c.f, R: c.R, t: c.t, w, h, pos: c.pos, rms: Math.sqrt(best.cost / marks.length), worst, marks: marks.length };
+  if (!Number.isFinite(cam.rms)) return { reason: "fit", text: "Those marks do not fit a camera." };
   return cam;
 }
 

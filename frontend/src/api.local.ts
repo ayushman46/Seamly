@@ -5,6 +5,7 @@
  */
 import type { AnalysisMeta, AnalysisResult, BowlingLogEntry, CreaseRecord, EventKey, Insights, Player, PlayerProgress, PaceRecord } from "./types";
 import type { TrackRecord } from "./lib/tracker";
+import { cleanOnPitch, type OnPitchRecord } from "./lib/onpitch";
 import * as db from "./engine/store";
 import { AnalysisError, backend, optionsFrom, type Options } from "./engine/common";
 import type { Overrides, StageA } from "./engine/pipeline";
@@ -115,7 +116,7 @@ async function refresh(id: string): Promise<void> {
 }
 
 const PUBLIC = ["id", "name", "created", "updated", "status", "progress", "stage", "stage_label", "error", "score", "grade", "view", "arm",
-  "thumb_frame", "options", "timing_s", "elapsed", "size_mb", "notice", "suggest", "player_id", "input_type", "arm_conf", "pace", "crease", "track", "source_id", "pair", "angled"] as const;
+  "thumb_frame", "options", "timing_s", "elapsed", "size_mb", "notice", "suggest", "player_id", "input_type", "arm_conf", "pace", "crease", "track", "onpitch", "source_id", "pair", "angled"] as const;
 
 function pub(m: Meta): AnalysisMeta {
   const out = {} as Record<string, unknown>;
@@ -641,7 +642,7 @@ async function restore(file: Blob): Promise<{ analyses: number; players: number;
     }
     const entries = a.files.map((f, j) => [f?.name, files[i][j]] as const).filter(([name]) => typeof name === "string" && FILE_NAME.test(name));
     const meta = { ...m, status: "done", progress: 1, stage: "done", stage_label: "Complete", error: null, gen: "", owner: undefined, previous: null, source_id: undefined,
-      pace: cleanPace(m.pace), crease: cleanCrease(m.crease), track: cleanTrack(m.track), pair: typeof m.pair === "string" && ID.test(m.pair) ? m.pair : null,
+      pace: cleanPace(m.pace), crease: cleanCrease(m.crease), track: cleanTrack(m.track), onpitch: cleanOnPitch(m.onpitch), pair: typeof m.pair === "string" && ID.test(m.pair) ? m.pair : null,
       player_id: m.player_id && have.has(m.player_id) ? m.player_id : null, size_mb: m.size_mb ?? null, arm_conf: m.arm_conf ?? armConf(r) } as Meta;
     await db.write(["blob", "stagea", "result", "meta"], (st) => {
       for (const [name, b] of entries) st.blob.put(b, `${m.id}/${name}`);
@@ -754,7 +755,7 @@ export const api = {
     const keep: Overrides = prev.gender !== undefined ? { gender: prev.gender } : {};
     const previous = meta.status === "done" ? { options: oldOpts, overrides: prev } : null;
     // a saved ball speed was timed on the old analysis' frames (and clip speed): it has to be measured again
-    await writeMeta(id, { options: optionsFrom(opts) as unknown as AnalysisMeta["options"], overrides: keep, error: null, previous, status: "queued", progress: 0, stage: null, suggest: null, owner: TAB, pace: null, crease: null, track: null });
+    await writeMeta(id, { options: optionsFrom(opts) as unknown as AnalysisMeta["options"], overrides: keep, error: null, previous, status: "queued", progress: 0, stage: null, suggest: null, owner: TAB, pace: null, crease: null, track: null, onpitch: null });
     submit(id);
     return { id };
   }),
@@ -908,13 +909,17 @@ export const api = {
     submit(id);
     return { id };
   },
-  patch: async (id: string, body: { name?: string; player_id?: string | null; pace?: PaceRecord | null; crease?: CreaseRecord | null; track?: TrackRecord | null }) => {
+  patch: async (id: string, body: { name?: string; player_id?: string | null; pace?: PaceRecord | null; crease?: CreaseRecord | null; track?: TrackRecord | null; onpitch?: OnPitchRecord | null }) => {
     await loadAll();
     requireMeta(id);
     const f: Partial<Meta> = {};
     if ("crease" in body) {
       f.crease = body.crease ? cleanCrease(body.crease) : null;
       if (body.crease && !f.crease) throw new Error("That crease check isn't valid.");
+    }
+    if ("onpitch" in body) {
+      f.onpitch = body.onpitch ? cleanOnPitch(body.onpitch) : null;
+      if (body.onpitch && !f.onpitch) throw new Error("Those pitch marks aren't valid.");
     }
     if ("track" in body) {
       f.track = body.track ? cleanTrack(body.track) : null;

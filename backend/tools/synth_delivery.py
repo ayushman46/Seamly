@@ -157,18 +157,39 @@ def capsule(img, a, b, r, colour, strength=1.0, ss=4):
     img[y0:y1, x0:x1] = np.clip(roi * (1 - al) + np.array(colour, np.float32) * al, 0, 255).astype(np.uint8)
 
 
+def body_truth(Vs, Hs, b, H, fps):
+    """Where the bowler really is, frame by frame, in scene metres: for measuring on the pitch (lib/onpitch.ts)."""
+    out = {"stature": H, "events": {k: int(round(v * fps)) for k, v in EV.items()}, "frames": []}
+    for i in range(len(Vs)):
+        fr = {"head_top": float(Vs[i][:, 1].max())}
+        for sd in ("L", "R"):
+            a = Hs[i, b["foot." + sd]]
+            near = (np.linalg.norm(Vs[i] - a, axis=1) < 0.30) & (Vs[i][:, 1] < a[1] + 0.02)
+            v = Vs[i][near]
+            low = v[v[:, 1] < v[:, 1].min() + 0.04]          # the sole
+            fr["ankle_" + sd] = a.tolist()
+            fr["heel_" + sd] = low[np.argmax(low[:, 2])].tolist()   # the bowler runs towards -z: the heel is the sole's largest z
+            fr["toe_" + sd] = low[np.argmin(low[:, 2])].tolist()
+            fr["sole_y_" + sd] = float(v[:, 1].min())
+            fr["wrist_" + sd] = Hs[i, b["wrist." + sd]].tolist()
+        out["frames"].append(fr)
+    return out
+
+
 VIEWS = {
     # a phone on a tall tripod behind the bowler's arm: still, wide
     "phone": dict(size=(1280, 720), pos=(0.9, 3.4, 10.5), at=(0.0, 0.6, -10.0), f=1180.0, zoom=1.0, tilt=0.0),
     # the same in full HD, a little closer and lower: a phone on a tripod just behind the umpire
     "phone_hd": dict(size=(1920, 1080), pos=(0.7, 2.6, 7.5), at=(0.0, 0.7, -10.0), f=1750.0, zoom=1.0, tilt=0.0),
     # a broadcast camera high behind the arm: long lens, zooming in and following the ball
+    # a phone on an ordinary tripod at chest height a few metres behind the stumps: a net session
+    "tripod_low": dict(size=(1920, 1080), pos=(-0.5, 1.45, 6.0), at=(0.0, 0.9, -10.0), f=1500.0, zoom=1.0, tilt=0.0),
     "broadcast": dict(size=(1920, 1080), pos=(1.5, 16.0, 84.0), at=(0.0, 0.0, -7.5), f=11500.0, zoom=1.75, tilt=4.0),
 }
 
 
 def render(out, view="phone", fps=60.0, kmh=128.0, length=6.5, line=0.05, swing=0.1, ball="red", sun=True, H=1.80,
-           bounce=(0.55, 0.87), seed=0, dur=1.72, shutter=1 / 500, raw=None, fall=(0.55, -0.12)):
+           bounce=(0.55, 0.87), seed=0, dur=1.72, shutter=1 / 500, raw=None, fall=(0.55, -0.12), wide=0.0, foot=0.0):
     rng = np.random.default_rng(seed)
     cfg = VIEWS[view]
     W, Hh = cfg["size"]
@@ -185,10 +206,10 @@ def render(out, view="phone", fps=60.0, kmh=128.0, length=6.5, line=0.05, swing=
     f_ffc, f_br = int(round(EV["ffc"] * fps)), int(round(EV["br"] * fps))
     Xf = heads[f_br, b["foot.L"], 0]                 # the front ankle at release: just behind the popping crease
     y_w = heads[f_br, b["wrist.R"], 1]
-    x0s = -0.45 + y_w
+    x0s = -0.45 + y_w + wide                         # `wide`: the whole bowler moved across the crease, metres
 
     def scene(P):                                    # mannequin axes -> scene axes
-        return np.stack([x0s - P[..., 1], P[..., 2], -1.05 - (P[..., 0] - Xf)], -1)
+        return np.stack([x0s - P[..., 1], P[..., 2], -1.05 - foot - (P[..., 0] - Xf)], -1)   # `foot`: landing further down the pitch
     Vs, Hs = scene(V), scene(heads)
     # the ball: in the hand until release (a third of a frame after the release frame), then in flight
     t_rel = EV["br"] + 0.3 / fps
@@ -298,6 +319,7 @@ def render(out, view="phone", fps=60.0, kmh=128.0, length=6.5, line=0.05, swing=
         "ball_px": [px(ball_at(t), i) for i, t in enumerate(ts)],
         "hand_px": px(hand(ts[f_br]), f_br), "ankle_px": [px(Hs[f_br, b["foot.L"]], f_br), px(Hs[f_br, b["foot.R"]], f_br)],
         "ankle_world": Hs[f_br, b["foot.L"]].tolist(),
+        "body": body_truth(Vs, Hs, b, H, fps),
         "upright": {"foot": [0, 0, 0], "tip": [fall[0] * STUMP_H, 0, fall[1] * STUMP_H]} if sun else None,
     }
     return truth
@@ -316,8 +338,11 @@ def main() -> None:
     ap.add_argument("--no-sun", action="store_true")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--raw")
+    ap.add_argument("--height", type=float, default=1.80)
+    ap.add_argument("--wide", type=float, default=0.0)
+    ap.add_argument("--foot", type=float, default=0.0)
     a = ap.parse_args()
-    truth = render(a.out, a.view, a.fps, a.kmh, a.length, a.line, a.swing, a.ball, not a.no_sun, seed=a.seed, raw=a.raw)
+    truth = render(a.out, a.view, a.fps, a.kmh, a.length, a.line, a.swing, a.ball, not a.no_sun, H=a.height, seed=a.seed, raw=a.raw, wide=a.wide, foot=a.foot)
     Path(a.out).with_suffix(".truth.json").write_text(json.dumps(truth))
     print(json.dumps({k: truth[k] for k in ("release", "pitch", "swing", "stumps")}, indent=1))
 

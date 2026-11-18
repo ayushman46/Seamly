@@ -33,6 +33,7 @@ const Viewer3D = lazyPage(() => import("./Viewer3D"));
 const BioReplay = lazyPage(() => import("./BioReplay"));
 const FaceIt = lazyPage(() => import("./FaceIt"));
 const BallTracker = lazyPage(() => import("./BallTracker"));
+const OnPitch3D = lazyPage(() => import("./OnPitch3D"));
 import { concerns } from "../lib/sanity";
 
 const STAGES = [
@@ -324,6 +325,8 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
   const faceBtn = useRef<HTMLButtonElement>(null);
   const [track, setTrack] = useState(false); // tracking the real ball, over the page
   const trackBtn = useRef<HTMLButtonElement>(null);
+  const [pitch, setPitch] = useState<null | "marks" | "view">(null);   // measuring on the pitch: marking it, then the 3D view
+  const pitchBtn = useRef<HTMLButtonElement>(null);
   const [bio, setBio] = useState(false);   // the 3D bio-mech replay, over the page
   const doubts = useMemo(() => (result ? concerns(result) : []), [result]);
   const bioBtn = useRef<HTMLButtonElement>(null);
@@ -613,6 +616,19 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
               <button ref={trackBtn} className={`btn ${meta.track ? "has" : ""}`} onClick={() => { setPlaying(false); setTrack(true); }} disabled={!result.events.br || !api.hasVideo(id) || doubts.some((c) => c.level === "block")}
                 title="Measure this ball's real flight from the video: mark the pitch, and the ball is found frame by frame. Speed, where it pitched, swing, and whether it was hitting the stumps"><ITarget size={15} /> {meta.track ? `Ball tracked · ${Math.round(meta.track.kmh)} km/h` : "Track the ball"}</button>
             )}
+            {MODE === "browser" && result.view.view !== "side_on" && (
+              <button ref={pitchBtn} className={`btn ${meta.onpitch ? "has" : ""}`} disabled={!result.events.br || !api.hasVideo(id) || doubts.some((c) => c.level === "block")}
+                onClick={async () => {
+                  setPlaying(false);
+                  if (meta.onpitch) { setPitch("view"); return; }
+                  // a ball tracked on this clip has the pitch marked already: the same marks serve
+                  if (meta.track?.marks?.length) {
+                    try { setMeta(await api.patch(id, { onpitch: { v: 1, w: meta.track.w, h: meta.track.h, markFrame: meta.track.markFrame, marks: meta.track.marks, release: null, releaseSigma: null, front: null, back: null, stride: null, stature: null, popping: null, runup: null } })); setPitch("view"); return; } catch { /* mark it afresh */ }
+                  }
+                  setPitch("marks");
+                }}
+                title="The delivery rebuilt in real metres on the pitch: where each foot landed, where the ball left the hand, the stride and the bowler's height, measured against the stumps and creases"><ICube size={15} /> {meta.onpitch?.release ? `On the pitch · ${meta.onpitch.release[1].toFixed(2)} m release` : "On the pitch 3D"}</button>
+            )}
             <ClipMaker meta={meta} result={result} ins={ins} fileBase={fileBase} frame={frame}
               onFrame={(f) => { setPlaying(false); setFrame(f); }} players={() => [...(playerRef.current?.querySelectorAll<HTMLCanvasElement>(".player-stage canvas") ?? [])]} />
             <div className="rel" ref={menuRef} onBlur={(e) => { if (!menuRef.current?.contains(e.relatedTarget as Node | null)) setMenu(false); }}>
@@ -770,6 +786,24 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
           <BallTracker id={id} result={result} meta={meta} name={meta.name ?? "delivery"} onMeta={setMeta} flash={flash}
             onFace={() => { setTrack(false); setFace(true); }}
             onClose={() => { setTrack(false); requestAnimationFrame(() => trackBtn.current?.focus({ preventScroll: true })); }} />
+        </Suspense>
+      )}
+      {pitch === "marks" && result && meta && (
+        <Suspense fallback={null}>
+          <BallTracker id={id} result={result} meta={meta} name={meta.name ?? "delivery"} onMeta={setMeta} flash={flash} onFace={() => undefined}
+            onPitch={async (rec) => {
+              try { setMeta(await api.patch(id, { onpitch: { v: 1, ...rec, release: null, releaseSigma: null, front: null, back: null, stride: null, stature: null, popping: null, runup: null } })); setPitch("view"); }
+              catch (e) { flash((e as Error).message, true); }
+            }}
+            onClose={() => { setPitch(null); requestAnimationFrame(() => pitchBtn.current?.focus({ preventScroll: true })); }} />
+        </Suspense>
+      )}
+      {pitch === "view" && result && meta?.onpitch && (
+        <Suspense fallback={null}>
+          <OnPitch3D id={id} result={result} meta={meta} name={meta.name ?? "delivery"} onMeta={setMeta} flash={flash}
+            others={others.filter((m) => m.onpitch?.release && meta.player_id && m.player_id === meta.player_id).map((m) => ({ id: m.id, name: m.name ?? "delivery", rec: m.onpitch! }))}
+            onRemark={() => setPitch("marks")}
+            onClose={() => { setPitch(null); requestAnimationFrame(() => pitchBtn.current?.focus({ preventScroll: true })); }} />
         </Suspense>
       )}
       <SiteFooter compact />

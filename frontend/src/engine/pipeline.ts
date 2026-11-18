@@ -15,7 +15,7 @@ import { FrameSource, repeatedFraction, segmentShots, signature, sigDistance, vi
 import { IDENTITY, MotionEstimator, appearance, detectionsByTrack, toGrey, track, type FrameDets, FLOW_SIZE } from "./tracking";
 import { isDelivery, scoreTracks, trackScoreDict, type Detection, type TrackScore, type TrackScoreDict } from "./bowler";
 import { assemble, bodyHeightPx, fixSwaps, hampel, interpolateGaps, smoothKeypoints } from "./pose2d";
-import { armPeakSpeed, bestUpswing, classifyView, decideBowlingArm, detectEvents, facingDirection, stabilise, strideAcross, wristLift } from "./events";
+import { armPeakSpeed, bestUpswing, classifyView, decideBowlingArm, detectEvents, facingDirection, sizeTrend, stabilise, strideAcross, wristLift } from "./events";
 import { estimateWorldFrame, reconstruct } from "./kinematics";
 import { FEET_OUT_TIP, HAND_OUT_TIP, compute, feetOutOfFrame, handOutOfFrame, type Ctx } from "./metrics";
 import { coach } from "./coaching";
@@ -72,6 +72,9 @@ class Progress {
 /** Everything Stage B needs (the browser counterpart of stage_a.npz + stage_a.json). */
 export interface StageA {
   X: Arr3; seq: Arr3; kp: Arr3; kp_s: Arr3; kc: Arr2; motions: number[][][]; bbox: Arr2; timestamps: number[];
+  /** Per frame of the window: the crop model's nine extra points (head top, neck, mid-hip, big toes, small toes, heels;
+   * left before right) as [x, y, confidence] in video pixels, unsmoothed; null where the bowler was not read. */
+  feet?: (number[][] | null)[];
   meta: {
     version: number; video: ReturnType<typeof videoInfoDict>; analysis_window: { start: number; end: number };
     display_scale: number; fps: number; options: Options;
@@ -398,6 +401,7 @@ async function stageA(src: FrameSource, opts: Options, models: Models, prog: Pro
   const sigc = canvas(64, 36).getContext("2d", { willReadFrequently: true })!;
   const frames = new Map<number, Blob>();
   const refined: (RefinedPose | null)[] = [];
+  let feet: (number[][] | null)[] = [];
   // For tuning the rules offline: a test page can set window.__seamlyRaw to receive the models' raw output for a
   // clip (see docs/ACCURACY.md 9h). Nothing sets it in the app.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -421,6 +425,7 @@ async function stageA(src: FrameSource, opts: Options, models: Models, prog: Pro
     if (rp && dbgRaw) rawRefined.push({ frame: fr, kps: rp.kps.map((p) => [...p]), kcs: [...rp.kcs], extra: rp.extra ?? null });
     if (rp && vis) rp.kcs = rp.kcs.map((c, j) => Math.min(c, 0.15 + 1.2 * vis[j]));
     refined.push(rp);
+    feet.push(rp?.extra ? rp.extra.map((p) => [p[0], p[1], p[2]]) : null);
     prog.stage("pose2d", (fr - f0 + 1) / nWin);
   }
   checkRepeats(info, f0, f1, realFps, opts);
@@ -440,7 +445,7 @@ async function stageA(src: FrameSource, opts: Options, models: Models, prog: Pro
   if (Tuse < f1 - f0) {
     for (let fr = f0 + Tuse; fr < f1; fr++) frames.delete(fr);
     f1 = f0 + Tuse;
-    kp = kp.slice(0, Tuse); kc = kc.slice(0, Tuse); kpS = kpS.slice(0, Tuse);
+    kp = kp.slice(0, Tuse); kc = kc.slice(0, Tuse); kpS = kpS.slice(0, Tuse); feet = feet.slice(0, Tuse);
   }
 
   // ---------------- 3D lifting ----------------
@@ -454,7 +459,7 @@ async function stageA(src: FrameSource, opts: Options, models: Models, prog: Pro
   for (let fr = f0; fr < f1; fr++) bbox.push(boxes.get(fr) ?? [NaN, NaN, NaN, NaN]);
   const meanKc = kc.flat().reduce((a, b) => a + b, 0) / Math.max(1, kc.length * 17);
   const stageA: StageA = {
-    X, seq, kp, kp_s: kpS, kc, motions: mot, bbox, timestamps: info.timestamps,
+    X, seq, kp, kp_s: kpS, kc, motions: mot, bbox, timestamps: info.timestamps, feet,
     meta: {
       version: 3, video: videoInfoDict(info), analysis_window: { start: f0, end: f1 }, display_scale: ds, fps: info.fps,
       options: opts, bowler: { track: chosen.track, shot: chosen.shot, score: trackScoreDict(chosen) },
@@ -665,7 +670,12 @@ export async function stageB(A: StageA, overrides: Overrides = {}, onProgress?: 
   // The user says the camera was behind the bowler and the analysis read it as in front (or the reverse): the
   // detector took the back for the front, so left and right are labelled as if the bowler faced the other way.
   // Mirror the labels (undoing an arm-cue mirror if one was made) and locate everything again.
-  const opposite = overrides.view === "behind" ? "front_on" : overrides.view === "front_on" ? "behind" : null;
+  // The same mirror without being told: a bowler who gets much smaller through the run-up is running away from the
+  // camera, so the camera is behind. Seen from behind in poor light the model can take the back for the front (a
+  // dark copy of a nets clip did); a real front-on bowler grows, or is followed by a zoom, and never shrinks by a
+  // third in a second (the most on any front-on clip tested was 22% a second; from behind near the camera, 35 to 100%).
+  const shrinking = overrides.view === undefined && L.view.view === "front_on" && (sizeTrend(kpS, kc, sweepHi, realFps) ?? 0) <= -30;
+  const opposite = overrides.view === "behind" || shrinking ? "front_on" : overrides.view === "front_on" ? "behind" : null;
   if (opposite !== null && L.view.view === opposite) {
     kpS = kpS.map((f) => COCO_FLIP.map((j) => f[j]));
     kc = kc.map((f) => COCO_FLIP.map((j) => f[j]));
@@ -754,6 +764,9 @@ export async function stageB(A: StageA, overrides: Overrides = {}, onProgress?: 
     frames: { start: f0, end: f1, times: frames.map((f) => round(tsAll[f], 4)) },
     keypoints2d: { names: COCO_NAMES, xy: kpS.map((fr) => fr.map((p) => [round(p[0] * ds, 1), round(p[1] * ds, 1)])),
       conf: kc.map((fr) => fr.map((c) => round(c, 2))) },
+    // for measuring on the pitch (lib/onpitch.ts): the feet's own points and how the camera moved, frame to frame
+    ...(A.feet ? { feet: A.feet.map((fr) => (fr ? fr.map((p) => [round(p[0] * ds, 1), round(p[1] * ds, 1), round(p[2], 2)]) : null)) } : {}),
+    camera_motion: mot.map((m) => m.map((r) => r.map((v) => round(v, 5)))),
     skeleton3d: { names: H36M_NAMES, parents: H36M_PARENTS, coords: "three",
       joints: worldToThree(groundW).map((fr) => fr.map((p) => p.map((v) => round(v, 4)))) },
     skeleton: { bone_lengths_m: skel.bone_lengths.map((v) => round(v, 4)), stature_m: height,

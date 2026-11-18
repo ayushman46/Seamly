@@ -97,6 +97,10 @@ export interface AnalysisResult {
   coaching: Coaching;
   frames: { start: number; end: number; times: number[] };
   keypoints2d: { names: string[]; xy: [number, number][][]; conf: number[][] };
+  /** Per frame: head top, neck, mid-hip, left/right big toe, left/right small toe, left/right heel as [x, y, confidence] (display px, unsmoothed). */
+  feet?: (number[][] | null)[];
+  /** Per frame: the 2x3 map from the frame before to this one (video px) that follows the background: the camera's pan and zoom. */
+  camera_motion?: number[][][];
   skeleton3d: { names: string[]; parents: number[]; joints: [number, number, number][][] };
   skeleton: { bone_lengths_m: number[]; stature_m: number; height_source: string; reproj_err_px_median: number };
   mesh: { vertices: number; faces: number; bones: number; frames: number; stature_m: number; bone_groups?: { bowling_arm: number[]; front_leg: number[] } };
@@ -134,6 +138,7 @@ export interface AnalysisMeta {
   source_id?: string | null;   // split from another analysis' video (several deliveries in one clip)
   pair?: string | null;   // the same ball filmed by a second camera (side-on with behind / in front)
   angled?: boolean | null;   // the camera was at an angle to the pitch (view.oblique), kept for lists
+  onpitch?: import("./lib/onpitch").OnPitchRecord | null;   // measured on the pitch in metres: the pitch marks and the headline figures
   track?: import("./lib/tracker").TrackRecord | null;   // the ball's measured flight: the pitch marks, the sightings and the headline figures
 }
 

@@ -92,3 +92,30 @@ describe("scan", () => {
     expect(segmentShots(hd, pd, frames, n, 25, true).length).toBe(1);
   });
 });
+
+import { sizeTrend } from "../src/engine/events";
+describe("a bowler running away from the camera gets smaller", () => {
+  // a stick body whose size in the picture follows `scale(t)`
+  const body = (scale: (t: number) => number, T = 60) => {
+    const kp: number[][][] = [], kc: number[][] = [];
+    for (let t = 0; t < T; t++) {
+      const s = scale(t), p = Array.from({ length: 17 }, () => [500, 300]);
+      p[5] = [500 - 20 * s, 300]; p[6] = [500 + 20 * s, 300]; p[11] = [500 - 12 * s, 300 + 60 * s]; p[12] = [500 + 12 * s, 300 + 60 * s];
+      p[13] = [500 - 12 * s, 300 + 105 * s]; p[14] = [500 + 12 * s, 300 + 105 * s]; p[15] = [500 - 12 * s, 300 + 150 * s]; p[16] = [500 + 12 * s, 300 + 150 * s];
+      kp.push(p); kc.push(new Array(17).fill(0.9));
+    }
+    return { kp, kc };
+  };
+  it("reads the rate of change in % per second", () => {
+    const away = body((t) => Math.exp(-0.5 * (t / 30))), toward = body((t) => Math.exp(0.2 * (t / 30)));
+    expect(sizeTrend(away.kp, away.kc, 59, 30)!).toBeCloseTo(-50, 0);
+    expect(sizeTrend(toward.kp, toward.kc, 59, 30)!).toBeCloseTo(20, 0);
+  });
+  it("says nothing with too little run-up or joints that were not read", () => {
+    const b = body(() => 1, 12);
+    expect(sizeTrend(b.kp, b.kc, 11, 30)).toBeNull();
+    const c = body(() => 1);
+    for (const f of c.kc) f[15] = 0.1;
+    expect(sizeTrend(c.kp, c.kc, 59, 30)).toBeNull();
+  });
+});

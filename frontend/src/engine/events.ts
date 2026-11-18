@@ -576,3 +576,26 @@ export function classifyView(forwardCam: number[], kp?: Arr3 | null, _kc?: Arr2 
   if (clash || lone || (!sDec && !rDec)) out.oblique = true;
   return out;
 }
+
+/**
+ * How fast the bowler's size in the picture changes over the second of run-up before the delivery, in % per second
+ * (legs plus trunk, as the picture shows them). Null with too little run-up, or joints that were not read.
+ */
+export function sizeTrend(kp: Arr3, kc: Arr2, sweepHi: number, fps: number): number | null {
+  const hi = Math.max(0, Math.min(kp.length - 1, sweepHi) - Math.trunc(0.3 * fps)), lo = Math.max(0, hi - Math.trunc(fps));
+  const d = (a: number[], b: number[]) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+  const ts: number[] = [], vs: number[] = [];
+  for (let t = lo; t < hi; t++) {
+    if (Math.min(kc[t][5], kc[t][6], kc[t][11], kc[t][12], kc[t][13], kc[t][14], kc[t][15], kc[t][16]) <= 0.3) continue;
+    const p = kp[t], leg = Math.max(d(p[11], p[13]) + d(p[13], p[15]), d(p[12], p[14]) + d(p[14], p[16]));
+    const trunk = d([(p[5][0] + p[6][0]) / 2, (p[5][1] + p[6][1]) / 2], [(p[11][0] + p[12][0]) / 2, (p[11][1] + p[12][1]) / 2]);
+    ts.push(t / fps); vs.push(Math.log(Math.max(1, leg + trunk)));
+  }
+  const n = ts.length;
+  if (n < Math.max(6, 0.3 * fps)) return null;
+  const mt = ts.reduce((a, b) => a + b, 0) / n, mv = vs.reduce((a, b) => a + b, 0) / n;
+  let num = 0, den = 0;
+  for (let i = 0; i < n; i++) { num += (ts[i] - mt) * (vs[i] - mv); den += (ts[i] - mt) ** 2; }
+  return den > 0 ? (num / den) * 100 : null;
+}
+
