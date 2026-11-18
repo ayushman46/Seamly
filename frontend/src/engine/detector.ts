@@ -40,12 +40,16 @@ async function hasWebGPU(): Promise<boolean> {
 
 // models are kept in Cache Storage after the first download (the HTTP cache alone can drop 40 MB files)
 
-// Where the models are downloaded from, in order. jsDelivr serves them straight from the public GitHub repo, pinned
-// to the commit that added them (so the files never change under a URL), which keeps the ~110 MB first download off
-// the site's own bandwidth; the site's copy is the fallback. Files over 20 MB are stored in parts (jsDelivr's limit).
-// When a model file changes, point MODEL_CDN at a commit that contains the new file (or drop it until then).
-const MODEL_CDN = "https://cdn.jsdelivr.net/gh/ayushman46/Seamly@0704330bc412b896ae9985268b9cb7bf5127e8b4/frontend/public/models/";
-export const MODEL_SOURCES: string[] = [MODEL_CDN, MODEL_BASE];
+// Where the models are downloaded from, in order: jsDelivr, then GitHub's own raw-file host, both serving them
+// straight from the public repository at the commit that added them (so the files never change under a URL), which
+// keeps the ~110 MB first download off the site's own bandwidth; the site's copy is the last resort. jsDelivr
+// serves files up to 20 MB (hence the parts) and refuses some of them for a repository this size ("package size
+// exceeded"), which is what the second source is for.
+// When a model file changes, point MODEL_COMMIT at a commit that contains the new file.
+const MODEL_COMMIT = "0704330bc412b896ae9985268b9cb7bf5127e8b4";
+const MODEL_CDN = `https://cdn.jsdelivr.net/gh/ayushman46/Seamly@${MODEL_COMMIT}/frontend/public/models/`;
+const MODEL_RAW = `https://raw.githubusercontent.com/ayushman46/Seamly/${MODEL_COMMIT}/frontend/public/models/`;
+export const MODEL_SOURCES: string[] = [MODEL_CDN, MODEL_RAW, MODEL_BASE];
 export const SCAN_MODEL = "rtmo-s.onnx", REFINE_MODEL = "rtmpose-m-halpe26.onnx";
 const MODEL_PARTS: Record<string, string[]> = {
   [SCAN_MODEL]: [1, 2].map((i) => `${SCAN_MODEL}.part${i}`),
