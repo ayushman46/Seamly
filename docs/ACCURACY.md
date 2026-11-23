@@ -830,7 +830,9 @@ these; the truth sat inside the stated range for the speed on all nine balls.
 
 **Speed.** The models now start loading the moment a clip is chosen (and on opening the app, once they are in the
 browser's store), instead of when Analyse is pressed, so on a return visit the wait for them is no longer part of
-the analysis. A faster scan was also built (people looked for in about thirty frames of each real second, the bowler placed in the frames between from the scanned ones either side) and scored the same way on 22 clips filmed at 50 frames a second and more. Side-on it changed nothing: the key moments were the same frame on ten clips and no measurement moved by more than 0.6. From behind it moved the key moments by a frame or two on six of seven rendered deliveries, turned one 120 fps synthetic clip into a front-on reading eleven frames out, and put the release of the real 100 fps net clip three frames outside what the eye sees. It stays off: about a fifth of the analysis time is not worth a wrong frame.
+the analysis: measured on the test laptop, the step that waited for the models took 28.5 s on a first visit and 0.2 s
+on a return one, and the bundled 60 fps nets clip then takes 20 s (8.7 s of it the people-finding model, which
+only accepts a square picture and so spends nearly half its work on padding; 4.7 s the joints; 2.1 s the 3D estimate). A faster scan was also built (people looked for in about thirty frames of each real second, the bowler placed in the frames between from the scanned ones either side) and scored the same way on 22 clips filmed at 50 frames a second and more. Side-on it changed nothing: the key moments were the same frame on ten clips and no measurement moved by more than 0.6. From behind it moved the key moments by a frame or two on six of seven rendered deliveries, turned one 120 fps synthetic clip into a front-on reading eleven frames out, and put the release of the real 100 fps net clip three frames outside what the eye sees. It stays off: about a fifth of the analysis time is not worth a wrong frame.
 
 ## 10. Still to do
 
