@@ -110,3 +110,59 @@ describe("a camera from the bowler's end alone", () => {
     });
   }
 });
+
+import { findFarCrease, farEndFromCrease } from "../src/lib/autocam";
+import { solveCameraPoints as solvePts, isCamera as isCam, worldOf as wOf, project as proj, onPlaneY as onY, type Camera as Cam, type Mark as Mk } from "../src/lib/camcal";
+describe("the far popping crease, for a camera worked out from the bowler's end", () => {
+  // a broadcast-like camera: 16 m up, 84 m behind the stumps, a long lens; a pale pitch with both ends' creases painted
+  const W = 1920, H = 1080;
+  const look = (() => {
+    const pos = [1.5, 16, 84], at = [0, 0, -7.5], f = 14700;
+    const z = [pos[0] - at[0], pos[1] - at[1], pos[2] - at[2]], zn = Math.hypot(...z), fw = z.map((v) => -v / zn);   // camera looks along fw
+    const rt = [fw[2] * -1 * -1, 0, -fw[0]].map((v) => v), rn = Math.hypot(rt[0], rt[2]);
+    const r = [-fw[2] / rn, 0, fw[0] / rn], d = [fw[1] * r[2] - fw[2] * r[1], fw[2] * r[0] - fw[0] * r[2], fw[0] * r[1] - fw[1] * r[0]];   // right, and down
+    const R = [r[0], r[1], r[2], d[0], d[1], d[2], fw[0], fw[1], fw[2]];
+    const t = [0, 1, 2].map((i) => -(R[3 * i] * pos[0] + R[3 * i + 1] * pos[1] + R[3 * i + 2] * pos[2]));
+    return { f, R, t, w: W, h: H, pos, rms: 0, worst: 0, marks: 0 } as unknown as Cam;
+  })();
+  const paint = (batter: { x: number; w: number } | null) => {
+    const img = new Uint8ClampedArray(W * H * 4);
+    for (let i = 0; i < W * H; i++) { img[4 * i] = 178; img[4 * i + 1] = 160; img[4 * i + 2] = 120; img[4 * i + 3] = 255; }
+    const line = (a: number[], b: number[], half: number) => {
+      const pa = proj(look, a as [number, number, number])!, pb = proj(look, b as [number, number, number])!, n = Math.ceil(Math.hypot(pb[0] - pa[0], pb[1] - pa[1]) * 2);
+      for (let k = 0; k <= n; k++) { const x = pa[0] + ((pb[0] - pa[0]) * k) / n, y = pa[1] + ((pb[1] - pa[1]) * k) / n; for (let dy = -Math.ceil(half); dy <= Math.ceil(half); dy++) for (let dx = -1; dx <= 1; dx++) { const xi = Math.round(x + dx), yi = Math.round(y + dy); if (Math.abs(dy) <= half && xi >= 0 && yi >= 0 && xi < W && yi < H) { const i = (yi * W + xi) * 4; img[i] = img[i + 1] = img[i + 2] = 240; } } }
+    };
+    for (const z0 of [0, -20.12]) { const to = z0 === 0 ? -1 : 1; line([-1.9, 0, z0 + to * 1.24], [1.9, 0, z0 + to * 1.24], z0 === 0 ? 1.5 : 0.8); line([-1.34, 0, z0 + to * 0.02], [1.34, 0, z0 + to * 0.02], z0 === 0 ? 1.5 : 0.8); }
+    if (batter) { const p = proj(look, [batter.x, 0, -18.9])!; for (let y = Math.round(p[1]) - 90; y < Math.round(p[1]) + 12; y++) for (let x = Math.round(p[0]); x < Math.round(p[0] + batter.w); x++) { const i = (y * W + x) * 4; img[i] = 30; img[i + 1] = 30; img[i + 2] = 40; } }
+    return img;
+  };
+  const near = (dx: number[]): Mk[] => (["pop_l", "pop_r", "bowl_l", "bowl_r"] as const).map((kind, i) => { const q = proj(look, wOf({ end: "bowler", kind }))!; return { end: "bowler", kind, px: [q[0] + dx[2 * i], q[1] + dx[2 * i + 1]] }; });
+  const spot: [number, number, number] = [0, 0, -13.6];   // where a good-length ball pitches
+  const offAt = (cam: Cam) => { const g = onY(cam, proj(look, spot)!, 0)!; return Math.abs(g[2] - spot[2]); };
+  it("is found where it is, with a batter standing on a third of it, and puts the far end right", () => {
+    const img = paint({ x: -0.4, w: 60 });
+    // corners at the bowler's end a pixel out, in a way that leaves the camera 10 m too near: the far end is then a metre out
+    const ms = near([0.9, -0.8, -0.9, -0.8, -0.9, 0.9, 0.9, 0.9]);
+    const cam0 = solvePts(ms.map((m) => ({ world: wOf(m), px: m.px })), W, H) as Cam;
+    expect(isCam(cam0)).toBe(true);
+    const before = offAt(cam0);
+    expect(before).toBeGreaterThan(0.3);
+    const ends = findFarCrease(img, W, H, cam0)!;
+    expect(ends).not.toBeNull();
+    const truth = proj(look, [0, 0, -(20.12 - 1.24)])!;
+    expect(Math.abs((ends[0].px[1] + ends[1].px[1]) / 2 - truth[1])).toBeLessThan(1.2);   // the line's height in the picture
+    const far = farEndFromCrease(img, W, H, ms, cam0)!;
+    const cam1 = solvePts([...ms, ...far].map((m) => ({ world: wOf(m), px: m.px })), W, H) as Cam;
+    expect(offAt(cam1)).toBeLessThan(0.25);
+    expect(offAt(cam1)).toBeLessThan(0.6 * before);
+  });
+  it("finds nothing on a pitch with no far crease, or one too thin to see", () => {
+    const img = paint(null), cam0 = solvePts(near([0, 0, 0, 0, 0, 0, 0, 0]).map((m) => ({ world: wOf(m), px: m.px })), W, H) as Cam;
+    // paint out the far end
+    const p = proj(look, [0, 0, -18.9])!; for (let y = Math.round(p[1]) - 40; y < Math.round(p[1]) + 40; y++) for (let x = 0; x < W; x++) { const i = (y * W + x) * 4; img[i] = 178; img[i + 1] = 160; img[i + 2] = 120; }
+    expect(findFarCrease(img, W, H, cam0)).toBeNull();
+    // a phone ten metres behind at 720p: the far crease is a fifth of a pixel thick
+    const phone = { ...cam0, f: cam0.f / 12, w: 1280, h: 720 } as Cam;
+    expect(findFarCrease(new Uint8ClampedArray(1280 * 720 * 4), 1280, 720, phone)).toBeNull();
+  });
+});

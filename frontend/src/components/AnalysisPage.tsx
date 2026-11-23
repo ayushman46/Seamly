@@ -370,7 +370,7 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
         if (next.track) return;
         // (a camera worked out from the bowler's end alone knows the far end poorly: the ball is followed only when
         // the batter's wicket was found too, or the whole crease pattern was)
-        if (found.how === "near creases" && !found.far) { dbg?.("ball: not looked for (the far end was not found)"); return; }
+        if (found.how === "near creases" && !found.far && found.tapPx > 1.8) { dbg?.("ball: not looked for (the far end was not found, and the near end not finely enough to stand for it)"); return; }
         const T = await import("../lib/tracker"), { solveCameraPoints, isCamera, worldOf } = await import("../lib/camcal"), { trackingMarks } = await import("../lib/autocam");
         const tMarks = trackingMarks(found.marks, found.far);
         const tCam = found.far ? solveCameraPoints(tMarks.map((q) => ({ world: worldOf(q), px: q.px })), w, h) : m.cam;

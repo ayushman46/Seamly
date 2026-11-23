@@ -701,6 +701,19 @@ export function pickBall<T extends { t: number; px: Pt; weight?: number }>(cam: 
       }
     }
   }
+  // When the hand at release is known, the stretches that begin there go first: within a third of a second of the
+  // release, and no further from the hand than a ball could have got. A broadcast frame holds a thousand or two
+  // stretches of something moving (fielders' legs, the umpire, the crowd), and tried longest-first a slow spinner's
+  // ball came sixtieth; a fast bowler's, eleven frames long, never came at all.
+  if (o.hand) {
+    const tol = o.handTol ?? 60;
+    for (const q of runs) {
+      const f = q.chain[q.lo], tg = f.t - pri.releaseT;
+      const d = Math.hypot(f.px[0] - o.hand[0], f.px[1] - o.hand[1]);
+      if (tg >= -1.5 * frame && tg <= Math.max(0.12, 3.5 * frame) && d <= tol * (1 + 12 * Math.max(0, tg))) q.rank += 1e6 - 5 * d - 1e3 * Math.max(0, tg);
+    }
+    o.debug?.(`stretches that begin at the hand: ${runs.filter((q) => q.rank >= 5e5).length} of ${runs.length}`);
+  }
   runs.sort((p, q) => q.rank - p.rank);
   for (const { chain, lo, hi } of runs) {
     const n = chain.length;
