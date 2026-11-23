@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MODE, api } from "../api";
-import type { SampleName } from "../api.local";
+import { warmModels, type SampleName } from "../api.local";
 import type { AnalysisMeta, Player } from "../types";
 import { AGE_LABEL, STYLE_LABEL, getCurrentPlayer, setCurrentPlayer } from "../lib/player";
 import PlayerForm from "./PlayerForm";
@@ -326,7 +326,13 @@ function Uploader({ go, disabled, health, players, current, onChoose, onCreate, 
     slowmo !== "1" ? `${slowmo}× slow motion` : ""].filter(Boolean).join(" · ") || "arm, height, slow motion";
   // the "big first download" note only matters until the models are in this browser
   const [cached, setCached] = useState(false);
-  useEffect(() => { if (MODE === "browser") void modelsCached().then(setCached); }, []);
+  useEffect(() => {
+    if (MODE !== "browser") return;
+    let timer = 0;
+    // a returning visitor's models are in this browser already: get them ready while the clip is being chosen
+    void modelsCached().then((c) => { setCached(c); if (c) timer = window.setTimeout(warmModels, 1200); });
+    return () => window.clearTimeout(timer);
+  }, []);
   const [busy, setBusy] = useState(false);
   const [prog, setProg] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -352,7 +358,7 @@ function Uploader({ go, disabled, health, players, current, onChoose, onCreate, 
     if (bad) setError(`${all.length > 1 ? `${bad.name} isn't a video` : "Please choose a video file"} (MP4, MOV, AVI, MKV or WEBM).`);
     else if (big) setError(`${big.name} is ${(big.size / 1e6).toFixed(0)} MB — please trim it under ${MAX_MB} MB.`);
     else if (all.length > MAX_CLIPS) setError(`Up to ${MAX_CLIPS} clips at a time: the first ${MAX_CLIPS} are selected.`);
-    if (ok.length) setFiles(ok);
+    if (ok.length) { setFiles(ok); if (MODE === "browser") warmModels(); }
   };
 
   const submit = async () => {

@@ -144,7 +144,15 @@ export function solveCameraPoints(marks: { world: V3; px: Pt }[], w: number, h: 
   const world = marks.map((m) => m.world);
   const zs = world.map((p) => p[2]);
   const xs = world.map((p) => p[0]), spanX = Math.max(...xs) - Math.min(...xs);
-  if (Math.max(...zs) - Math.min(...zs) < 10) return { reason: "spread", text: "Mark points at both ends of the pitch: one end alone cannot give the distance between them." };
+  if (Math.max(...zs) - Math.min(...zs) < 10) {
+    // One end only. The creases at that end (2.64 m across, 1.22 m deep) and a stump standing on them are enough for
+    // a camera held level, and it is exact where it matters: at that end. (How far away the other end would appear
+    // is the one thing it knows poorly.)
+    const ys = world.map((p) => p[1]);
+    void ys;
+    if (marks.length >= 4 && spanX >= 1 && Math.max(...zs) - Math.min(...zs) >= 0.6) return solveLevelCamera(marks, w, h, start);
+    return { reason: "spread", text: "Mark points at both ends of the pitch: one end alone cannot give the distance between them." };
+  }
   if (spanX < 0.2) {
     // only the line of the stumps is marked (the foot and top of a stump at each end): enough for a camera held level
     const ys = world.map((p) => p[1]);
@@ -202,7 +210,7 @@ export function solveCameraPoints(marks: { world: V3; px: Pt }[], w: number, h: 
  * the top of the middle stump at each end. Six unknowns (zoom, which way it points, how far it tips down, where it
  * is) against two equations a mark: four marks are enough, and the stumps' own height (71.1 cm) is the ruler.
  */
-export function solveLevelCamera(marks: { world: V3; px: Pt }[], w: number, h: number, start?: Camera): Camera | CameraProblem {
+export function solveLevelCamera(marks: { world: V3; px: Pt }[], w: number, h: number, start?: Camera, guesses?: number[][]): Camera | CameraProblem {
   if (marks.length < 4) return { reason: "few", text: "Mark the foot and the top of the middle stump at each end." };
   const world = marks.map((m) => m.world);
   const level = (q: number[]) => {
@@ -230,6 +238,13 @@ export function solveLevelCamera(marks: { world: V3; px: Pt }[], w: number, h: n
     const z = [start.R[6], start.R[7], start.R[8]];
     const fit = levenbergMarquardt(resid, [Math.log(start.f), Math.atan2(z[0], -z[2]), Math.asin(Math.max(-1, Math.min(1, -z[1]))), ...start.pos], [1e-4, 1e-5, 1e-5, 1e-3, 1e-3, 1e-3], 60);
     best = { q: fit.x, cost: fit.cost };
+  } else if (guesses) {
+    // from rough answers worked out by the caller: [log zoom, turn, tip down, x, y, z]
+    for (const g of guesses) {
+      const fit = levenbergMarquardt(resid, g, [1e-4, 1e-5, 1e-5, 1e-3, 1e-3, 1e-3], 60);
+      if (!(level(fit.x).pos[1] > 0.05)) continue;
+      if (!best || fit.cost < best.cost) best = { q: fit.x, cost: fit.cost };
+    }
   } else for (const side of [1, -1]) for (const dist of [4, 8, 16, 32, 64, 110]) for (const height of [1.0, 1.8, 3.5, 7, 14, 28]) for (const off of [0, -3, 3]) {
     if (height > dist * 1.2) continue;
     const pos: V3 = [off, height, side > 0 ? dist : -PITCH_LEN - dist];

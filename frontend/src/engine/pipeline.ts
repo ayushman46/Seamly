@@ -14,7 +14,7 @@ import { FrameSource, repeatedFraction, segmentShots, signature, sigDistance, vi
   type Signature, type VideoInfo } from "./video";
 import { IDENTITY, MotionEstimator, appearance, detectionsByTrack, toGrey, track, type FrameDets, FLOW_SIZE } from "./tracking";
 import { isDelivery, scoreTracks, trackScoreDict, type Detection, type TrackScore, type TrackScoreDict } from "./bowler";
-import { assemble, bodyHeightPx, fixSwaps, hampel, interpolateGaps, smoothKeypoints } from "./pose2d";
+import { assemble, bodyHeightPx, fixArmGlitches, fixSwaps, hampel, interpolateGaps, smoothKeypoints } from "./pose2d";
 import { armPeakSpeed, bestUpswing, classifyView, decideBowlingArm, detectEvents, facingDirection, sizeTrend, stabilise, strideAcross, wristLift } from "./events";
 import { estimateWorldFrame, reconstruct } from "./kinematics";
 import { FEET_OUT_TIP, HAND_OUT_TIP, compute, feetOutOfFrame, handOutOfFrame, type Ctx } from "./metrics";
@@ -45,6 +45,10 @@ const FRAME_JPEG_QUALITY = 0.78;   // ~40% smaller than 0.85 on grassy footage (
 
 export type ProgressCb = (p: { stage: string; label: string; progress: number; detail?: string | null; elapsed: number }) => void;
 
+/** Where the time goes inside the stages (ms, by name), printed with the stage timings in debug mode. */
+const CLOCK = new Map<string, number>();
+const clock = (key: string, since: number): number => { const now = performance.now(); CLOCK.set(key, (CLOCK.get(key) ?? 0) + now - since); return now; };
+
 class Progress {
   private t0 = performance.now();
   private paused = 0;                   // ms spent waiting for a hidden tab: not working time
@@ -55,7 +59,18 @@ class Progress {
     if (on && this.pausedAt === null) this.pausedAt = t;
     else if (!on && this.pausedAt !== null) { this.paused += t - this.pausedAt; this.pausedAt = null; }
   }
+  private marks: [string, number][] = [];
+  /** With localStorage "seamly:debug" = "1": how long each stage took, to the console (for making the pipeline faster). */
+  report(tag: string) {
+    try {
+      if (typeof localStorage === "undefined" || localStorage.getItem("seamly:debug") !== "1") return;
+      const now = performance.now();
+      console.info(`[time] ${tag}: ` + this.marks.map(([k, t], i) => `${k} ${Math.round((this.marks[i + 1]?.[1] ?? now) - t)} ms`).join(", ") + `; fetching frames so far ${Math.round(FrameSource.seekMs)} ms for ${FrameSource.seekN}; inside: ${[...CLOCK].map(([k, v]) => `${k} ${Math.round(v)}`).join(", ")}`);
+      CLOCK.clear();
+    } catch { /* no storage */ }
+  }
   stage(key: string, frac = 0, detail: string | null = null) {
+    if (!this.marks.length || this.marks[this.marks.length - 1][0] !== key) this.marks.push([key, performance.now()]);
     if (!this.cb) return;
     let acc = 0;
     for (const [k, label, w] of STAGES) {
@@ -90,14 +105,19 @@ export interface StageA {
 export interface Models { pose: PoseModels; lifter: Lifter }
 
 let modelsP: Promise<Models> | null = null;
-/** Load (once) the detection and lifting models; ~110 MB, cached by the browser after the first visit. */
+let modelsAt = 0;
+const modelWatchers = new Set<(f: number) => void>();
+/** Load (once) the detection and lifting models; ~110 MB, cached by the browser after the first visit. The load can
+ *  be started early (when a clip is chosen) and joined later: every caller's onProgress hears how far it has got. */
 export function loadModels(onProgress?: (f: number) => void): Promise<Models> {
+  if (onProgress) { modelWatchers.add(onProgress); onProgress(modelsAt); }
   if (!modelsP) {
     let a = 0, b = 0;
-    const rep = () => onProgress?.(0.8 * a + 0.2 * b);
+    modelsAt = 0;
+    const rep = () => { modelsAt = 0.8 * a + 0.2 * b; for (const w of modelWatchers) w(modelsAt); };
     modelsP = Promise.all([PoseModels.load((f) => { a = f; rep(); }), Lifter.load((f) => { b = f; rep(); })])
-      .then(([pose, lifter]) => ({ pose, lifter }))
-      .catch((e) => { modelsP = null; throw e; });
+      .then(([pose, lifter]) => { modelsAt = 1; modelWatchers.clear(); return { pose, lifter }; })
+      .catch((e) => { modelsP = null; modelWatchers.clear(); throw e; });
   }
   return modelsP;
 }
@@ -115,6 +135,15 @@ function jpeg(c: HTMLCanvasElement, quality: number): Blob {
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   return new Blob([bytes], { type: "image/jpeg" });
+}
+
+/** The same, packed by the browser off this thread when it can be (the picture is copied at the call). */
+function jpegAsync(c: HTMLCanvasElement, quality: number): Promise<Blob> {
+  if (typeof c.toBlob !== "function") return Promise.resolve(jpeg(c, quality));
+  return new Promise((resolve) => {
+    // (a browser that hands back nothing gets an empty picture for that frame: by then the canvas holds a later one)
+    try { c.toBlob((b) => resolve(b ?? new Blob([], { type: "image/jpeg" })), "image/jpeg", quality); } catch { resolve(jpeg(c, quality)); }
+  });
 }
 
 function boxIou(a: number[], b: number[]): number {
@@ -140,17 +169,24 @@ async function detectFrames(src: FrameSource, models: Models, frames: number[], 
   for (let n = 0; n < frames.length; n++) {
     if (abort?.aborted) throw new AnalysisError("Analysis cancelled.");
     const f = frames[n];
+    let tc = performance.now();
     await src.seek(f);
+    tc = clock("scan: frame", tc);
     const v = src.video;
     if (sigs && !sigs.has(f)) sigs.set(f, signature(sigc, v, W, H));
+    tc = clock("scan: signature", tc);
     const det = await models.pose.detect(v, W, H);
+    tc = clock("scan: people model", tc);
     wctx.drawImage(v, 0, 0, work.width, work.height);
     const img = wctx.getImageData(0, 0, work.width, work.height);
     fctx.drawImage(v, 0, 0, flow.width, flow.height);
     const grey = toGrey(fctx.getImageData(0, 0, flow.width, flow.height), fs);
+    tc = clock("scan: pixels", tc);
     const m = motion.next(grey, det.boxes);
+    tc = clock("scan: camera motion", tc);
     out.push({ frame: f, boxes: det.boxes, confs: det.confs, kps: det.kps, kcs: det.kcs,
       appearance: det.boxes.map((b) => appearance(img, b, s)), motion: m });
+    clock("scan: appearance", tc);
     onFrame(n);
   }
   return out;
@@ -280,7 +316,13 @@ async function stageA(src: FrameSource, opts: Options, models: Models, prog: Pro
   }
   // ---------------- scan: detect + track (adaptive stride: ~350 scanned frames find the delivery) ----------------
   const n = info.frameCount;
-  const scanStride = clip(Math.ceil(n / 350), 1, Math.max(1, Math.floor(info.fps / 12)));
+  // An experiment, off unless localStorage "seamly:scan" = "fast": look for people in about thirty frames of each real
+  // second (every other frame at 60 fps, every fourth at 120) and place the bowler in the frames between from the
+  // scanned ones either side, instead of running the people model on every frame of the delivery. Not the default
+  // until it is shown to leave the key moments and the measurements where they are (docs/ACCURACY.md 9k).
+  const fastScan = (() => { try { return typeof localStorage !== "undefined" && localStorage.getItem("seamly:scan") === "fast"; } catch { return false; } })();
+  const maxStride = Math.max(1, Math.floor(info.fps / 12));
+  const scanStride = Math.max(clip(Math.ceil(n / 350), 1, maxStride), fastScan ? clip(Math.round(info.fps / 30), 1, maxStride) : 1);
   const scanFrames: number[] = [];
   for (let f = 0; f < n; f += scanStride) scanFrames.push(f);
   const sigs = new Map<number, Signature>();
@@ -309,7 +351,18 @@ async function stageA(src: FrameSource, opts: Options, models: Models, prog: Pro
   const tracks = detectionsByTrack(perShot.get(chosen.shot)!);
   let bowlerDets = tracks.get(chosen.track)!;
   let others: Map<number, Detection[]> = new Map([...tracks].filter(([id]) => id !== chosen.track));   // everyone else, at the best rate scanned
-  if (scanStride > 1) {
+  if (scanStride > 1 && fastScan) {
+    // the camera's movement between two scanned frames, shared out over the frames between them
+    for (const d of bowlerDets) {
+      const M = motions.get(d.frame);
+      if (!M || d.frame - scanStride < shot.start) continue;
+      const sc = M[0][0], s1 = Math.pow(Math.max(1e-6, sc), 1 / scanStride);
+      let sum = 0;
+      for (let i = 0; i < scanStride; i++) sum += Math.pow(s1, i);
+      const m1 = [[s1, 0, M[0][2] / sum], [0, s1, M[1][2] / sum]];
+      for (let f = d.frame - scanStride + 1; f <= d.frame; f++) motions.set(f, m1);
+    }
+  } else if (scanStride > 1) {
     const pk0 = chosen.sweep!.peak_frame;
     const w0 = Math.max(shot.start, bowlerDets[0].frame, pk0 - Math.trunc(2.5 * realFps));
     const w1 = Math.min(shot.end, bowlerDets[bowlerDets.length - 1].frame + 1, pk0 + Math.trunc(1.2 * realFps));
@@ -386,7 +439,10 @@ async function stageA(src: FrameSource, opts: Options, models: Models, prog: Pro
     for (const k of known) { if (k < fr) prev = k; else if (k > fr && next === null) next = k; }
     if (prev !== null && next !== null && next - prev <= Math.trunc(0.5 * info.fps)) {
       const a = (fr - prev) / (next - prev), pd = detByFrame.get(prev)!, nd = detByFrame.get(next)!;
-      boxes.set(fr, pd.box.map((v, i) => (1 - a) * v + a * nd.box[i]));
+      // (in the fast scan every other frame is placed this way: the crop then covers the bowler in both the frames
+      // either side, so that an arm on its way up is not cut off)
+      boxes.set(fr, fastScan && next - prev <= scanStride ? [Math.min(pd.box[0], nd.box[0]), Math.min(pd.box[1], nd.box[1]), Math.max(pd.box[2], nd.box[2]), Math.max(pd.box[3], nd.box[3])]
+        : pd.box.map((v, i) => (1 - a) * v + a * nd.box[i]));
       seen.set(fr, pd.kcs.map((v, i) => (1 - a) * v + a * nd.kcs[i]));
     }
   }
@@ -401,6 +457,7 @@ async function stageA(src: FrameSource, opts: Options, models: Models, prog: Pro
   const sigc = canvas(64, 36).getContext("2d", { willReadFrequently: true })!;
   const frames = new Map<number, Blob>();
   const refined: (RefinedPose | null)[] = [];
+  const pendingJpeg: Promise<void>[] = [];
   let feet: (number[][] | null)[] = [];
   // For tuning the rules offline: a test page can set window.__seamlyRaw to receive the models' raw output for a
   // clip (see docs/ACCURACY.md 9h). Nothing sets it in the app.
@@ -412,22 +469,28 @@ async function stageA(src: FrameSource, opts: Options, models: Models, prog: Pro
   const nWin = f1 - f0;
   for (let fr = f0; fr < f1; fr++) {
     if (abort?.aborted) throw new AnalysisError("Analysis cancelled.");
+    let tc = performance.now();
     await src.seek(fr);
+    tc = clock("joints: frame", tc);
     const v = src.video;
     const sg = signature(sigc, v, W, H);
     if (prevSig) info.frameDiff.set(fr, sigDistance(prevSig, sg)[1]);
     prevSig = sg;
+    tc = clock("joints: signature", tc);
     dctx.drawImage(v, 0, 0, disp.width, disp.height);
-    const jp = jpeg(disp, FRAME_JPEG_QUALITY);
-    if (onFrame) onFrame(fr, jp); else frames.set(fr, jp);
+    // the frame as shown on the page is packed while the joints model runs (the browser does it off this thread)
+    pendingJpeg.push(jpegAsync(disp, FRAME_JPEG_QUALITY).then((jp) => { if (onFrame) onFrame(fr, jp); else frames.set(fr, jp); }));
+    tc = clock("joints: jpeg", tc);
     const b = boxes.get(fr);
     const rp = b ? await models.pose.refineCrop(v, W, H, b, fr) : null, vis = seen.get(fr);
+    clock("joints: crop model", tc);
     if (rp && dbgRaw) rawRefined.push({ frame: fr, kps: rp.kps.map((p) => [...p]), kcs: [...rp.kcs], extra: rp.extra ?? null });
     if (rp && vis) rp.kcs = rp.kcs.map((c, j) => Math.min(c, 0.15 + 1.2 * vis[j]));
     refined.push(rp);
     feet.push(rp?.extra ? rp.extra.map((p) => [p[0], p[1], p[2]]) : null);
     prog.stage("pose2d", (fr - f0 + 1) / nWin);
   }
+  await Promise.all(pendingJpeg);
   checkRepeats(info, f0, f1, realFps, opts);
   const refinedList = refined.filter((r): r is RefinedPose => r !== null);
   let [kp, kc] = assemble(refinedList, detByFrame, f0, f1);
@@ -436,6 +499,7 @@ async function stageA(src: FrameSource, opts: Options, models: Models, prog: Pro
   let nSwaps: number;
   [kp, kc, nSwaps] = fixSwaps(kp, kc, 0.25, true);   // a flicker is fixed; limbs that really cross are left
   [kp, kc] = interpolateGaps(kp, kc, fps);
+  kp = fixArmGlitches(kp, kc, fps);   // a wrist or elbow misread for one frame, before it is smeared by the smoothing
   let kpS = smoothKeypoints(kp, fps);
   // broadcast cameras zoom in after release (phone clips can lose the bowler off the frame edge): end the
   // window where tracking collapses or the camera has zoomed in hard since release
@@ -472,6 +536,7 @@ async function stageA(src: FrameSource, opts: Options, models: Models, prog: Pro
     },
   };
   prog.stage("lift", 1);
+  prog.report("stage A");
   if (dbgRaw) dbgRaw({ hd, pd, others: [...others.values()].map((v) => v.filter((d) => d.frame >= f0 - 30 && d.frame < f1 + 30)).filter((v) => v.length), stageA, rawRefined, f0, f1: f0 + (f1 - f0), pk, scanStride, dets: [...detByFrame.values()].map((d) => ({ frame: d.frame, box: d.box, kps: d.kps, kcs: d.kcs })),
     scan: fdsAll.map((fd) => ({ frame: fd.frame, boxes: fd.boxes, confs: fd.confs, kps: fd.kps, kcs: fd.kcs, appearance: fd.appearance.map((x) => Array.from(x as ArrayLike<number>)), motion: fd.motion })) });
   return { stageA, frames };
@@ -578,7 +643,12 @@ export async function stageB(A: StageA, overrides: Overrides = {}, onProgress?: 
     // the other arm went over first, 0.15 to 0.45 s earlier and nearly as strongly: this one is the trailing arm
     if (v2 >= 2.5 && at - at2 >= 0.15 * realFps && at - at2 <= 0.45 * realFps && v - v2 <= 1.0) [v, at] = [v2, at2];
     const m = Math.trunc(0.1 * realFps);
-    if (v >= 3.5 && (at < sweepLo - m || at > sweepHi + m)) {
+    // (a little less clear, 3.0, is enough when the scan's own window holds no up-and-over worth the name by either
+    // arm: at 25 frames a second the arm's fall after the top is three frames long and scores lower than it should,
+    // and the scan had settled on the front arm's rise before the delivery, eight frames early)
+    const topIn = ([q, t]: [number, number]) => (t >= sweepLo - m && t <= sweepHi + m ? q : 0);   // (one that tops out inside the window)
+    const inside = Math.max(topIn(bestUpswing(kpS, kc, 6, 8, 10, sweepLo - m, sweepHi + m, realFps)), topIn(bestUpswing(kpS, kc, 5, 7, 9, sweepLo - m, sweepHi + m, realFps)));
+    if ((v >= 3.5 || (v >= 3.0 && inside < 2.5)) && (at < sweepLo - m || at > sweepHi + m)) {
       sweepLo = Math.max(0, at - Math.trunc(0.25 * realFps));
       sweepHi = Math.min(T - 1, at + m);
       sweepSide = null;
@@ -609,6 +679,10 @@ export async function stageB(A: StageA, overrides: Overrides = {}, onProgress?: 
       labelsSwapped = true;
     }
   }
+  // (one-frame misreadings mended as stage A now does, for analyses whose stage A was made before it did; the same
+  // left/right labels as the smoothed joints)
+  const armsRaw0 = fixArmGlitches(A.kp, A.kc, realFps);
+  let armsRaw = labelsSwapped ? armsRaw0.map((f) => COCO_FLIP.map((j) => f[j])) : armsRaw0;
   const up0: [number, number, number] = [0, -1, 0];
   const runup: number[] = [];
   for (let t = 0; t < Math.max(0, sweepLo - Math.trunc(0.35 * realFps)); t++) runup.push(t);
@@ -677,6 +751,7 @@ export async function stageB(A: StageA, overrides: Overrides = {}, onProgress?: 
   const shrinking = overrides.view === undefined && L.view.view === "front_on" && (sizeTrend(kpS, kc, sweepHi, realFps) ?? 0) <= -30;
   const opposite = overrides.view === "behind" || shrinking ? "front_on" : overrides.view === "front_on" ? "behind" : null;
   if (opposite !== null && L.view.view === opposite) {
+    armsRaw = armsRaw.map((f) => COCO_FLIP.map((j) => f[j]));
     kpS = kpS.map((f) => COCO_FLIP.map((j) => f[j]));
     kc = kc.map((f) => COCO_FLIP.map((j) => f[j]));
     X = X.map((f) => H36M_FLIP.map((j) => f[j]));
@@ -765,6 +840,9 @@ export async function stageB(A: StageA, overrides: Overrides = {}, onProgress?: 
     keypoints2d: { names: COCO_NAMES, xy: kpS.map((fr) => fr.map((p) => [round(p[0] * ds, 1), round(p[1] * ds, 1)])),
       conf: kc.map((fr) => fr.map((c) => round(c, 2))) },
     // for measuring on the pitch (lib/onpitch.ts): the feet's own points and how the camera moved, frame to frame
+    // the bowling arm as the model read it frame by frame, not smoothed in time (elbows and wrists: left, right):
+    // the release is measured from these, because smoothing flattens and delays the top of a fast arm
+    arms_raw: armsRaw.map((fr) => [7, 8, 9, 10].map((j) => [round(fr[j][0] * ds, 1), round(fr[j][1] * ds, 1)])),
     ...(A.feet ? { feet: A.feet.map((fr) => (fr ? fr.map((p) => [round(p[0] * ds, 1), round(p[1] * ds, 1), round(p[2], 2)]) : null)) } : {}),
     camera_motion: mot.map((m) => m.map((r) => r.map((v) => round(v, 5)))),
     skeleton3d: { names: H36M_NAMES, parents: H36M_PARENTS, coords: "three",
@@ -774,5 +852,6 @@ export async function stageB(A: StageA, overrides: Overrides = {}, onProgress?: 
     mesh: mesh.info,
     timing_stage_a_s: meta.timing_stage_a_s,
   };
+  prog.report("stage B");
   return { result, mesh: { rest: mesh.rest, pose: mesh.pose } };
 }

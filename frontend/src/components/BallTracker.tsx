@@ -123,9 +123,12 @@ export default function BallTracker({ id, result, meta, name, onClose, onMeta, o
   const [relFrame, setRelFrame] = useState<number | null>(null);
   const [relLoose, setRelLoose] = useState(false);   // the release was taken from the ball, not set by hand
   const hints = useMemo(() => {
-    const h = src ? poseHints(result, src.w) : null;
+    const h0 = src ? poseHints(result, src.w) : null;
+    // the release measured on the pitch, when this clip has one: where the ball starts is then measured, not assumed
+    const ms = meta.track?.measured ?? (meta.onpitch?.release && meta.onpitch.releaseSigma ? [meta.onpitch.release[2], meta.onpitch.front ? 0.25 : 0.45, meta.onpitch.release[1], meta.onpitch.releaseSigma[1]] : null);
+    const h = h0 && ms ? { ...h0, measured: { z: ms[0], zSigma: ms[1], height: ms[2], heightSigma: ms[3], frame: ms.length > 4 ? ms[4] : null } } : h0;
     return h && relFrame !== null && relFrame !== h.releaseFrame ? { ...h, releaseFrame: relFrame, releaseTSigma: relLoose ? 1.5 : undefined, hand: null, ankles: [], releaseHeight: null } : h;
-  }, [result, src, relFrame, relLoose]);
+  }, [result, src, relFrame, relLoose, meta.track?.measured, meta.onpitch?.release]);   // eslint-disable-line react-hooks/exhaustive-deps
   const marks = useMemo(() => pm.map((m) => toWorld(m, nearEnd)), [pm, nearEnd]);
   const cam: Camera | CameraProblem | null = useMemo(() => (src && marks.length >= 4 ? solveCamera(marks, src.w, src.h) : null), [marks, src]);
   const camera = isCamera(cam) ? cam : null;
@@ -248,6 +251,19 @@ export default function BallTracker({ id, result, meta, name, onClose, onMeta, o
       const c0 = solveCamera(ms, src.w, src.h), ne = isCamera(c0) ? cameraEnd(c0) : nearEnd;
       setPitchMode("hand"); setNearEnd(ne); setPm(ms.map((m) => fromWorld(m, ne))); setMarkFrame(o.markFrame); setFrame(o.markFrame); setTarget(TARGETS.length);
       return;
+    }
+    if (!rec && !onPitch && meta.onpitch?.marks?.length) {
+      // the pitch was already found for this clip (measuring on it): the same camera, straight on to the ball
+      const o = meta.onpitch, k = src.w / o.w;
+      // (with the batter's wicket when it was found: the ball has to be followed to that end)
+      const ms: Mark[] = (o.far?.length ? [...o.marks.filter((m) => m.end === "bowler"), ...o.far] : o.marks).map((m) => ({ ...m, px: [m.px[0] * k, m.px[1] * k] }));
+      const c0 = solveCamera(ms, src.w, src.h);
+      if ((o.far?.length || o.marks.some((m) => m.end === "batter")) && isCamera(c0) && c0.rms < Math.max(4, src.w / 300)) {
+        const ne = cameraEnd(c0);
+        setPitchMode("auto"); setFoundBy("auto"); setNearEnd(ne); setPm(ms.map((m) => fromWorld(m, ne))); setMarkFrame(o.markFrame); setFrame(o.markFrame); setTarget(TARGETS.length);
+        looked.current = true; goOn.current = true;
+        return;
+      }
     }
     if (!rec || rec.v !== 1 || !rec.marks?.length) return;
     setPitchMode("hand");
@@ -479,7 +495,7 @@ export default function BallTracker({ id, result, meta, name, onClose, onMeta, o
   const save = async (thenFace = false) => {
     if (!camera || !sc || !tr || !hints) return;
     try {
-      onMeta(await api.patch(id, { track: { ...recordOf(camera, markFrame, marks, upright, sightings, sc.shifts, tr, hints), release: relFrame, releaseSigma: relLoose ? 1.5 : null } }));
+      onMeta(await api.patch(id, { track: { ...recordOf(camera, markFrame, marks, upright, sightings, sc.shifts, tr, hints), measured: hints.measured ? [hints.measured.z, hints.measured.zSigma, hints.measured.height, hints.measured.heightSigma, ...(hints.measured.frame != null ? [hints.measured.frame] : [])] : null, release: relFrame, releaseSigma: relLoose ? 1.5 : null } }));
       setDirty(false);
       if (thenFace) onFace(); else flash("Ball tracking saved with this analysis.");
     } catch (e) { flash((e as Error).message, true); }

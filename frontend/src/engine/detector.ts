@@ -173,7 +173,8 @@ async function createFrom(bytes: Uint8Array, name: string, preferGPU: boolean, i
   const gpu = preferGPU && !forcedWasm() && (await hasWebGPU());
   if (gpu) {
     try {
-      const s = await ort.InferenceSession.create(bytes, { executionProviders: ["webgpu"], graphOptimizationLevel: "all" });
+      const verbose = (() => { try { return localStorage.getItem("seamly:debug") === "ort"; } catch { return false; } })();
+      const s = await ort.InferenceSession.create(bytes, { executionProviders: ["webgpu"], graphOptimizationLevel: "all", ...(verbose ? { logSeverityLevel: 0 as const, logVerbosityLevel: 0 } : {}) });
       if (imageSize) { await warmUp(s, imageSize); setBackend("webgpu"); }
       return s;
     } catch (e) {

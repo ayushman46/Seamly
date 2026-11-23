@@ -633,7 +633,8 @@ export interface PickOpts {
   /** Every candidate in every frame (same pixels and clock as the chains): lets a flight that turned out to follow
    * the shadow after the bounce look again for the ball there. */
   pool?: { t: number; px: Pt }[];
-  budgetMs?: number;          // stop looking after this long (default 4 s) and keep the best so far
+  budgetMs?: number;          // (no longer used: a limit in time made the answer depend on how fast, or how busy, the device was)
+  maxRuns?: number;           // stop after trying this many stretches of chain as flights (default 60: a real flight is found in the first ten) and keep the best so far
   debug?: (line: string) => void;
 }
 /**
@@ -649,10 +650,15 @@ export function pickBall<T extends { t: number; px: Pt; weight?: number }>(cam: 
   for (let a = 0; a < nA; a++) for (let b = a + 1; b < nA; b++) {
     // the closest the two chains come at (nearly) the same time
     let bestD = Infinity, ia = -1, ib = -1;
+    // (and the first and the last time they are that close: where a ball meets its shadow the two can stay together
+    // for several frames, and a chain can wander off for a frame or two in the middle of them; joining only at the
+    // very closest point then keeps the wandering in, and the flight is thrown out for it)
+    let first: [number, number] | null = null, last: [number, number] | null = null;
     for (let i = 0; i < all[a].length; i++) for (let j = 0; j < all[b].length; j++) {
       if (Math.abs(all[a][i].t - all[b][j].t) > 1.5 * frame) continue;
       const d = Math.hypot(all[a][i].px[0] - all[b][j].px[0], all[a][i].px[1] - all[b][j].px[1]);
       if (d < bestD) { bestD = d; ia = i; ib = j; }
+      if (d <= (o.crossPx ?? 18)) { if (!first) first = [i, j]; last = [i, j]; }
     }
     if (ia < 0 || bestD > (o.crossPx ?? 18)) continue;   // they never meet
     const join = (x: T[], ix: number, y: T[], iy: number) => {
@@ -663,10 +669,12 @@ export function pickBall<T extends { t: number; px: Pt; weight?: number }>(cam: 
       }
     };
     join(all[a], ia, all[b], ib); join(all[b], ib, all[a], ia);
+    for (const q of [first, last]) if (q && (q[0] !== ia || q[1] !== ib)) { join(all[a], q[0], all[b], q[1]); join(all[b], q[1], all[a], q[0]); }
   }
   let best: { seen: T[]; score: number; pri: TrackPriors } | null = null;
   const seenKeys = new Set<string>();
-  const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now()), began = now(), budget = o.budgetMs ?? 4000;
+  const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now()), began = now(), maxRuns = o.maxRuns ?? 60;
+  let tried = 0;
   const tight = Math.max(2.5, 2 * sigma), near = Math.max(6, 4 * sigma), smooth = Math.max(3, 2 * sigma);
   // The parts of each chain that could be a ball: a ball's path across the picture is smooth, with one kink where it
   // pitches. From each starting point, the longest run that stays that smooth. (The ends of a chain are where it goes
@@ -696,8 +704,9 @@ export function pickBall<T extends { t: number; px: Pt; weight?: number }>(cam: 
   runs.sort((p, q) => q.rank - p.rank);
   for (const { chain, lo, hi } of runs) {
     const n = chain.length;
-    if (now() - began > budget) break;
+    if (tried >= maxRuns) break;
     if (best && hi - lo + 4 < best.score) continue;   // too short to beat the best so far, even grown a little
+    tried++;
     {
       const core = chain.slice(lo, hi);
       if (o.fromChain) pri = { ...pri0, releaseT: core[0].t - frame, releaseTSigma: 1.5 };
@@ -776,6 +785,7 @@ export function pickBall<T extends { t: number; px: Pt; weight?: number }>(cam: 
       if (ok && (!best || score > best.score)) best = { seen, score, pri };
     }
   }
+  o.debug?.(`tried ${tried} of ${runs.length} stretches in ${Math.round(now() - began)} ms: ${best ? "a flight" : "nothing"}`);
   if (!best) return null;
   const tracked = fitBall(cam, best.seen.map((s) => ({ t: s.t, px: s.px, sigma })), best.pri);
   return isTracked(tracked) ? { seen: best.seen, tracked, pri: best.pri } : null;

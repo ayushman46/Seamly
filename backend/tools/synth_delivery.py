@@ -176,6 +176,67 @@ def body_truth(Vs, Hs, b, H, fps):
     return out
 
 
+def plant_feet(J, ts, xoff, fps):
+    """Feet that stay where they land. The scripted legs swing about a pelvis that moves at a scripted speed, so a
+    foot on the ground slides (the front foot by half a metre between landing and release). Here each foot of the
+    delivery stride is held where it lands: the thigh is turned, with the knee's scripted bend kept, so the ankle
+    stays put under the moving pelvis, for as long as the leg can reach; then it eases back to the script.
+    J is changed in place (H36M joints, mannequin axes). Returns {side: (first frame, last frame planted)}."""
+    from tools.synth_bowler import L_KN, R_KN
+    th, sh = 0.44, 0.43
+    out = {}
+    for sd, hip, knee, ank, KN, t_on, t_off in (("R", 1, 2, 3, R_KN, EV["bfc"], EV["ffc"] + 0.03), ("L", 4, 5, 6, L_KN, EV["ffc"], 1.04)):
+        i0 = int(round(t_on * fps)); x_lock = xoff[i0] + J[i0, ank, 0]
+        if sd == "L":
+            # Where the front foot lands. Real bowlers filmed side-on have the hip 0.17 to 0.23 of their height
+            # behind the front ankle at release, and the bowling shoulder about over the ankle; the script alone
+            # lands the foot so close that the body ends half a metre past it. So the foot is put down where the
+            # hip will be 0.25 m behind it at release, the leg reaching out to that spot over the tenth of a second
+            # before it lands.
+            i_br = int(round(EV["br"] * fps))
+            x_lock = xoff[i_br] + J[i_br, hip, 0] + 0.25
+            n_in = max(2, int(round(0.12 * fps)))
+            for i in range(i0 - n_in, i0):
+                u = (i - (i0 - n_in)) / n_in; u = u * u * (3 - 2 * u)
+                k = np.radians(KN(ts[i]))
+                need = (1 - u) * J[i, ank, 0] - (1 - u) * J[i, hip, 0] + u * (x_lock - xoff[i] - J[i, hip, 0])
+                A, B = th + sh * np.cos(k), -sh * np.sin(k); R = np.hypot(A, B)
+                a = float(np.arcsin(np.clip(need / R, -0.985, 0.985)) - np.arctan2(B, A))
+                kn = J[i, hip] + th * np.array([np.sin(a), 0, -np.cos(a)])
+                J[i, knee], J[i, ank] = kn, kn + sh * np.array([np.sin(a - k), 0, -np.cos(a - k)])
+
+        def leg(i, a):
+            k = np.radians(KN(ts[i]))
+            kn = J[i, hip] + th * np.array([np.sin(a), 0, -np.cos(a)])
+            return kn, kn + sh * np.array([np.sin(a - k), 0, -np.cos(a - k)])
+
+        def scripted(i):
+            d = J[i, knee] - J[i, hip]
+            return float(np.arctan2(d[0], -d[2]))
+        last, a_last = i0, scripted(i0)
+        for i in range(i0, len(ts)):
+            if ts[i] > t_off:
+                break
+            k = np.radians(KN(ts[i]))
+            need = x_lock - xoff[i] - J[i, hip, 0]
+            A, B = th + sh * np.cos(k), -sh * np.sin(k)
+            R = np.hypot(A, B)
+            if abs(need) > 0.985 * R or need < -0.40:
+                break                                 # the leg is trailing well behind the hip: the heel lifts and the foot comes off the ground
+            a = float(np.arcsin(need / R) - np.arctan2(B, A))
+            J[i, knee], J[i, ank] = leg(i, a)
+            last, a_last = i, a
+        out[sd] = (i0, last)
+        n = max(1, int(round(0.10 * fps)))
+        d0 = a_last - scripted(last + 1) if last + 1 < len(ts) else 0.0
+        for q in range(1, n):
+            i = last + q
+            if i >= len(ts):
+                break
+            J[i, knee], J[i, ank] = leg(i, scripted(i) + d0 * (1 - q / n))
+    return out
+
+
 VIEWS = {
     # a phone on a tall tripod behind the bowler's arm: still, wide
     "phone": dict(size=(1280, 720), pos=(0.9, 3.4, 10.5), at=(0.0, 0.6, -10.0), f=1180.0, zoom=1.0, tilt=0.0),
@@ -189,17 +250,22 @@ VIEWS = {
 
 
 def render(out, view="phone", fps=60.0, kmh=128.0, length=6.5, line=0.05, swing=0.1, ball="red", sun=True, H=1.80,
-           bounce=(0.55, 0.87), seed=0, dur=1.72, shutter=1 / 500, raw=None, fall=(0.55, -0.12), wide=0.0, foot=0.0):
+           bounce=(0.55, 0.87), seed=0, dur=1.72, shutter=1 / 500, raw=None, fall=(0.55, -0.12), wide=0.0, foot=0.0, lock=True):
     rng = np.random.default_rng(seed)
     cfg = VIEWS[view]
     W, Hh = cfg["size"]
     ts = np.arange(0, dur, 1 / fps)
     # the mannequin (axes: x forward, y left, z up), moved along its run and stood on the ground
     J = np.stack([skeleton(t) for t in ts])
+    xoff = np.concatenate([[0], np.cumsum(SPEED(ts[:-1]) / fps)])
+    plants = plant_feet(J, ts, xoff, fps) if lock else {}
     m = BodyModel.get(); inst = m.instance(H); fit = Fitter(m, inst); o = fit.fit(J); b = fit.b
     heads = o["heads"]
     lowest = heads[:, [b["foot.L"], b["foot.R"]], 2].min(1)
-    xoff = np.concatenate([[0], np.cumsum(SPEED(ts[:-1]) / fps)])
+    # a planted foot is the one on the ground (the other may swing through lower than the script's ankle height)
+    for sd, (i0, i1) in plants.items():
+        for i in range(i0, i1 + 1):
+            lowest[i] = min(heads[i, b["foot." + s2], 2] for s2, (j0, j1) in plants.items() if j0 <= i <= j1)
     off = np.stack([xoff, np.zeros_like(xoff), 0.08 - lowest], 1)
     heads = heads + off[:, None]
     V = m.skin(inst, o["D"], heads)
@@ -320,6 +386,7 @@ def render(out, view="phone", fps=60.0, kmh=128.0, length=6.5, line=0.05, swing=
         "hand_px": px(hand(ts[f_br]), f_br), "ankle_px": [px(Hs[f_br, b["foot.L"]], f_br), px(Hs[f_br, b["foot.R"]], f_br)],
         "ankle_world": Hs[f_br, b["foot.L"]].tolist(),
         "body": body_truth(Vs, Hs, b, H, fps),
+        "plant": {("back" if sd == "R" else "front"): [int(i0), int(i1)] for sd, (i0, i1) in plants.items()},
         "upright": {"foot": [0, 0, 0], "tip": [fall[0] * STUMP_H, 0, fall[1] * STUMP_H]} if sun else None,
     }
     return truth
@@ -341,8 +408,9 @@ def main() -> None:
     ap.add_argument("--height", type=float, default=1.80)
     ap.add_argument("--wide", type=float, default=0.0)
     ap.add_argument("--foot", type=float, default=0.0)
+    ap.add_argument("--slide", action="store_true", help="the old figure, whose planted feet slide along the ground")
     a = ap.parse_args()
-    truth = render(a.out, a.view, a.fps, a.kmh, a.length, a.line, a.swing, a.ball, not a.no_sun, H=a.height, seed=a.seed, raw=a.raw, wide=a.wide, foot=a.foot)
+    truth = render(a.out, a.view, a.fps, a.kmh, a.length, a.line, a.swing, a.ball, not a.no_sun, H=a.height, seed=a.seed, raw=a.raw, wide=a.wide, foot=a.foot, lock=not a.slide)
     Path(a.out).with_suffix(".truth.json").write_text(json.dumps(truth))
     print(json.dumps({k: truth[k] for k in ("release", "pitch", "swing", "stumps")}, indent=1))
 

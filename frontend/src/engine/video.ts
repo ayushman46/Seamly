@@ -188,7 +188,14 @@ export class FrameSource {
   /** Called while the analysis waits for a hidden tab to become visible again (true) and when it resumes (false). */
   onHidden: ((paused: boolean) => void) | null = null;
 
+  /** How long has gone on fetching frames (ms) and how many, since the page loaded: for finding where the time goes. */
+  static seekMs = 0;
+  static seekN = 0;
   async seek(i: number): Promise<void> {
+    const tSeek = performance.now();
+    try { await this.seekTo(i); } finally { FrameSource.seekMs += performance.now() - tSeek; FrameSource.seekN++; }
+  }
+  private async seekTo(i: number): Promise<void> {
     // Browsers throttle or suspend video decoding in background tabs, and a frame drawn there can be stale: wait
     // until the tab is visible again rather than analyse the wrong frames.
     if (typeof document !== "undefined" && document.hidden && !allowHidden()) {

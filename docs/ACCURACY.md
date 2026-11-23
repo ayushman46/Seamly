@@ -19,6 +19,8 @@ results, and `frontend/tests/pace_sim.test.ts` checks ball speed against simulat
 | 3D skeleton | 105 mm per joint (PA-MPJPE) side-on, 238 mm from behind | Visualisation, not measurement |
 | 3D body mesh | 9–12 cm mean surface error side-on, 20–28 cm from behind | Visualisation, not measurement |
 | Ball speed | Median 3–6 km/h, 95% within 8–20 km/h depending on frame rate; the stated range holds the true speed 92–100% of the time (simulated) | An estimate with an honest range, not a radar |
+| From behind, on the pitch, nothing marked (§9l) | Rendered deliveries, hands off: pitch found on 12 of 12 in 3–8 s; release height 3.8 cm mean (worst 6.2); front heel 5.3 cm (worst 11.8); stride 5.9 cm (worst 14.8). Real clips from behind: pitch found on 12 of 19; the rest have no readable creases and are reported as not measurable | Where the ball was let go, the feet and the stride in real metres |
+| Ball tracked from one camera behind the arm (§9l) | Rendered deliveries, hands off: speed 1.5% mean (worst 3.3%) on nine balls; where it pitched 10 cm along the pitch (worst 20), 0.7 cm across | Speed with a ± of 3–4%; line and length |
 
 All the angles a coach sees are measured from the 2D keypoints on the video; the 3D body is drawn from a 3D estimate
 that is less accurate, which is why no rating uses it.
@@ -575,12 +577,10 @@ the planted front foot has one height (`lib/onpitch.ts`). No height is typed in.
 the video with the pitch drawn over it from the camera's own position, so the fit can be judged by eye, and then
 lets the scene be walked round in 3D.
 
-**What marks the pitch.** Four taps: the foot and the top of the middle stump at each end, in any order. That is
-enough for a camera held level, and it is the default because it was the reliable one: the automatic crease finder
-put the near crease in the wrong place on a rendered phone clip even with two taps to guide it, and a camera from
-those marks read every height 25% short. Found creases are now used only when they agree with the camera the stumps
-give. Where the stumps are hidden (the umpire stands in front of them on broadcast footage) the crease corners can be
-marked by hand; eight accurate corners pin the camera down as well as the stumps do.
+**What marks the pitch.** Nobody, since 2026-11-19: the app finds the creases itself when the analysis opens (§9k).
+The first version asked for four taps, the foot and the top of the middle stump at each end; those are still there
+for a clip the finder cannot read, and the figures below (made with exact marks) are the measurement's own accuracy,
+whoever places the marks.
 
 **Rendered deliveries with exact answers** (five clips from `backend/tools/synth_delivery.py`: phone on a tall
 tripod twice, full-HD phone, tripod at chest height, a broadcast camera that zooms 1.75x through the delivery;
@@ -653,11 +653,177 @@ Two are failures that remain: in a club clip that fades in on the delivery, the 
 sweater 4 s later instead of the bowler; and in a very wide shot of a match with no bowler near the camera it
 analysed a fielder instead of saying there was no delivery to analyse.
 
+## 9k. Nobody marks anything: the pitch, the bowler and the ball found by the app (2026-11-19)
+
+The first version of §9i asked for four taps on the stumps. Now, when an analysis of a clip from behind opens, the
+app finds the pitch, measures the bowler on it and looks for the ball, and the figures simply appear on the page
+(`lib/autocam.ts`, `lib/autopitch.ts`, `lib/stumpfind.ts`). Nothing is asked.
+
+**The finding that shaped it: calibrate from the bowler's end.** A phone 10 m behind the stumps at 720p sees the far
+creases a fifth of a pixel thick; no finder can read them. It sees the creases at the bowler's end two or three
+pixels thick, and that end is where the bowler is measured. So how good is a camera worked out from one end only?
+Sixty trials on each of five cameras (a phone on a tall tripod, a tripod at chest height, the umpire's eye, a club
+boundary 25 m back, a broadcast gantry), with marks placed as well as each kind can be:
+
+| Camera worked out from | Release height | A heel, down the pitch |
+|---|---|---|
+| The four crease corners at the bowler's end, each good to half a pixel; nothing else | 0.2 to 0.5 cm (worst 2) | 0.3 to 3.6 cm (worst 9) |
+| The same, and the batter's wicket 4 px out | 0.4 to 0.7 cm | 0.4 to 6 cm |
+| The two wickets alone (foot and top of each middle stump, good to a pixel and a half) | 1.3 to 5.3 cm (worst 14) | 4.4 to 16 cm (worst 37) |
+
+The bowling crease, the popping crease and the two return creases are a ruler 2.64 m across and 1.22 m deep lying
+exactly where the measuring is done; a stump is a ruler 71 cm tall. And a stump's ends are hard to find: its shadow
+starts at its foot, and a crease painted behind it cuts it in two (the rendered clips showed both). So the wickets
+are used to find the place, never to set the scale.
+
+**How it looks.** In order, each answer checked before it is believed:
+
+1. *The whole crease pattern, both ends* (§9g's finder), when a high or long-lens camera shows it.
+2. *The creases at the bowler's end*, looked for around the bowler's wicket (three equal upright bars of a wicket's
+   proportions, near where the bowler's back foot lands) or, when the umpire hides the stumps, around the bowler's
+   feet. Return creases are proposed from pairs of paint pixels, so they may lean as far as a low, close camera makes
+   them. The camera from the four corners is then slid onto the paint of the four lines (a hundred or more points).
+3. *The two wickets alone*, as a last resort and with a wide ±.
+
+On a tripod the bowler is first taken out of the picture (the middle value of each pixel over seven frames, leaving
+out the bowler's own box), so nothing hides a crease. The checks: paint found on every one of the four lines (nine
+points of thirty-five at least, because each line fixes something the others cannot: without the bowling crease the
+camera's distance drifted and the feet came out 13 cm down the pitch), the paint within 1.2 px of the camera's lines,
+and the bowler a bowler under that camera (a person's height, a release at a bowler's height, feet by the crease).
+When no single picture is sure, the answer is the one several frames agree on.
+
+**Hands off, in Chrome, on real clips filmed from behind** (upload, wait, read the page; run on 2026-11-24 with the
+changes of §9l in; the rendered deliveries, where the answers are known exactly, are in §9l):
+
+| Clip | Pitch found by, in | Release height | Stride, m | Front heel behind the line, cm | Height read, m | Ball, km/h |
+|---|---|---|---|---|---|---|
+| International delivery a (Afghanistan bowling) | creases, 13 s | 2.11 ± 7 cm | 1.61 | +8 ± 13 |  |  |
+| International delivery b (Afghanistan bowling) | near creases, 10 s | 1.88 ± 6 cm | 1.44 | +12 ± 12 |  |  |
+| International delivery c (Afghanistan bowling) | near creases, 14 s | 2.08 ± 6 cm | 1.68 | +47 ± 13 | 1.87 |  |
+| International delivery h (Afghanistan bowling) | near creases, 16 s | 2.11 ± 6 cm | 0.92 | +53 ± 13 | 1.89 |  |
+| International delivery k (Afghanistan bowling) | creases, 12 s | 2.02 ± 6 cm | 0.96 | +30 ± 13 | 1.74 | 82 ± 2 |
+| Bumrah, broadcast, 30 fps (1.78 m) | creases, 8 s | 2.09 ± 6 cm | 1.41 | +20 ± 14 | 1.82 |  |
+| International delivery e (New Zealand bowling) | creases, 3 s | 1.96 ± 7 cm | 1.71 | +7 ± 13 |  |  |
+| International delivery g (New Zealand bowling) | near creases, 12 s | 2.16 ± 7 cm | 1.39 | +31 ± 14 | 1.90 |  |
+| International delivery j (New Zealand bowling) | creases, 5 s | 2.04 ± 6 cm | 0.91 | +73 ± 14 | 1.80 | 87 ± 3 |
+| International delivery k (New Zealand bowling) | creases, 5 s | 2.21 ± 9 cm |  |  | 1.94 |  |
+| Shami, broadcast, 30 fps (1.73 m) | creases, 4 s | 1.87 ± 8 cm |  |  |  |  |
+| Bundled rendered delivery, 60 fps (release 1.90 m, 128 km/h) | near creases, 5 s | 1.91 ± 4 cm | 1.45 | +68 ± 8 |  | 131 ± 4 |
+
+Pitch found on 12 of 19 real clips filmed from behind. Not found (so nothing is measured, and the page says so): IPL net cut 9; IPL net cut 10 (after 4 s); County spinner from the stands (after 13 s); Net session, 60 fps (after 15 s); Bundled nets clip (artificial turf, no creases) (after 14 s); International delivery f (New Zealand bowling) (after 16 s); County seamer from the stands (after 14 s).
+
+Bumrah is 1.78 m: the app read 1.82 m off his run-up. It gives no height for Shami (1.73 m), whose run-up read
+32 km/h through the broadcast zoom, faster than anyone runs in, so nothing that leans on it is given. The two
+spinners (Afghanistan's k, New Zealand's j) show in every figure: strides of 0.91 to 0.96 m, balls of 82 and 87 km/h.
+
+**The ball.** With the pitch found, the frames after the release are searched as in §9f and the track is kept only
+when it is tight (six or more sightings within 2.5 px of the flight, the speed's own ± under 15%). The release
+measured on the pitch a moment earlier is now where the flight is told to start, in place of a rule of thumb about
+where bowlers let go. Against the rendered deliveries the speed is within 1.5% on average and 3.3% at worst, and the line it pitched on within 1.5 cm (§9l). On the real clips above a flight tight enough to keep was found for the two spinners and for the bundled rendered delivery (131 ± 4 km/h against a true 128); for the fast bowlers the broadcast picture cuts or zooms before enough of the flight is seen, and no speed is given. The measured flight is drawn in the same 3D scene as the bowler, and over the video
+in the camera's own view.
+
+**The release is the top of the hand's arc, not the hand in one frame.** The hand is the fastest thing in the
+picture: about a metre between frames at 30 fps. The frame taken as the release can catch it anywhere within half a
+frame of the moment, and on the broadcast clips (25 and 30 fps) that alone made the release height uncertain by 19 to
+41 cm, and low on average. But the ball leaves going nearly level (about 6 degrees below level for a fast bowler's
+good-length ball, about level for a spinner's), and a hand on the end of a turning arm is going level at the top of
+its arc: so the ball leaves at the top, to within a centimetre of height for anything from a yorker to a bouncer.
+The top does not depend on catching the moment. It is the bowling shoulder, plus the arm's length from shoulder to
+ball (as long as the upper arm and forearm are ever seen through the delivery stride, checked against what a person
+of the bowler's measured height has), along the line the arm is seen on, which from behind stays put as the arm
+turns. An arm caught leaning towards the camera or away from it is first put where it is (the part of its length
+that does not show says how far it leans). A test arm turning 70 degrees a frame, caught 28 degrees before the top
+and 21 degrees after it, came out within 2.5 cm of the true top either way, where the frame itself had the hand
+13 cm low. On the rendered deliveries thinned to every frame rate from 20 to 60 a second (59 cases, each at every phase), with the plane the hand is on known, the release height came out 3.4 cm from the truth on average and 8.0 at worst, where the hand as the release frame caught it was up to 8.7 cm out; §9l changed how the top is read (from the frames themselves, weighed against the arm's length) and what it is read from (the arm's joints before they are smoothed in time).
+
+**What it cannot do.** With no crease lines to read at the bowler's end there is nothing of known size where the
+measuring is done: the bundled nets clip (artificial turf, no paint) and two county clips filmed from the stands
+(creases too faint at 720p) are reported as not measurable, each after 4 to 15 s of looking. The four taps on the
+stumps are still offered for those.
+
+**Where the time goes, and one thing that was not kept.** A 1.7 s clip at 60 fps (104 frames) takes 19 s of work on
+the test laptop once the models are in the browser's store (49 s the first time, 30 of it fetching and starting the
+models): 9.0 s finding people in every frame (6.9 of it the model itself), 6.3 s on the joints, 2.5 s on the 3D
+estimate, 0.5 s on the rest; fetching the frames is 2.2 s of that. Running each crop and its mirror image through
+the joints model as one batch cut the joints step to 4.8 s, but on the browser's graphics backend the joints came
+out up to 8 px different from two separate runs (the same model on a CPU gives identical answers either way), and
+one clip's back-foot contact moved three frames. It was taken out.
+
+## 9l. The accuracy loop: every rule scored against truth before it is kept (2026-11-24)
+
+§9k was written from a handful of runs. Since then the same checks have been made into a loop that takes seconds:
+the models' raw output for every test clip is saved once from Chrome, and the rules that turn it into answers
+(key moments, bowling arm, the bowler on the pitch, the ball) are replayed on it in Node against what is known to be
+true. A change is kept only if the score says so. Three sets of truth:
+
+- **Twelve rendered deliveries** with everything known exactly: a phone on a tall tripod (720p), a phone just behind
+  the umpire (1080p), a tripod at chest height and a broadcast gantry with a zooming lens, at 25 to 120 frames a
+  second, bowlers 1.65 to 1.95 m tall, balls of 110 to 140 km/h.
+- **The seventeen synthetic clips** of §1.
+- **Thirty-nine real clips**, 23 of them with the release frame, the arm and the camera side checked by eye (§9h).
+
+**The test figure had to be fixed first.** Its planted feet slid along the ground, the front foot by half a metre
+between landing and release, so "where the heel landed" had no true answer. Each foot of the delivery stride is now
+held where it lands. Then it turned out to let go half a metre past its front foot. Three real bowlers filmed
+side-on have the bowling shoulder 0.21, 0.01 and 0.02 of their height *behind* the front ankle with the arm
+upright, and the hips 0.17 to 0.23 behind it; the figure now lands its front foot where its hip will be 0.25 m
+behind it at release, and lets go at 1.09 to 1.10 times its height (elite bowlers: 1.13 ± 0.04). Nothing in the app
+is tuned to the figure's arm length or to how far over its front foot it gets; those come from real people.
+
+**A larger pose model was tested and not taken.** RTMPose-l at 384×288 (four to five times the work of the
+RTMPose-m at 256×192 the app ships) was run on 281 frames of the rendered deliveries with the true joints known:
+wrist 1.1 cm against 1.3 cm (median), ankle 1.9 against 3.1, heel 2.8 against 3.5. The pose model is not what
+limits the measurements; the rules that use it were. The app keeps its model, and its speed.
+
+**What the loop found and fixed** (before → after, against the rendered deliveries unless said):
+
+| What was wrong | Why | Before → after |
+|---|---|---|
+| A 25 fps broadcast-style clip read as a left-armer, release 8 frames early | The scan had settled on the front arm's rise before the delivery, and the bowling arm's own up-and-over scored a little under the bar for moving the window: at 25 fps the fall after the top is three frames long. The window now moves to a clear up-and-over when its own stretch holds none | Wrong arm, −8 frames → right arm, 0 frames. No change on the 23 real clips checked by eye |
+| Front heel 9 cm (up to 21) too near the camera, stride short by as much | The front foot was placed by its toes as well as its heel, and from above and behind the toes of a flat foot read 10 to 20 cm short. Only the back foot (which can be up on its toes) is read that way now | Front heel 8.8 → 3.7 cm; stride 10.2 → 5.0 cm (camera known exactly) |
+| Release height 5 cm high whatever the frame rate | It was the shoulder plus an arm's length taken from the bowler's height: right for an average arm only. It is now read off the frames (the hand's height over the shoulder in three frames is A·cos of the turn, which gives the top with no arm length assumed) and weighed against the arm-length reading by how sure each is: at 50 fps and more the frames decide, at 25 fps the arm does unless a frame fell at the top | With the plane the hand is on known, 59 cases at 20 to 120 fps: 4.2 → 3.4 cm from the truth on average (worst 6.8 and 8.0); the hand as one frame caught it was up to 8.7 cm out. On a real 30 fps broadcast clip the frames alone would have put the top 10 cm higher than the arm's length allows, which is why the two are weighed |
+| The release moment late by 14 ms at 120 fps, 9 ms at 60 | The joints are smoothed in time for everything else, and smoothing flattens and delays the top of a fast arm; one misread wrist near the top was smeared over its neighbours. The release is now measured from the elbow and wrist as each frame showed them, and a one-frame misreading of an arm joint is mended before smoothing (50 fps and above) | 14 → 3 ms at 120 fps; 8.6 → 4.6 ms (rms) at 50 to 60 fps. It also put right a 120 fps synthetic clip from behind that had been read as filmed from in front, 30 frames out |
+| No ball found on a 60 fps phone clip | The frames before the release (the bowler running in, ball in hand) were linked into the same chains as the flight, and the twelve longest chains were all the run-up. Chains are now linked from the release on first; and a ball's chain and its shadow's are joined at the first and last places they meet as well as the closest | Not found → 132 km/h (128), length within 8 cm |
+| Ball speed 9% high and the pitching spot 61 cm out on a 120 fps phone clip | From 10 m behind at 720p the far creases are a fifth of a pixel thick, and the far corners of the crease pattern were guesses. The batter's stumps are seen: their top (not their foot, which reads 3 to 17 px out among shadow and paint) now stands for the far end whenever the far creases are under half a pixel thick | 148 → 143 km/h (140); −61 → −15 cm |
+| The ball "not found" on a busy or slow device | The search for a flight stopped after three seconds on the clock. A real flight is found in the first five to eight tries; the limit is now a number of tries, the same on a phone as on a laptop | Two clips lost under load → found |
+| A spinner "measured" letting go at 1.48 m on a county-ground clip | Two wrong pairs of stump-like shapes in one frame agreed with each other. Answers from stumps alone must now agree across different frames, and on where the camera is | False measurement → correctly not measured |
+| Release height from the arm 4 to 14 cm high from a high camera | How far in front of the front foot the hand is cannot be seen from behind, and a high camera turns each 10 cm of that into 2 cm of height. Once the ball is tracked its own first sightings say more: the flight's start is now the release height shown | 6.4 → 3.8 cm on average; worst 13.8 → 6.2 |
+
+**Where that leaves it, hands off in Chrome** (the twelve rendered deliveries; nothing marked, nothing entered):
+
+| Camera, frame rate, bowler | Pitch found in | Release height, m (true) | Front heel, cm from true | Stride, m (true) | Ball, km/h (true) | Pitched: length / line, cm from true |
+|---|---|---|---|---|---|---|
+| Phone on a tall tripod, 720p, 60 fps, 1.80 m bowler | 3 s | 2.03 (1.99) | +2 | 1.61 (1.62) | 132 ± 4 (128) | +8 / +0 |
+| Phone on a tall tripod, 720p, 30 fps, 1.65 m bowler | 3 s | 1.85 (1.80) | +7 | 1.57 (1.63) | 111 ± 4 (110) | +12 / +0 |
+| Phone on a tall tripod, 720p, 120 fps, 1.95 m bowler | 5 s | 2.18 (2.16) | -7 | 1.83 (1.68) | 143 ± 5 (140) | -15 / -0 |
+| Phone behind the umpire, 1080p, 60 fps, 1.80 m bowler | 8 s | 2.01 (1.99) | -3 | 1.68 (1.62) | 127 ± 4 (128) | +12 / -1 |
+| Phone behind the umpire, 1080p, 30 fps, 1.70 m bowler | 5 s | 1.88 (1.85) | +4 | 1.65 (1.65) | 118 ± 4 (118) | +14 / -1 |
+| Phone behind the umpire, 1080p, 60 fps, 1.90 m bowler | 5 s | 2.13 (2.09) | -1 | 1.68 (1.66) | 133 ± 4 (135) | +20 / +0 |
+| Tripod at chest height, 1080p, 60 fps, 1.80 m bowler | 5 s | 2.01 (1.99) | +3 | 1.73 (1.62) | far end out of the picture: not looked for |  |
+| Tripod at chest height, 1080p, 30 fps, 1.70 m bowler | 4 s | 1.89 (1.85) | +4 | 1.63 (1.65) | far end out of the picture: not looked for |  |
+| Tripod at chest height, 1080p, 60 fps, 1.92 m bowler | 5 s | 2.15 (2.12) | +3 | 1.67 (1.67) | far end out of the picture: not looked for |  |
+| Broadcast gantry, zooming, 50 fps, 1.80 m bowler | 5 s | 2.02 (1.98) | +10 | 1.56 (1.63) | 128 ± 3 (128) | +3 / +1 |
+| Broadcast gantry, zooming, 25 fps, 1.90 m bowler | 4 s | 2.12 (2.06) | +8 | 1.82 (1.69) | 143 ± 5 (140) | +3 / +1 |
+| Broadcast gantry, zooming, 30 fps, 1.75 m bowler | 3 s | 1.96 (1.91) | +12 | 1.59 (1.66) | 139 ± 4 (136) | +2 / +1 |
+
+Pitch found on 12 of 12 in 3 to 8 s. Mean error (worst): release height 3.8 cm (6.2), from the arm alone 6.4 (13.8); front heel 5.3 cm (11.8); stride 5.9 cm (14.8); ball speed 1.5% (3.3) on 9 balls; pitching length 9.9 cm (20.0); line 0.7 cm (1.5).
+
+**What still limits it.** Three things, none of them the pose model. *How far in front of the front foot the ball
+is let go* is not visible from behind: the app assumes the hand above the front ankle (what the three real side-on
+bowlers show, give or take 20 cm), and a high camera turns each 10 cm of that into about 2 cm of release height and
+0.6% of ball speed. *The release moment* is known to about 5 ms at 60 fps, which is 0.2 m of flight for a fast ball.
+*The far end* from a phone at 720p is one pixel to 23 cm at the far crease. The stated ± on each figure carries
+these; the truth sat inside the stated range for the speed on all nine balls.
+
+**Speed.** The models now start loading the moment a clip is chosen (and on opening the app, once they are in the
+browser's store), instead of when Analyse is pressed, so on a return visit the wait for them is no longer part of
+the analysis. A faster scan was also built (people looked for in about thirty frames of each real second, the bowler placed in the frames between from the scanned ones either side) and scored the same way on 22 clips filmed at 50 frames a second and more. Side-on it changed nothing: the key moments were the same frame on ten clips and no measurement moved by more than 0.6. From behind it moved the key moments by a frame or two on six of seven rendered deliveries, turned one 120 fps synthetic clip into a front-on reading eleven frames out, and put the release of the real 100 fps net clip three frames outside what the eye sees. It stays off: about a fifth of the analysis time is not worth a wrong frame.
+
 ## 10. Still to do
 
 - Telling an umpire's signal or a fielder from a bowler when the clip has no clear delivery near the camera (§9j), and the
   spinner whose bowling arm is a coin flip.
-- On the pitch (§9i): a session at a marked-out pitch with a tape measure; stumps found automatically, to save the four taps.
+- On the pitch (§9i, §9l): a session at a marked-out pitch with a tape measure, and with a second camera side-on: how far in front of the front foot real bowlers let go is the largest thing the rendered deliveries cannot say.
 - Lab validation against marker-based motion capture (real bodies, real knees): the synthetic body can't say whether
   the detector's knee placement on a bent knee differs on people.
 - Two real phones on the same balls (a side-on and a behind-the-stumps phone through a net session): the pair

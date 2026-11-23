@@ -119,3 +119,29 @@ describe("a bowler running away from the camera gets smaller", () => {
     expect(sizeTrend(c.kp, c.kc, 59, 30)).toBeNull();
   });
 });
+
+import { fixArmGlitches } from "../src/engine/pose2d";
+describe("an arm joint misread for one frame", () => {
+  // a body 400 px tall; the right wrist goes up and over on an arc of 150 px about the shoulder at (500, 300)
+  const body = (wrist: [number, number]): number[][] => { const k = Array.from({ length: 17 }, () => [500, 400]); k[5] = [480, 300]; k[6] = [520, 300]; k[15] = [490, 620]; k[16] = [510, 620]; k[10] = wrist; k[8] = [(520 + wrist[0]) / 2, (300 + wrist[1]) / 2]; return k; };
+  const swing = (fps: number) => { const n = Math.round(0.5 * fps), kp: number[][][] = []; for (let t = 0; t < n; t++) { const a = (-150 + (300 * t) / (n - 1)) * Math.PI / 180; kp.push(body([520 + 150 * Math.sin(a), 300 - 150 * Math.cos(a)])); } return kp; };
+  const conf = (kp: number[][][]) => kp.map((f) => f.map(() => 0.9));
+  it("is put back between its neighbours at 120 frames a second", () => {
+    const kp = swing(120), mid = kp.length >> 1, truth = kp[mid][10].slice();
+    kp[mid][10] = [truth[0] + 5, truth[1] + 120];   // read 120 px low for one frame, at the top
+    const out = fixArmGlitches(kp, conf(kp), 120);
+    expect(Math.hypot(out[mid][10][0] - truth[0], out[mid][10][1] - truth[1])).toBeLessThan(6);
+    // and nothing else is touched
+    for (let t = 0; t < kp.length; t++) if (t !== mid) expect(out[t][10]).toEqual(kp[t][10]);
+  });
+  it("leaves a clean swing alone at 60 and 120 frames a second", () => {
+    for (const fps of [60, 120]) { const kp = swing(fps), out = fixArmGlitches(kp, conf(kp), fps); expect(out).toEqual(kp); }
+  });
+  it("touches nothing at 25 to 30 frames a second, where one frame up and back is the delivery itself", () => {
+    for (const fps of [25, 30]) {
+      const kp = swing(fps), mid = kp.length >> 1;
+      kp[mid][10] = [kp[mid][10][0], kp[mid][10][1] - 140];   // even an implausible one-frame jump
+      expect(fixArmGlitches(kp, conf(kp), fps)).toEqual(kp);
+    }
+  });
+});

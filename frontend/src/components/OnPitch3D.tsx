@@ -8,6 +8,9 @@ import { measureWithDoubt, recordOnPitch, PROTECTED_X, PROTECTED_Z, type Est, ty
 import { grayOf, motion, chain, invertShift, STILL, type Gray, type Shift } from "../lib/ballfind";
 import type { V3 } from "../lib/biomech";
 import { buildPitch } from "../lib/pitchScene";
+import { fromRecord } from "../lib/tracker";
+import { trackedAt, type Tracked } from "../lib/balltrack";
+import { lengthName } from "../lib/flight";
 import { ICheck, IPause, IPlay, IRefresh, IX } from "./Icons";
 
 /**
@@ -19,7 +22,7 @@ import { ICheck, IPause, IPlay, IRefresh, IX } from "./Icons";
  * and the hand is where the ball left it.
  */
 
-type View = "camera" | "orbit" | "top" | "side";
+type View = "camera" | "orbit" | "top" | "side" | "ball";
 const EDGES: [number, number][] = [[5, 7], [7, 9], [6, 8], [8, 10], [5, 6], [11, 12], [5, 11], [6, 12], [11, 13], [13, 15], [12, 14], [14, 16]];
 const cmTxt = (m: number) => `${Math.round(Math.abs(m) * 100)} cm`;
 const pm = (e: Est, unit: "m" | "cm" = "cm") => (unit === "m" ? `${e.value.toFixed(2)} m ± ${Math.max(1, Math.round(e.sigma * 100))} cm` : `${Math.round(Math.abs(e.value) * 100)} cm ± ${Math.max(1, Math.round(e.sigma * 100))}`);
@@ -58,9 +61,12 @@ export default function OnPitch3D({ id, result, meta, name, others, onClose, onM
   const marksKey = JSON.stringify([rec.w, rec.h, rec.markFrame, rec.marks]);
   const cam: Camera | null = useMemo(() => { const c = solveCameraPoints(rec.marks.map((m) => ({ world: worldOf(m), px: m.px })), rec.w, rec.h); return isCamera(c) ? c : null; }, [marksKey]);   // eslint-disable-line react-hooks/exhaustive-deps
   const othersKey = JSON.stringify(others.map((x) => [x.id, x.rec.release, x.rec.front]));
+  // the ball itself, when it was tracked on this clip (lib/tracker.ts): its measured flight goes into the same scene
+  const trackKey = JSON.stringify(meta.track ?? null);
+  const tracked: Tracked | null = useMemo(() => (meta.track ? fromRecord(meta.track, result)?.tracked ?? null : null), [trackKey, result]);   // eslint-disable-line react-hooks/exhaustive-deps
   // how the camera moved through the delivery, measured on the frames themselves (undefined: still being worked out)
   const [shifts, setShifts] = useState<FrameShifts | null | undefined>(undefined);
-  const o: OnPitch | null = useMemo(() => (cam && shifts !== undefined ? measureWithDoubt(result, rec.marks, rec.w, rec.h, rec.markFrame, shifts)?.o ?? null : null), [cam, result, shifts]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const o: OnPitch | null = useMemo(() => (cam && shifts !== undefined ? measureWithDoubt(result, rec.marks, rec.w, rec.h, rec.markFrame, shifts, rec.tapPx ?? 1.2)?.o ?? null : null), [cam, result, shifts]);   // eslint-disable-line react-hooks/exhaustive-deps
   const f0 = result.frames.start, T = result.keypoints2d.xy.length;
   const br = (result.events.br?.frame ?? f0) - f0;
   const [view, setView] = useState<View>("camera");
@@ -78,7 +84,7 @@ export default function OnPitch3D({ id, result, meta, name, others, onClose, onM
   // keep the figures with the analysis (for lists, and for setting this ball beside the bowler's others)
   useEffect(() => {
     if (!o || !cam) return;
-    const next = recordOnPitch(o, cam, rec.markFrame, rec.marks);
+    const next = recordOnPitch(o, cam, rec.markFrame, rec.marks, rec);
     if (JSON.stringify(next) === JSON.stringify(rec)) return;
     api.patch(id, { onpitch: next }).then(onMeta, () => undefined);
   }, [o, cam]);   // eslint-disable-line react-hooks/exhaustive-deps
@@ -245,7 +251,9 @@ export default function OnPitch3D({ id, result, meta, name, others, onClose, onM
     }
     // ---- the release: the ball where it left the hand, its height and its distance from the line of the stumps ----
     if (o.release) {
-      const p = o.release.p;
+      // (its height from the start of the ball's tracked flight, when the ball was tracked from this release: the same figure the page shows)
+      const bh = tracked && meta.track?.measured && Math.abs(tracked.release.p[1] - o.release.p[1]) < 0.25 ? tracked.release.p[1] : null;
+      const p: [number, number, number] = bh != null ? [o.release.p[0], bh, o.release.p[2]] : o.release.p;
       const ball = new THREE.Mesh(keep(new THREE.SphereGeometry(0.036, 20, 14)), basic(0xef4444));
       ball.position.set(p[0], p[1], p[2]); ball.renderOrder = 9;
       const doubt = new THREE.Mesh(keep(new THREE.SphereGeometry(1, 24, 16)), basic(0xef4444, 0.16));
@@ -264,6 +272,34 @@ export default function OnPitch3D({ id, result, meta, name, others, onClose, onM
         if (x.rec.front) { const d = new THREE.Mesh(keep(new THREE.CircleGeometry(0.04, 16)), basic(0xfde68a, 0.7, false)); d.rotation.x = -Math.PI / 2; d.position.set(x.rec.front[0], 0.017, x.rec.front[1]); grp.add(d); }
       }
       scene.add(grp);
+    }
+    // ---- the ball: the flight measured on this clip, from the hand to the batter's stumps ----
+    const ballMesh = new THREE.Mesh(keep(new THREE.SphereGeometry(0.036, 20, 14)), basic(0xff3b3b));
+    ballMesh.visible = false; ballMesh.renderOrder = 10;
+    scene.add(ballMesh);
+    let ballClock: ((frame: number) => number) | null = null;   // seconds since the ball left the hand, for a frame of the analysis
+    if (tracked) {
+      const sm = tracked.samples, tp = tracked.pitch?.t ?? Infinity;
+      const pre: THREE.Vector3[] = [], post: THREE.Vector3[] = [];
+      for (let i = 0; i < sm.length; i += 3) (sm[i].t <= tp ? pre : post).push(new THREE.Vector3(sm[i].p[0], sm[i].p[1], sm[i].p[2]));
+      if (tracked.pitch) { const q = new THREE.Vector3(tracked.pitch.p[0], 0.036, tracked.pitch.p[2]); pre.push(q); post.unshift(q.clone()); }
+      for (const [pts, color] of [[pre, 0x7dd3fc], [post, 0xfbbf24]] as const) {
+        if (pts.length < 2) continue;
+        const path = new THREE.CurvePath<THREE.Vector3>();
+        for (let i = 1; i < pts.length; i++) path.add(new THREE.LineCurve3(pts[i - 1], pts[i]));
+        const tube = new THREE.Mesh(keep(new THREE.TubeGeometry(path, pts.length * 2, 0.014, 6, false)), basic(color, 0.9));
+        tube.renderOrder = 7;
+        scene.add(tube);
+      }
+      if (tracked.pitch) {
+        const ring = new THREE.Mesh(keep(new THREE.RingGeometry(0.07, 0.12, 36)), basic(0xffffff, 0.95, false));
+        ring.rotation.x = -Math.PI / 2; ring.position.set(tracked.pitch.p[0], 0.015, tracked.pitch.p[2]); ring.renderOrder = 6;
+        scene.add(ring);
+        addLabel(`pitched ${tracked.pitch.length.value.toFixed(1)} m from the batter's stumps`, [tracked.pitch.p[0] + 0.9, 0.05, tracked.pitch.p[2]], "#fde68a");
+      }
+      addLabel(`${Math.round(tracked.release.kmh.value)} km/h`, [tracked.release.p[0] - (tracked.release.p[0] >= 0 ? -0.55 : 0.55), tracked.release.p[1] - 0.25, tracked.release.p[2] - 0.6], "#bae6fd");
+      const slow = Math.max(1, result.options.slowmo_factor || 1), fpsV = result.video.fps || result.fps, t0 = tracked.release.t;
+      ballClock = (fr) => { const i = Math.max(0, Math.min(T - 1, Math.floor(fr))), u = fr - i, a = result.frames.times[i] ?? i / fpsV, b = result.frames.times[Math.min(T - 1, i + 1)] ?? a + 1 / fpsV; return (a + (b - a) * u) / slow - t0; };
     }
     // where the camera stood
     {
@@ -375,18 +411,25 @@ export default function OnPitch3D({ id, result, meta, name, others, onClose, onM
         const sh: V3 = [(P[5][0] + P[6][0]) / 2, (P[5][1] + P[6][1]) / 2, (P[5][2] + P[6][2]) / 2], hip: V3 = [(P[11][0] + P[12][0]) / 2, (P[11][1] + P[12][1]) / 2, (P[11][2] + P[12][2]) / 2];
         stick(spine, hip, sh, 0.05); stick(neck, sh, P[0], 0.03);
       }
+      // the ball, once it has left the hand
+      if (tracked && ballClock) {
+        const tb = ballClock(L.frame), last = tracked.samples[tracked.samples.length - 1].t;
+        ballMesh.visible = tb >= 0 && tb <= last + 0.02;
+        if (ballMesh.visible) { const q = trackedAt(tracked, tb); ballMesh.position.set(q[0], q[1], q[2]); }
+      }
       const v = L.view;
       if (v === "camera") { wantPos.copy(realPos); wantQ.copy(realQ); }
       else {
         if (v === "orbit") { if (!L.drag && now - L.moved > 2500) L.az += dt * 0.12; wantPos.set(focus.x + L.dist * Math.cos(L.el) * Math.sin(L.az), focus.y + L.dist * Math.sin(L.el), focus.z + L.dist * Math.cos(L.el) * Math.cos(L.az)); }
         else if (v === "top") wantPos.set(focus.x, 9.5, focus.z + 0.01);
+        else if (v === "ball") wantPos.set(right ? 2.6 : -2.6, 7.5, 16);
         else wantPos.set(focus.x + (right ? 1 : -1) * 8, 1.3, focus.z);
-        m4.lookAt(wantPos, v === "top" ? new THREE.Vector3(focus.x, 0, focus.z) : focus, v === "top" ? new THREE.Vector3(0, 0, -1) : up);
+        m4.lookAt(wantPos, v === "top" ? new THREE.Vector3(focus.x, 0, focus.z) : v === "ball" ? new THREE.Vector3(0, 0.3, -11) : focus, v === "top" ? new THREE.Vector3(0, 0, -1) : up);
         wantQ.setFromRotationMatrix(m4);
       }
       const k = 1 - Math.exp(-dt / 0.28);
       curPos.lerp(wantPos, k); curQ.slerp(wantQ, k);
-      curFov += ((v === "camera" ? fovReal : v === "top" ? 40 : 36) - curFov) * k;
+      curFov += ((v === "camera" ? fovReal : v === "top" ? 40 : v === "ball" ? 30 : 36) - curFov) * k;
       mix += ((v === "camera" ? 0 : 1) - mix) * (1 - Math.exp(-dt / 0.35));
       camera.position.copy(curPos); camera.quaternion.copy(curQ); camera.fov = curFov; camera.updateProjectionMatrix();
       domeMat.uniforms.op.value = mix;
@@ -431,7 +474,7 @@ export default function OnPitch3D({ id, result, meta, name, others, onClose, onM
       for (const d of disposables) d.dispose();
       renderer.dispose();
     };
-  }, [cam, o, W, H, othersKey, result, T, br, f0]);   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [cam, o, W, H, othersKey, tracked, result, T, br, f0]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   // drag to walk round, wheel or pinch to come closer
   const onDown = (e: React.PointerEvent) => { if (view !== "orbit") { setView("orbit"); } live.current.intro = false; live.current.drag = { x: e.clientX, y: e.clientY }; (e.target as HTMLElement).setPointerCapture(e.pointerId); };
@@ -453,6 +496,8 @@ export default function OnPitch3D({ id, result, meta, name, others, onClose, onM
   }, [others, o]);
 
   const st = o?.stature ?? null;
+  // the release height from the ball's own flight, when the ball was tracked starting from this measured release
+  const ballH = tracked && meta.track?.measured && o?.release && Math.abs(tracked.release.p[1] - o.release.height.value) < 0.25 ? tracked.release.p[1] : null;
   return (
     <div className="bio-overlay" role="dialog" aria-modal="true" aria-labelledby="onp-title" ref={dialogRef}>
       <div className={`bio-sheet onp-sheet ${aspect < 1 ? "portrait" : ""}`}>
@@ -472,34 +517,39 @@ export default function OnPitch3D({ id, result, meta, name, others, onClose, onM
               <canvas ref={canvasRef} width={W} height={H} className="onp-canvas" role="img" tabIndex={0}
                 onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} onWheel={onWheel}
                 aria-label={`${name}'s delivery rebuilt on the pitch in 3D: the feet where they landed, the ball where it left the hand, and the pitch's own lines`} />
-              <div className="onp-tag" aria-hidden="true">{view === "camera" ? "AS YOUR CAMERA SAW IT · the blue lines are the pitch by the Laws" : view === "orbit" ? "DRAG TO WALK ROUND" : view === "top" ? "FROM ABOVE" : "FROM THE SIDE"}</div>
+              <div className="onp-tag" aria-hidden="true">{view === "camera" ? "AS YOUR CAMERA SAW IT · the blue lines are the pitch by the Laws" : view === "orbit" ? "DRAG TO WALK ROUND" : view === "top" ? "FROM ABOVE" : view === "ball" ? "THE BALL'S MEASURED FLIGHT" : "FROM THE SIDE"}</div>
             </div>
             <div className="bio-tools">
               <button type="button" className="btn sm" onClick={() => setPlaying((p) => !p)} aria-pressed={playing}>{playing ? <><IPause size={14} /> Pause</> : <><IPlay size={14} /> Play ¼ speed</>}</button>
               <input type="range" className="onp-scrub" aria-label="Frame" min={0} max={T - 1} value={shown} onChange={(e) => { setPlaying(false); setFrame(Number(e.target.value)); }} />
               <div className="seg" role="group" aria-label="View">
-                {([["camera", "Your camera"], ["orbit", "Walk round"], ["top", "Above"], ["side", "Side"]] as const).map(([v, text]) => (
+                {([["camera", "Your camera"], ["orbit", "Walk round"], ["top", "Above"], ["side", "Side"], ...(tracked ? [["ball", "Ball"] as const] : [])] as const).map(([v, text]) => (
                   <button key={v} type="button" className={view === v ? "on" : ""} aria-pressed={view === v} onClick={() => { live.current.intro = false; setView(v); }}>{text}</button>
                 ))}
               </div>
               <label className="onp-check"><input type="checkbox" checked={ghostsOn} onChange={(e) => setGhostsOn(e.target.checked)} /> Key moments</label>
               {others.length > 0 && <label className="onp-check"><input type="checkbox" checked={session} onChange={(e) => setSession(e.target.checked)} /> Other balls ({others.length})</label>}
-              <button type="button" className="btn sm ghost" onClick={onRemark}><IRefresh size={13} /> Pitch marks</button>
+              <button type="button" className="btn sm ghost" onClick={onRemark} title="Only if the blue lines do not sit on the pitch in the camera's view"><IRefresh size={13} /> Correct the pitch</button>
             </div>
             <dl className="face-read onp-read">
-              {o.release && <div><dt>Release point</dt><dd><b>{o.release.height.value.toFixed(2)} m</b> high <em>± {cmTxt(o.release.height.sigma)}</em>, <b>{cmTxt(o.release.across.value)}</b> {o.release.across.value < 0 ? "left" : "right"} of middle stump as the camera looks <em>± {cmTxt(o.release.across.sigma)}</em>
-                {st ? <>; {Math.round((o.release.height.value / st.value) * 100)}% of the bowler's height</> : null}</dd></div>}
+              {o.release && <div><dt>Release point</dt><dd><b>{(ballH ?? o.release.height.value).toFixed(2)} m</b> high <em>± {cmTxt(o.release.height.sigma)}</em>, <b>{cmTxt(o.release.across.value)}</b> {o.release.across.value < 0 ? "left" : "right"} of middle stump as the camera looks <em>± {cmTxt(o.release.across.sigma)}</em>
+                {st ? <>; {Math.round(((ballH ?? o.release.height.value) / st.value) * 100)}% of the bowler's height</> : null}
+                {ballH != null ? <>. <em>Read off the start of the ball's tracked flight (the arm alone gave {o.release.height.value.toFixed(2)} m)</em></> : null}
+                {o.release.arc && o.release.p[1] - o.release.caught > 0.03 ? <>. <em>This is the top of the hand's arc, where the ball leaves (the shoulder plus the arm's {o.release.arm ? `${Math.round(o.release.arm * 100)} cm` : "length"} along the arm's line); the release frame itself caught the hand {cmTxt(o.release.p[1] - o.release.caught)} short of it, as {Math.round(result.fps_real || result.fps)} frames a second will.</em></>
+                  : !o.release.arc && o.release.timing > 0.035 ? <>. <em>The arm could not be followed over the top in this clip, so this is the hand as the release frame caught it; not knowing the moment within one frame is ± {cmTxt(o.release.timing)} of that on its own.</em></> : null}</dd></div>}
               {o.stride && <div><dt>Delivery stride</dt><dd><b>{o.stride.value.toFixed(2)} m</b> heel to heel <em>± {cmTxt(o.stride.sigma)}</em>{st ? <>, {Math.round((o.stride.value / st.value) * 100)}% of height</> : null}
                 {o.across && o.alignDeg ? <>; the front foot lands <b>{cmTxt(o.across.value)}</b> to the {o.across.value < 0 ? "left" : "right"} of the back foot's line ({Math.abs(o.alignDeg.value).toFixed(0)}° ± {Math.max(1, Math.round(o.alignDeg.sigma))}°)</> : null}</dd></div>}
               {!o.frontSeen && <div><dt>Front foot</dt><dd>hidden behind the back leg where it landed, so the stride and the front-foot line are not measured on this clip. The release point is placed a usual stride ahead of the back foot, and its ± is wider for it.</dd></div>}
               {o.popping && <div><dt>Front foot</dt><dd>heel <b>{o.popping.margin.value >= 0 ? `${cmTxt(o.popping.margin.value)} behind` : `${cmTxt(o.popping.margin.value)} over`}</b> the back edge of the popping crease <em>± {cmTxt(o.popping.margin.sigma)}</em>:{" "}
                 <b className={o.popping.verdict === "no_ball" ? "bad" : o.popping.verdict === "legal" ? "good" : ""}>{o.popping.verdict === "legal" ? "a fair delivery" : o.popping.verdict === "no_ball" ? "a no-ball" : "too close to call"}</b></dd></div>}
               {o.returnGap && o.back && <div><dt>Back foot</dt><dd>{o.returnGap.value > 1.5 * o.returnGap.sigma ? <>inside the return crease by <b>{cmTxt(o.returnGap.value)}</b></> : o.returnGap.value < -1.5 * o.returnGap.sigma ? <><b className="bad">on or outside the return crease</b> (a no-ball)</> : <>within {cmTxt(o.returnGap.sigma)} of the return crease: too close to call</>}</dd></div>}
+              {tracked && <div><dt>The ball</dt><dd><b>{tracked.release.kmh.value.toFixed(0)} km/h</b> out of the hand <em>± {Math.max(1, Math.round(tracked.release.kmh.sigma))}</em>{tracked.pitch ? <>, pitched <b>{tracked.pitch.length.value.toFixed(1)} m</b> from the batter's stumps ({lengthName(tracked.pitch.length.value).toLowerCase()}) <em>± {cmTxt(tracked.pitch.length.sigma)}</em></> : null}
+                {tracked.stumps ? <>; at the stumps {cmTxt(tracked.stumps.height.value)} up, {tracked.stumps.hitting === "hitting" ? "hitting" : tracked.stumps.hitting === "close" ? "too close to call" : "missing"}</> : null}. Measured from {tracked.used} sightings of the ball in this clip.</dd></div>}
               {st && <div><dt>Bowler's height</dt><dd><b>{st.value.toFixed(2)} m</b> <em>± {cmTxt(st.sigma)}</em>, measured against the stumps{result.skeleton.height_source === "user" ? ` (you entered ${result.skeleton.stature_m.toFixed(2)} m)` : ""}</dd></div>}
               {o.runup && <div><dt>Run-up</dt><dd><b>{o.runup.value.toFixed(0)} km/h</b> into the delivery stride <em>± {Math.max(1, Math.round(o.runup.sigma))}</em></dd></div>}
               <div><dt>Follow-through</dt><dd>{o.danger ? <><b className="bad">a foot lands on the protected area</b> ({cmTxt(o.danger.heel[0])} from the middle, {(-o.danger.heel[2] - POPPING).toFixed(1)} m past the popping crease): umpires warn for this</> : o.steps.length ? "no foot seen landing on the protected area (the red strip down the middle)" : "the clip ends before the next steps land"}</dd></div>
               {spread && <div><dt>Repeatability</dt><dd>over {spread.n} measured balls the release moves <b>{pm({ value: spread.height, sigma: 0 }).split(" ±")[0]}</b> up and down and <b>{cmTxt(spread.across)}</b> side to side (one standard deviation)</dd></div>}
-              <div><dt>The camera</dt><dd><ICheck size={13} /> {cam.pos[1].toFixed(1)} m up, {Math.abs(cameraEnd(cam) === "bowler" ? cam.pos[2] : cam.pos[2] + PITCH_LEN).toFixed(1)} m behind the stumps; the {rec.marks.length} pitch marks agree to {cam.rms.toFixed(1)} px{o.still ? "" : "; the camera moved, and its movement is followed"}</dd></div>
+              <div><dt>The camera</dt><dd><ICheck size={13} /> {cam.pos[1].toFixed(1)} m up, {Math.abs(cameraEnd(cam) === "bowler" ? cam.pos[2] : cam.pos[2] + PITCH_LEN).toFixed(1)} m behind the stumps; {rec.auto ? `found by Seamly from ${rec.auto === "creases" ? "the painted creases" : rec.auto === "near creases" ? "the creases at the bowler's end" : rec.auto === "stumps" ? "the two wickets" : "the wickets and the creases"}` : `the ${rec.marks.length} pitch marks agree to ${cam.rms.toFixed(1)} px`}{o.still ? "" : "; the camera moved, and its movement is followed"}</dd></div>
             </dl>
             <p className="faint bio-note">
               Measured, not assumed: the creases and stumps are a ruler the Laws fix to the millimetre, and from them the camera's place, direction and zoom follow. A heel on the ground then has one place on the pitch, and the hand above the planted front foot has one height.

@@ -1450,3 +1450,7 @@ body.pace-measuring { padding-bottom: 150px; }
 .onp-read dd b.bad { color: #f87171; }
 .onp-read dd svg { vertical-align: -2px; color: var(--c-good); }
 .onp-wait { display: flex; align-items: center; gap: 10px; padding: 60px 20px; justify-content: center; color: var(--c-text-2); font-size: 14px; }
+.onp-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; padding: 10px 14px; margin-bottom: 14px; border: 1px solid var(--c-line); border-radius: 12px; font-size: 13px; color: var(--c-text-2); }
+.onp-strip > b { color: var(--c-text); font-weight: 600; }
+.onp-strip em { font-style: normal; color: var(--c-text-3); margin-right: 4px; }
+.onp-strip .btn { margin-left: auto; }

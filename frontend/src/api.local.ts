@@ -16,6 +16,12 @@ const engine = () => import("./engine/pipeline").catch((e) => {
   const stale = /dynamically imported module|Importing a module script failed|error loading dynamically/i.test(String(e?.message ?? e));
   throw stale ? new AnalysisError("Seamly was updated while this page was open. Reload the page, then press Retry.") : e;
 });
+/** Start getting the analysis models ready (download if needed, then compile) before the user presses Analyse:
+ *  called when a clip is chosen, and on opening the app once the models are already in this browser. On a returning
+ *  visit that takes the wait for the models out of the analysis. Failures are left for the analysis itself to report. */
+export function warmModels(): void {
+  void engine().then((P) => P.loadModels()).catch(() => undefined);
+}
 import { insights as buildInsights } from "./engine/insights";
 import { frameObj } from "./engine/body";
 import { playerProgress, summarise } from "./engine/progress";
@@ -184,7 +190,10 @@ async function loadFiles(id: string, result: AnalysisResult) {
 /** The "Full analysis" export: the analysis, plus the ball speed and the no-ball check when they were made on this clip. */
 function exportJson(id: string, r: AnalysisResult): Blob {
   const m = metas.get(id);
-  return new Blob([JSON.stringify({ ...r, ...(m?.pace ? { pace: m.pace } : {}), ...(m?.crease ? { crease: m.crease } : {}) })], { type: "application/json" });
+  // with what was measured on top of the analysis: the ball's speed, the crease check, the bowler on the pitch in
+  // metres (each figure as [value, doubt]) and the ball's tracked flight
+  return new Blob([JSON.stringify({ ...r, ...(m?.pace ? { pace: m.pace } : {}), ...(m?.crease ? { crease: m.crease } : {}),
+    ...(m?.onpitch ? { on_pitch: m.onpitch } : {}), ...(m?.track ? { ball_track: m.track } : {}) })], { type: "application/json" });
 }
 
 function seriesCsv(r: AnalysisResult): string {
@@ -458,7 +467,9 @@ function cleanTrack(t: unknown): TrackRecord | null {
     length: typeof r.length === "number" ? r.length : null, line: typeof r.line === "number" ? r.line : null, swing: Number(r.swing) || 0,
     deviation: typeof r.deviation === "number" ? r.deviation : null, height: typeof r.height === "number" ? r.height : null,
     hitting: r.hitting === "hitting" || r.hitting === "missing" || r.hitting === "close" ? r.hitting : null, rmsPx: Number(r.rmsPx) || 0,
+    measured: Array.isArray(r.measured) && (r.measured.length === 4 || r.measured.length === 5) && r.measured.every((v) => typeof v === "number" && Number.isFinite(v)) ? r.measured.slice() : null,
     release: Number.isInteger(r.release) ? r.release : null, releaseSigma: typeof r.releaseSigma === "number" && r.releaseSigma > 0 ? r.releaseSigma : null,
+    releaseP: Array.isArray(r.releaseP) && r.releaseP.length === 3 && r.releaseP.every((v) => typeof v === "number" && Number.isFinite(v)) ? r.releaseP.slice() : null,
   };
 }
 function cleanCrease(c: unknown): CreaseRecord | null {
@@ -521,7 +532,7 @@ export const SAMPLES = {
 
 export type SampleName = keyof typeof SAMPLES;
 // bump when the bundled sample analyses are regenerated, so a browser that imported an older copy gets the new one
-const SAMPLE_VERSION = 18;
+const SAMPLE_VERSION = 19;
 
 /** A link to one of the built-in examples opens anywhere: import it on first use (the ids are fixed). */
 const sampleImports = new Map<string, Promise<unknown>>();   // the report asks for an analysis and its insights at once
@@ -936,7 +947,7 @@ export const api = {
     }
     const out = pub((Object.keys(f).length ? await writeMeta(id, f) : undefined) ?? requireMeta(id));
     const r = results.get(id);
-    if (("pace" in body || "crease" in body) && r) setUrl(`${id}/export.json`, exportJson(id, r));
+    if (("pace" in body || "crease" in body || "onpitch" in body || "track" in body) && r) setUrl(`${id}/export.json`, exportJson(id, r));
     return out;
   },
   /** Run-up speed at back-foot contact (side-on clips with the last strides in view), from the stored camera motion. */

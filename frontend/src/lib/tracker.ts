@@ -31,6 +31,8 @@ export interface PoseHints {
   hand: Pt | null;                 // the ball in the bowling hand at the release frame (that frame's pixels)
   ankles: Pt[];                    // the front foot's ankle at the release frame (both ankles when it is not clear which)
   releaseHeight: number | null;    // metres, when the clip measured it
+  /** The release measured on the pitch (lib/onpitch.ts): how far down the pitch and how high the hand let go, each with its doubt, metres. */
+  measured?: { z: number; zSigma: number; height: number; heightSigma: number; frame?: number | null } | null;   // frame: when (a video frame number with a fraction), if it was timed within the frame
   time: (frame: number) => number; // real seconds (slow motion undone)
   fps: number;                     // real frames per second
   first: number; last: number;     // the frames of this shot (inclusive)
@@ -215,7 +217,19 @@ export function priorsOf(cam: Camera, h: PoseHints, shifts: Map<number, Shift>, 
     const zf = foot[2] + 0.15, sf = Math.hypot(0.35, Math.min(1, footSig)), w0 = 1 / (zSigma * zSigma), w1 = 1 / (sf * sf);
     releaseZ = (releaseZ * w0 + zf * w1) / (w0 + w1); zSigma = Math.sqrt(1 / (w0 + w1));
   } else foot = null;
-  const pri: TrackPriors = { releaseT: h.time(h.releaseFrame), releaseZ, releaseZSigma: zSigma, releaseHeight: h.releaseHeight, releaseHeightSigma: 0.12, fps: h.fps, releaseTSigma: h.releaseTSigma };
+  // measured on the pitch with the same kind of camera: that is the release, and far tighter than the rules of thumb above
+  const ms = h.measured ?? null;
+  if (ms) { releaseZ = ms.z; zSigma = Math.max(0.1, ms.zSigma); }
+  // and when: the top of the hand's arc, timed to a fraction of a frame, when the release frame is still the analysis's own
+  let releaseT = h.time(h.releaseFrame), tSigma = h.releaseTSigma;
+  // (Against rendered deliveries the top of the arc is within 0.2 of a frame of the true release at 25 to 60 frames
+  // a second, 0.6 at worst, and nearer the truth than the analysis's own release frame, which at 60 and 120 frames a
+  // second can be two or three frames late. So it is used whenever it is there, and trusted to about 7 ms.)
+  if (ms && ms.frame != null && Math.abs(ms.frame - h.releaseFrame) <= Math.max(1.5, 0.05 * h.fps) && h.releaseTSigma === undefined) {
+    const f = Math.floor(ms.frame), u = ms.frame - f;
+    releaseT = h.time(f) + (h.time(f + 1) - h.time(f)) * u; tSigma = Math.max(0.35, 0.007 * h.fps);
+  }
+  const pri: TrackPriors = { releaseT, releaseZ, releaseZSigma: zSigma, releaseHeight: ms ? ms.height : h.releaseHeight, releaseHeightSigma: ms ? Math.max(0.03, ms.heightSigma) : 0.12, fps: h.fps, releaseTSigma: tSigma };
   if (upright) {
     const su = shifts.get(upright.frame) ?? STILL;
     const A = onPlaneY(cam, applyShift(su, upright.foot), 0), B = onPlaneY(cam, applyShift(su, upright.tip), 0);
@@ -237,17 +251,26 @@ export function autoTrack(cam: Camera, sc: Scan, h: PoseHints, upright?: Upright
   if (fs.length < 5) return null;
   const perFrame = (times[times.length - 1] - times[0]) / (fs.length - 1);
   const scale = Math.max(pxPerMetre(cam, [0, 1, -1]), pxPerMetre(cam, [0, 1, -19]), pxPerMetre(cam, [0, 1, -10]));
-  const chains = linkChains(fs, times, fs.map((f) => sc.cands.get(f)!), { maxStep: scale * 50 * perFrame * 1.5, chains: 12 });
+  const link = (frames: number[]) => linkChains(frames, frames.map((f) => h.time(f)), frames.map((f) => sc.cands.get(f)!), { maxStep: scale * 50 * perFrame * 1.5, chains: 12 });
+  const chains = link(fs);
+  // The same from the release on only. The frames before it (scanned to steady the picture) hold the bowler running
+  // in: arms, legs, shadow, and the ball in the hand, each a long trail. Linked together with the flight they crowd
+  // it out: on a 60 fps phone clip the twelve longest chains each ran 70 frames from the run-up, and the ball's own
+  // 39 clean sightings were split between two of them, so no flight was found. A flight starts at the release.
+  const fsRel = fs.filter((f) => h.time(f) >= P.pri.releaseT - 2.5 * perFrame);
+  const chainsRel = fsRel.length >= 5 && fsRel.length < fs.length ? link(fsRel) : null;
   debug?.(`release z ${P.pri.releaseZ.toFixed(2)} +/- ${P.pri.releaseZSigma?.toFixed(2)}, hand ${P.hand?.map((v) => v.toFixed(0))} tol ${P.handTol.toFixed(0)}, chains ${chains.map((c) => `${c.length}[${c[0].frame}-${c[c.length - 1].frame}]`).join(" ")}`);
   debug?.("CHAINS " + JSON.stringify(chains.map((c) => c.map((s) => [s.frame, Math.round(s.blob.x * 10) / 10, Math.round(s.blob.y * 10) / 10]))));
   // the first few of a chain can be the hand and arm at release, not the ball: they are several times its size
-  const trimmed = chains.map((c) => {
+  const trim = (cs: typeof chains) => cs.map((c) => {
     const areas = c.map((s) => s.blob.area).sort((a, b) => a - b), med = areas[areas.length >> 1];
     let k = 0;
     while (k < Math.min(5, c.length - 5) && c[k].blob.area > 2.5 * med) k++;
     // how much each sighting stands out: the ball is a strong, compact blob
     return c.slice(k).map((s) => ({ ...s, weight: 0.3 + Math.min(1, s.blob.peak / 200) * Math.min(1, s.blob.area / (s.blob.w * s.blob.h)) }));
   });
+  if (chainsRel) debug?.("CHAINS " + JSON.stringify(chainsRel.map((c) => c.map((s) => [s.frame, Math.round(s.blob.x * 10) / 10, Math.round(s.blob.y * 10) / 10]))));
+  const trimmed = trim(chains), trimmedRel = chainsRel ? trim(chainsRel) : null;
   // The flight should start at the bowling hand, at the release the analysis found. When nothing does (the analysis
   // can have the wrong arm or the wrong moment), the best flight from that release without the hand; and failing
   // that, the best flight anywhere after it, with the release taken from the ball itself.
@@ -269,11 +292,12 @@ export function autoTrack(cam: Camera, sc: Scan, h: PoseHints, upright?: Upright
   // With the analysis's release, a flight cannot begin before it: sightings more than a frame ahead of the release
   // are something else (an arm coming over, a fielder).
   const frameT = 1 / h.fps, notEarly = (a: { frame: number; px: Pt }, b: { frame: number; px: Pt }) => h.time(a.frame) >= P.pri.releaseT - 1.2 * frameT && (!startOk || startOk(a, b));
-  let pick = pickBall(cam, trimmed, P.pri, { hand: P.hand, handTol: P.handTol, crossPx: cross, budgetMs: 3000, pool, onBody, startOk: (a) => h.time(a.frame) >= P.pri.releaseT - 1.2 * frameT, debug })
-    ?? (P.hand ? pickBall(cam, trimmed, P.pri, { crossPx: cross, budgetMs: 1500, pool, onBody, startOk: notEarly, debug }) : null);
+  const fromRelease = (cs: typeof trimmed) => pickBall(cam, cs, P.pri, { hand: P.hand, handTol: P.handTol, crossPx: cross, pool, onBody, startOk: (a) => h.time(a.frame) >= P.pri.releaseT - 1.2 * frameT, debug })
+    ?? (P.hand ? pickBall(cam, cs, P.pri, { crossPx: cross, pool, onBody, startOk: notEarly, debug }) : null);
+  let pick = (trimmedRel ? fromRelease(trimmedRel) : null) ?? fromRelease(trimmed);
   let hints = h;
   if (!pick) {
-    pick = pickBall(cam, trimmed, { ...P.pri, releaseZ: -0.9, releaseZSigma: 0.45 }, { crossPx: cross, fromChain: true, budgetMs: 3000, pool, onBody, startOk, debug });
+    pick = pickBall(cam, trimmed, { ...P.pri, releaseZ: -0.9, releaseZSigma: 0.45 }, { crossPx: cross, fromChain: true, pool, onBody, startOk, debug });
     if (pick) {
       // the frame nearest the release the ball implies; nothing else is taken from the pose
       const tRel = pick.pri.releaseT;
@@ -333,8 +357,12 @@ export interface TrackRecord {
   upright: Upright | null;
   sightings: Sighting[];
   shifts: [number, number, number, number][];   // frame, zoom, dx, dy
+  measured?: number[] | null;   // the release measured on the pitch, when the track used it: z, its doubt, height, its doubt (metres), and optionally when (a frame number with a fraction)
   release?: number | null;                      // the release frame, when it is not the bowling analysis's
   releaseSigma?: number | null;                 // how well it is known, frames (1.5 when it was taken from the ball)
+  /** Where the fitted flight starts: x, y, z in metres. Its height is the measured release with the ball's own first
+   *  sightings taken into account, and against rendered deliveries is nearer the truth than the arm alone gives. */
+  releaseP?: number[] | null;
   kmh: number; kmhSigma: number;
   length: number | null; line: number | null; swing: number; deviation: number | null;
   height: number | null; hitting: "hitting" | "missing" | "close" | null;
@@ -346,6 +374,7 @@ export function recordOf(cam: Camera, markFrame: number, marks: Mark[], upright:
   return {
     v: 1, w: cam.w, h: cam.h, markFrame, marks, upright, sightings,
     shifts: [...shifts.entries()].map(([f, m]): [number, number, number, number] => [f, m.s, m.dx, m.dy]).filter(([f]) => need.has(f)),
+    releaseP: tr.release.p.map((v) => Math.round(v * 1000) / 1000),
     kmh: r2(tr.release.kmh.value), kmhSigma: r2(tr.release.kmh.sigma),
     length: tr.pitch ? r2(tr.pitch.length.value) : null, line: tr.pitch ? r2(tr.pitch.line.value) : null,
     swing: r2(tr.swing.value), deviation: tr.deviation ? r2(tr.deviation.value) : null,
@@ -360,6 +389,7 @@ export function fromRecord(rec: TrackRecord, r: AnalysisResult): { cam: Camera; 
   let h = poseHints(r, rec.w);
   if (!isCamera(cam) || !h) return null;
   if (rec.release != null && rec.release !== h.releaseFrame) h = { ...h, releaseFrame: rec.release, releaseTSigma: rec.releaseSigma ?? undefined, hand: null, ankles: [], releaseHeight: null };
+  if (rec.measured) h = { ...h, measured: { z: rec.measured[0], zSigma: rec.measured[1], height: rec.measured[2], heightSigma: rec.measured[3], frame: rec.measured.length > 4 ? rec.measured[4] : null } };
   const shifts = shiftsOf(rec), tr = refit(cam, rec.sightings, shifts, h, rec.upright);
   return isTracked(tr) ? { cam, tracked: withDoubt(tr, cam, rec.marks, rec.sightings, shifts, h, rec.upright), hints: h } : null;
 }

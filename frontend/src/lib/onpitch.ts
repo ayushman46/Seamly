@@ -12,7 +12,7 @@
  * Scene axes as lib/camcal.ts: y up, the bowler's stumps at z = 0, the batter's at z = -20.12, +x to the right seen
  * from behind the bowler. The bowler runs towards -z.
  */
-import { onPlaneY, onPlaneZ, solveCameraPoints, isCamera, worldOf, POPPING, RETURN_X, type Camera, type Mark, type Pt } from "./camcal";
+import { onPlaneY, onPlaneZ, ray, solveCameraPoints, isCamera, worldOf, POPPING, RETURN_X, type Camera, type Mark, type Pt } from "./camcal";
 import type { AnalysisResult } from "../types";
 import type { V3 } from "./biomech";
 
@@ -26,7 +26,13 @@ export interface OnPitch {
   frontSeen: boolean;                 // false: the front foot's landing was hidden (usually by the back leg) and is not measured
   back: Foot | null;                  // the back foot where it landed
   front: Foot | null;                 // the front foot where it landed
-  release: { p: V3; wrist: V3; footZ: number; height: Est; across: Est; frame: number } | null;   // the ball in the hand at release (and the wrist, and the front ankle's z it was placed above)
+  /** Where the ball left the hand: the top of the hand's arc (`arc`), or, when there was no arc to go by, the hand as
+   * the release frame caught it (then `timing` is the part of the height's doubt that comes from knowing the release
+   * to the frame and not within it). `caught`: the hand's height in the release frame itself. `arm`: shoulder to ball,
+   * metres. Also the wrist in that frame, and the front ankle's z the hand was placed above. */
+  release: { p: V3; wrist: V3; footZ: number; height: Est; across: Est; frame: number; timing: number; arc: boolean; caught: number; arm: number | null;
+    /** When the hand was at the top of its arc, as a video frame number with a fraction (null without an arc to go by). */
+    topFrame: number | null } | null;
   stride: Est | null;                 // heel to heel, metres
   across: Est | null;                 // how far across the front foot lands from the back foot's line, metres (+x)
   alignDeg: Est | null;               // that as an angle to the line of the pitch
@@ -48,7 +54,12 @@ const FOOT_LEN = 0.22;                       // heel point to toe points along t
 const ANKLE_Y = 0.08, ANKLE_AHEAD = 0.07;   // the ankle joint: above the ground and ahead of the heel point
 // At release the hand is a little ahead of the planted front ankle (the trunk has come over the front leg): 10 cm
 // further down the pitch, give or take 25 cm.
-const HAND_AHEAD = 0.10, HAND_DEPTH_SIGMA = 0.25;
+const HAND_AHEAD = 0.0, HAND_DEPTH_SIGMA = 0.25;
+// Shoulder to the middle of the ball in the hand, as a share of standing height: upper arm 18.6%, forearm 14.6% and
+// the hand's reach to the ball a third of the forearm again (Drillis and Contini's segment lengths).
+const ARM_OF_HEIGHT = 0.186 + 1.35 * 0.146;
+/** Switches for trying one way of measuring against another (tests and the local accuracy loop only). */
+export const TUNE: { release: "arc" | "fit" | "blend"; planeZ: number | null; timing: "sides" | "fit"; arms: "raw" | "smooth" } = { release: "blend", planeZ: null, timing: "fit", arms: "raw" };
 const L_SH = 5, R_SH = 6, L_EL = 7, R_EL = 8, L_WR = 9, R_WR = 10, L_HIP = 11, R_HIP = 12, L_AN = 15, R_AN = 16;
 // COCO joint -> the H36M joint the 3D estimate has for it
 const COCO_TO_H36M = [9, 9, 9, 9, 9, 11, 14, 12, 15, 13, 16, 4, 1, 5, 2, 6, 3];
@@ -169,7 +180,7 @@ export function measureOnPitch(r: AnalysisResult, cam: Camera, markFrame: number
       sx: Math.hypot(gx[0] - g[0], gh[0] - g[0]), sz: Math.hypot(gy[2] - g[2], gh[2] - g[2], from === "ankle" ? 0.04 : 0) };
   };
   /** The foot while it is planted: the middle of what the frames from t0 to t1 say. */
-  const planted = (i: number, t0: number, t1: number): Foot | null => {
+  const planted = (i: number, t0: number, t1: number, onToes = true): Foot | null => {
     const fs: Foot[] = [];
     for (let t = Math.max(0, t0); t <= Math.min(T - 1, t1); t++) { const f = footAt(t, i); if (f) fs.push(f); }
     if (!fs.length) return null;
@@ -179,7 +190,10 @@ export function measureOnPitch(r: AnalysisResult, cam: Camera, markFrame: number
     // never puts its heel down), is seen along a line that meets the ground further away than the foot is. So of
     // what the frames say, the nearer readings are the true ones; and the toes, when they are the part on the
     // ground, put the heel a foot's length behind them.
-    const zs = fs.map((f) => Math.max(f.heel[2], f.toe && f.from === "heel" ? f.toe[2] + FOOT_LEN : -Infinity));
+    // (Only the back foot is read from its toes. The front foot lands heel first and stays flat until the ball has
+    // gone, so its heel is the reading; its toes, seen from above and behind, read 10 to 20 cm short of where
+    // they are, and going by them put the heel that much too near.)
+    const zs = fs.map((f) => Math.max(f.heel[2], onToes && f.toe && f.from === "heel" ? f.toe[2] + FOOT_LEN : -Infinity));
     return { ...mid, heel: [median(fs.map((f) => f.heel[0])), 0, fs.length >= 3 ? quantile(zs, 0.75) : Math.max(...zs)],
       toe: toes.length ? [median(toes.map((p) => p[0])), 0, median(toes.map((p) => p[2]))] : null,
       // frames of one planted foot share most of their error (where the model puts a heel), so more frames help only a little
@@ -205,10 +219,11 @@ export function measureOnPitch(r: AnalysisResult, cam: Camera, markFrame: number
     return [e, Math.min(hi, e + hold + 1)];   // never seen to stop (a blur, a dragged toe): the frames after the given one
   };
   const sb = bfc !== null ? stance(backI, bfc, (ffc ?? br) - 1) : null, sf = ffc !== null ? stance(frontI, ffc, br + hold) : null;
+  (globalThis as { __onpDbg3?: (x: unknown) => void }).__onpDbg3?.({ sb, sf, frontI, backI, f0, feet: Array.from({ length: T }, (_, t) => [footAt(t, 0), footAt(t, 1)]) });
   const back = sb ? planted(backI, sb[0], sb[1]) : null;
-  let front = sf ? planted(frontI, sf[0], sf[1]) : null;
+  let front = sf ? planted(frontI, sf[0], sf[1], false) : null;
   // at the release itself (the hand is placed above it): the frames either side, but not from before the foot was down
-  let frontAtBr = planted(frontI, Math.max(sf ? sf[0] : br - 1, br - 1), Math.min(T - 1, Math.max(br + 1, sf ? sf[0] + 1 : 0))) ?? front;
+  let frontAtBr = planted(frontI, Math.max(sf ? sf[0] : br - 1, br - 1), Math.min(T - 1, Math.max(br + 1, sf ? sf[0] + 1 : 0)), false) ?? front;
 
   // ---- how far down the pitch the bowler is, frame by frame ----
   // Before the delivery stride: of the two feet, the one on the ground is the one whose line of sight meets the
@@ -240,6 +255,11 @@ export function measureOnPitch(r: AnalysisResult, cam: Camera, markFrame: number
       line = { a, b, rms: Math.sqrt(res.reduce((s, e) => s + e * e, 0) / res.length) };
     }
   }
+  // The run-up is read off feet a long way from the crease (and, on broadcast footage, through a zoom): when it
+  // comes out at a speed nobody runs in at, or going the wrong way, that reading is not to be believed, and nothing
+  // that leans on it (the run-up speed, the bowler's height) is given.
+  const runKmh = line ? -line.b * fps * 3.6 : null;
+  if (runKmh !== null && (runKmh < 4 || runKmh > 29)) line = null;   // (the quickest run in at the top level is about 25 km/h)
   // ---- the bowler's height: the top of the head above the ground through the run-up ----
   let stature: Est | null = null;
   if (r.feet && line) {
@@ -258,12 +278,15 @@ export function measureOnPitch(r: AnalysisResult, cam: Camera, markFrame: number
       stature = { value: quantile(hs, 0.75), sigma: Math.max(0.06, Math.hypot(dd, 0.02, (quantile(hs, 0.9) - quantile(hs, 0.5)) / 2)) };
     }
   }
+  (globalThis as { __onpDbg2?: (x: unknown) => void }).__onpDbg2?.({ line, runKmh, near, stature, runEnd, f0 });
   // ---- is the front foot's landing spot believable? ----
   // Seen from straight behind, the front foot often lands hidden by the back leg, and the model then guesses at it.
   // A delivery stride is between about 45% and 105% of the bowler's height (spinners to the longest-striding quicks):
   // a "stride" outside that is a foot that was not seen, and nothing is measured from it. The hand's distance down
   // the pitch is then taken from the back foot instead, a usual stride ahead of it, with a wider doubt.
-  const Hs = stature?.value ?? 1.8;
+  // (a height the user entered is surer than one read off a running bowler's head: it sizes the stride check and the arm)
+  const known = r.skeleton?.height_source === "user" && r.skeleton.stature_m > 1 ? r.skeleton.stature_m : null;
+  const Hs = known ?? stature?.value ?? 1.8;
   let frontSeen = true;
   if (back && front) {
     const st = Math.hypot(front.heel[0] - back.heel[0], front.heel[2] - back.heel[2]);
@@ -314,22 +337,221 @@ export function measureOnPitch(r: AnalysisResult, cam: Camera, markFrame: number
     body.push(ok ? out : null);
   }
 
-  // ---- the release: the ball in the hand, above the planted front foot ----
+  // ---- the release: the top of the hand's arc, above the planted front foot ----
+  // The ball leaves the hand going nearly level (a fast bowler's good-length ball about 6 degrees below level, a
+  // spinner's about level), and a hand on the end of a turning arm is going level at the top of its arc. So the
+  // ball leaves at the top of the arc, to within a centimetre of height for anything from a yorker to a bouncer.
+  // That matters because the hand is the fastest thing in the picture: at 30 frames a second it travels about a
+  // metre between frames, and the frame nearest the release can catch it 5 to 30 cm below the top. The top itself
+  // does not depend on catching the moment: it is the shoulder, plus the arm's own length (measured through the
+  // delivery, checked against the bowler's height), along the line the arm is seen on. Seen from behind that line
+  // stays put as the arm turns; only how much of the arm's length shows changes.
   let release: OnPitch["release"] = null;
   {
-    const wr = right ? R_WR : L_WR, el = right ? R_EL : L_EL, kp = r.keypoints2d.xy[br];
-    const za = frontAtBr ? frontAtBr.heel[2] - ANKLE_AHEAD : usualFront !== null ? usualFront - ANKLE_AHEAD : depth[br], zf = za == null ? null : za - HAND_AHEAD;
+    const sh = right ? R_SH : L_SH, wr = right ? R_WR : L_WR, el = right ? R_EL : L_EL;
+    const za = frontAtBr ? frontAtBr.heel[2] - ANKLE_AHEAD : usualFront !== null ? usualFront - ANKLE_AHEAD : depth[br], zf = TUNE.planeZ ?? (za == null ? null : za - HAND_AHEAD);
     // how well that distance is known: the hand over the foot, and the foot itself when it had to be assumed
     const dSig = frontAtBr ? HAND_DEPTH_SIGMA : Math.hypot(HAND_DEPTH_SIGMA, 0.22 * Hs);
-    if (kc[br][wr] >= 0.2 && zf != null) {
-      const e = kc[br][el] >= 0.2 ? kp[el] : kp[wr];
-      const hand = map(br, [kp[wr][0] + 0.35 * (kp[wr][0] - e[0]), kp[wr][1] + 0.35 * (kp[wr][1] - e[1])]);
-      const p = onPlaneZ(cam, hand, zf), pn = onPlaneZ(cam, hand, zf + dSig), py = onPlaneZ(cam, [hand[0], hand[1] + spx], zf), px = onPlaneZ(cam, [hand[0] + spx, hand[1]], zf);
-      const fz = frontAtBr ? onPlaneZ(cam, hand, zf + frontAtBr.sz) : p, wp = onPlaneZ(cam, map(br, kp[wr]), zf);
-      if (p && pn && py && px && fz && wp) {
-        release = { p, wrist: wp, footZ: zf, frame: br + f0,
-          height: { value: p[1], sigma: Math.hypot(py[1] - p[1], pn[1] - p[1], fz[1] - p[1]) },
-          across: { value: p[0], sigma: Math.hypot(px[0] - p[0], pn[0] - p[0], fz[0] - p[0]) } };
+    type Arm = { S: V3; H: V3; W: V3; r: number; px: Pt };
+    // The elbow and wrist as the model read them in each frame, where the analysis kept them (it smooths the joints
+    // in time for everything else, and smoothing flattens and delays the top of a fast arm: against rendered
+    // deliveries at 120 frames a second the top came out 14 ms late from the smoothed joints, 1 ms from these).
+    const armJ = (t: number, j: number): Pt => { const a = r.arms_raw?.[t]?.[j - 7]; return a && TUNE.arms !== "smooth" ? [a[0], a[1]] : r.keypoints2d.xy[t][j]; };
+    const armAt = (t: number): Arm | null => {
+      if (zf == null || t < 0 || t >= T || kc[t][wr] < 0.2 || kc[t][sh] < 0.2) return null;
+      const q = r.keypoints2d.xy[t], w0 = armJ(t, wr), e = kc[t][el] >= 0.2 ? armJ(t, el) : w0;
+      const px = map(t, [w0[0] + 0.35 * (w0[0] - e[0]), w0[1] + 0.35 * (w0[1] - e[1])]);
+      const S = onPlaneZ(cam, map(t, q[sh]), zf), H = onPlaneZ(cam, px, zf), W = onPlaneZ(cam, map(t, w0), zf);
+      return S && H && W ? { S, H, W, r: Math.hypot(H[0] - S[0], H[1] - S[1]), px } : null;
+    };
+    const at = armAt(br);
+    if (at && zf != null) {
+      // the arm from the shoulder to the ball: upper arm and forearm, each as long as it is ever seen through the
+      // delivery (a limb pointing at the camera shows short; square to it, whole), and the hand beyond the wrist
+      const ua: number[] = [], fa: number[] = [];
+      // (through the delivery stride only: there the feet say how far away the bowler is, and a limb's size in the
+      // picture can be turned into metres without leaning on the run-up's rougher distance)
+      for (let t = Math.max(0, (bfc ?? br) - Math.round(0.15 * fps)); t <= Math.min(T - 1, br + 2); t++) {
+        const z = depth[t];
+        if (z == null || Math.min(kc[t][sh], kc[t][el], kc[t][wr]) < 0.3) continue;
+        const q = r.keypoints2d.xy[t], S = onPlaneZ(cam, map(t, q[sh]), z), E = onPlaneZ(cam, map(t, armJ(t, el)), z), W = onPlaneZ(cam, map(t, armJ(t, wr)), z);
+        if (S && E && W) { ua.push(Math.hypot(E[0] - S[0], E[1] - S[1])); fa.push(Math.hypot(W[0] - E[0], W[1] - E[1])); }
+      }
+      const seenLen = ua.length >= 5 ? quantile(ua, 0.85) + 1.35 * quantile(fa, 0.85) : null;
+      const byHeight = known ?? stature?.value ? ARM_OF_HEIGHT * (known ?? stature!.value) : null;
+      // Two readings of the arm: as long as it was seen (right when there were frames enough to catch it square to
+      // the camera; short when there were not) and what a person of the bowler's height has (right to a few per
+      // cent for most people). When they agree to 15% the middle of the two is taken. When they do not, slow motion
+      // trusts what it saw, and ordinary frame rates, which sample the arm too coarsely, go by the height.
+      const agree = seenLen !== null && byHeight !== null && Math.abs(seenLen / byHeight - 1) <= 0.15;
+      const L = agree ? (seenLen! + byHeight!) / 2 : seenLen !== null && (byHeight === null || fps >= 100) ? seenLen : byHeight;
+      // of the frames round the release, the one that shows most of the arm: the nearest to the top
+      let top = at, tTop = br;
+      for (const t of [br - 1, br + 1]) { const q = armAt(t); if (q && q.r > top.r) { top = q; tTop = t; } }
+      let u: Pt = [(top.H[0] - top.S[0]) / (top.r || 1), (top.H[1] - top.S[1]) / (top.r || 1)];
+      const arc = L !== null && u[1] > 0.5 && top.r > 0.45 * L;
+      let reach = top.r, topFrame: number | null = null;
+      if (arc) {
+        // An arm caught short of the top is leaning back towards the camera, and one caught past it is leaning away,
+        // so its hand is not on the plane its shoulder is on, and through a camera looking down it shows too short
+        // or too long. But the hand is one arm's length from the shoulder: on the line of sight through it there
+        // are two such places, the nearer for an arm before the top and the further for one past it. Which it is
+        // in the frame nearest the top is settled by the frames either side: the arm turns steadily, so the right
+        // choice is the one that makes the turn from frame to frame even.
+        const len = L!;
+        const hands = (q: Arm | null): { near: V3; far: V3 } | null => {
+          if (!q) return null;
+          const { o, d } = ray(cam, q.px), oc = [o[0] - q.S[0], o[1] - q.S[1], o[2] - q.S[2]], bq = d[0] * oc[0] + d[1] * oc[1] + d[2] * oc[2];
+          const disc = bq * bq - (oc[0] * oc[0] + oc[1] * oc[1] + oc[2] * oc[2] - len * len), root = Math.sqrt(Math.max(0, disc));
+          const on = (k: number): V3 => [o[0] + d[0] * k, o[1] + d[1] * k, o[2] + d[2] * k];
+          return { near: on(-bq - root), far: on(-bq + root) };   // (a line of sight that misses by a little: the one place nearest the shoulder)
+        };
+        // how far past the top an arm is, in radians (before it: negative), from where its hand is
+        const past = (h: V3, q: Arm) => Math.atan2(q.S[2] - h[2], Math.hypot(h[0] - q.S[0], h[1] - q.S[1]));
+        const A = armAt(tTop - 1), C = armAt(tTop + 1), hA = hands(A), hB = hands(top)!, hC = hands(C);
+        // towards the camera is before the top for a camera behind the bowler (and the other way round in front)
+        const camBehind = cam.pos[2] > top.S[2], before = (h: { near: V3; far: V3 }) => (camBehind ? h.near : h.far), after = (h: { near: V3; far: V3 }) => (camBehind ? h.far : h.near);
+        const b1 = past(before(hB), top), b2 = past(after(hB), top);
+        const a = A && hA ? past(before(hA), A) : null, c = C && hC ? past(after(hC), C) : null;
+        let early: boolean;   // the frame nearest the top is before it
+        if (a !== null && c !== null) early = Math.abs((b1 - a) - (c - b1)) <= Math.abs((b2 - a) - (c - b2));
+        else early = (C?.r ?? 0) > (A?.r ?? 0);
+        const hTop = early ? before(hB) : after(hB), th = early ? b1 : b2;
+        const rc = Math.hypot(hTop[0] - top.S[0], hTop[1] - top.S[1]);
+        if (rc > 0.2 * len) u = [(hTop[0] - top.S[0]) / rc, (hTop[1] - top.S[1]) / rc];
+        // (an arm seen longer than it was measured to be, by more than the lean explains, is taken at what was seen)
+        reach = Math.max(len, Math.hypot(hTop[0] - top.S[0], hTop[1] - top.S[1], hTop[2] - top.S[2]));
+        // when it was at the top: the turn is steady through the two frames either side of it
+        if (early && c !== null && c - th > 1e-6) topFrame = f0 + tTop + Math.max(0, Math.min(1, -th / (c - th)));
+        else if (!early && a !== null && th - a > 1e-6) topFrame = f0 + tTop - Math.max(0, Math.min(1, th / (th - a)));
+        else topFrame = f0 + tTop;
+      }
+      // What the frames themselves say about the top. A hand on a steadily turning arm is A.cos(angle from the top)
+      // above the shoulder; three frames give three such heights, and from them the height at the top (A), how far
+      // the middle frame was from it and how fast the arm turns, with no assumption about how long anybody's arm
+      // is. (A hand short of the top is nearer the camera than the shoulder, one past it further: each height is
+      // read on its own plane, worked out from the turn, and the sum done again.)
+      const arcTop = top;
+      let fit: { A: number; th0: number; om: number; k: number; B: number | null } | null = null;
+      if (arc && TUNE.release !== "arc") {
+        const kk = Math.max(1, Math.round(fps / 60));
+        let tM = tTop, qM = top;
+        for (let t = br - kk; t <= br + kk; t++) { const q = armAt(t); if (q && q.H[1] - q.S[1] > qM.H[1] - qM.S[1]) { qM = q; tM = t; } }
+        const qa = armAt(tM - kk), qc = armAt(tM + kk);
+        if (qa && qc) {
+          const Lz = (uy: number) => 1 / Math.max(0.5, uy);
+          let dA = 0, dB = 0, dC = 0;
+          for (let it = 0; it < 4; it++) {
+            const hy = (q: Arm, dz: number) => { const P = onPlaneZ(cam, q.px, zf + dz); return P ? P[1] - q.S[1] : null; };
+            const a = hy(qa, dA), b = hy(qM, dB), c = hy(qc, dC);
+            if (a == null || b == null || c == null || b < 0.25) break;
+            const co = (a + c) / (2 * b);
+            if (!(co > -0.35)) break;
+            if (co >= 0.9995) { fit = { A: b, th0: 0, om: 0, k: kk, B: null }; break; }
+            const om = Math.acos(co), q = (a - c) / (2 * Math.sin(om)), A = Math.hypot(b, q), th0 = Math.atan2(q, b);
+            fit = { A, th0, om, k: kk, B: null };
+            const len = A * Lz(u[1]);
+            dB = -len * Math.sin(th0); dA = -len * Math.sin(th0 - om); dC = -len * Math.sin(th0 + om);
+          }
+          if (fit) {
+            top = qM; tTop = tM;
+            // across the pitch the hand is B.cos(the same angle) from the shoulder: B from the same three frames
+            if (fit.om > 0) {
+              const hx = (q: Arm, dz: number) => { const P = onPlaneZ(cam, q.px, zf + dz); return P ? P[0] - q.S[0] : null; };
+              const xs = [hx(qa, dA), hx(qM, dB), hx(qc, dC)], cs = [Math.cos(fit.th0 - fit.om), Math.cos(fit.th0), Math.cos(fit.th0 + fit.om)];
+              // (the frames nearest the top count most: far from it the arm has bent or the turn has changed)
+              let num = 0, den = 0;
+              xs.forEach((x, i) => { if (x != null && cs[i] > 0.3) { num += x * cs[i] * cs[i]; den += cs[i] * cs[i] * cs[i]; } });
+              if (den > 0) fit.B = num / den;
+            }
+          }
+        }
+      }
+      (globalThis as { __onpDbg?: (x: unknown) => void }).__onpDbg?.({ fit, seenLen, byHeight, L, agree, reach, u });
+      let p: V3 = arc ? [arcTop.S[0] + reach * u[0], arcTop.S[1] + reach * u[1], zf] : at.H;
+      // Two readings of the top, then: from the arm's length (sure of the arm's line, as good as the length is: a
+      // person's arm is within about 5% of what their height or the frames suggest) and from the frames' own heights
+      // (no length assumed; exact when the middle frame is near the top, and the less sure the further from the top
+      // it was, because the height is then divided by the cosine of an angle that is itself only estimated). Each
+      // is weighted by how sure it is. At 50 frames a second and more the frames decide; at 25, with the arm turning
+      // 70 degrees between frames, the arm's length does unless a frame happened to fall at the top.
+      let sTop = agree ? 0.025 : 0.04;
+      if (fit && TUNE.release !== "arc") {
+        const b0 = top.H[1] - top.S[1], g = b0 > 0.2 ? fit.A / b0 : 1;
+        const pf: V3 = [top.S[0] + (fit.B ?? (top.H[0] - top.S[0]) * Math.min(1.6, g)), top.S[1] + fit.A, zf];
+        const sf = Math.hypot(0.015, 0.14 * fit.A * Math.tan(Math.min(1.3, Math.abs(fit.th0))), 0.05 * (1 - Math.cos(Math.min(1.5, fit.om))));
+        const sp = (agree ? 0.05 : 0.07) * reach;
+        const w = TUNE.release === "fit" ? 1 : (sp * sp) / (sp * sp + sf * sf);
+        p = [p[0] + w * (pf[0] - p[0]), p[1] + w * (pf[1] - p[1]), zf];
+        sTop = TUNE.release === "fit" ? sf : Math.sqrt(1 / (1 / (sp * sp) + 1 / (sf * sf)));
+        reach = Math.hypot(p[0] - top.S[0], p[1] - top.S[1]);
+        const tf = f0 + tTop - (fit.om > 1e-6 ? (fit.th0 / fit.om) * fit.k : 0);
+        topFrame = topFrame == null ? tf : topFrame + w * (tf - topFrame);
+      }
+      // When the hand was at the top. The heights either side of the top are not a mirror image (the arm comes up
+      // to the release faster than it goes on after it), so fitting one even turn through both sides puts the top
+      // late. Each side is timed on its own: a hand at height y over a shoulder it tops out A above is acos(y/A)
+      // from the top; the frames before the top give the turn coming up, and that turn carried on reaches the top
+      // at one moment; the frames after it, traced back at their own rate, give another. The two are averaged.
+      if (arc && TUNE.timing !== "fit") {
+        const A = p[1] - top.S[1], len = A / Math.max(0.5, u[1]);
+        if (A > 0.3) {
+          const W = Math.max(2, Math.ceil(0.07 * fps)), pre: Pt[] = [], post: Pt[] = [];
+          for (let t = tTop - W; t <= tTop + W; t++) {
+            const q = armAt(t);
+            if (!q || t === tTop) continue;
+            const before = t < tTop;
+            let th = 0, ok = true;
+            for (let it = 0; it < 3; it++) {
+              const P = onPlaneZ(cam, q.px, zf - len * Math.sin(th));
+              if (!P) { ok = false; break; }
+              const c = (P[1] - q.S[1]) / A;
+              if (c > 0.985 || c < -0.35) { ok = false; break; }   // too near the top to say how far from it, or far round where the arm has bent
+              th = (before ? -1 : 1) * Math.acos(c);
+            }
+            if (ok) (before ? pre : post).push([t, th]);
+          }
+          const cross = (pts: Pt[], before: boolean): number | null => {
+            // the frames nearest the top on this side (up to four), and the straight line through them
+            const q = (before ? pts.slice(-4) : pts.slice(0, 4));
+            if (q.length < 2) return null;
+            let st = 0, sy = 0, stt = 0, sty = 0;
+            for (const [t, y] of q) { st += t; sy += y; stt += t * t; sty += t * y; }
+            const den = q.length * stt - st * st;
+            if (Math.abs(den) < 1e-9) return null;
+            const b = (q.length * sty - st * sy) / den, a = (sy - b * st) / q.length;
+            if (!(b > 0.02)) return null;   // the arm must be turning forwards
+            const t0 = -a / b;
+            return t0 > tTop - 1.6 * Math.max(1, fps / 60) && t0 < tTop + 1.6 * Math.max(1, fps / 60) ? t0 : null;
+          };
+          const c1 = cross(pre, true), c2 = cross(post, false);
+          const tt = c1 !== null && c2 !== null ? (c1 + c2) / 2 : c1 ?? c2;
+          (globalThis as { __onpDbg4?: (x: unknown) => void }).__onpDbg4?.({ pre, post, c1, c2, tTop, f0, old: topFrame });
+          if (tt !== null) topFrame = f0 + tt;
+        }
+      }
+      // doubts: a joint's place in the picture, the plane the arm is put on (the hand over the foot; the foot itself)
+      const near = onPlaneZ(cam, [top.px[0], top.px[1] + spx], zf), side = onPlaneZ(cam, [top.px[0] + spx, top.px[1]], zf);
+      const pn = onPlaneZ(cam, top.px, zf + dSig), fz = frontAtBr ? onPlaneZ(cam, top.px, zf + frontAtBr.sz) : top.H;
+      if (near && side && pn && fz) {
+        const ky = Math.abs(near[1] - top.H[1]), kx = Math.abs(side[0] - top.H[0]);
+        let sh2 = ky * ky + (pn[1] - top.H[1]) ** 2 + (fz[1] - top.H[1]) ** 2, sx2 = kx * kx + (pn[0] - top.H[0]) ** 2 + (fz[0] - top.H[0]) ** 2, timing = 0;
+        if (arc) {
+          // the arm's length (3 cm; 4 when there was nothing to check it against) and the line it is seen on
+          // (read off the frames: 1.5 cm, and more the further the arm turns between frames, where a turn that is not
+          // quite steady matters; from the arm's length: 2.5 cm, or 4 when there was nothing to check it against)
+          const sL = sTop, sDir = (Math.SQRT2 * Math.max(kx, ky)) / Math.max(0.2, top.r);
+          sh2 += (sL * u[1]) ** 2 + (reach * u[0] * sDir) ** 2 + ky * ky;
+          sx2 += (sL * u[0]) ** 2 + (reach * u[1] * sDir) ** 2 + kx * kx;
+        } else {
+          // no arc to go by: the hand as the release frame caught it, and how far it moves in a frame either side
+          const a = armAt(br - 1)?.H ?? null, b = armAt(br + 1)?.H ?? null;
+          const drift = (i: number) => (a && b ? 0.6 * Math.abs(b[i] - a[i]) / 2 + 0.18 * Math.abs(b[i] - 2 * at.H[i] + a[i]) : a ? 0.6 * Math.abs(at.H[i] - a[i]) : b ? 0.6 * Math.abs(b[i] - at.H[i]) : 0);
+          timing = Math.min(0.4, drift(1));
+          sh2 += timing * timing; sx2 += Math.min(0.4, drift(0)) ** 2;
+        }
+        release = { p, wrist: at.W, footZ: zf, frame: br + f0, timing, arc, caught: at.H[1], arm: arc ? reach : null, topFrame,
+          height: { value: p[1], sigma: Math.sqrt(sh2) }, across: { value: p[0], sigma: Math.sqrt(sx2) } };
       }
     }
   }
@@ -431,15 +653,18 @@ export function measureWithDoubt(r: AnalysisResult, marks: Mark[], w: number, h:
  * figures as [value, doubt], for lists and for setting one ball beside another. Metres; the run-up in km/h. */
 export interface OnPitchRecord {
   v: 1; w: number; h: number; markFrame: number; marks: Mark[];
+  auto?: "creases" | "near creases" | "stumps+creases" | "stumps" | null;   // found by the app itself (lib/autocam.ts), and from what
+  far?: Mark[] | null;                                      // the batter's wicket, when found: for following the ball to that end
+  tapPx?: number | null;                                    // how exactly the marks are placed, pixels (default 1.2)
   release: [number, number, number] | null;                 // where the ball left the hand: x, y, z
   releaseSigma: [number, number] | null;                    // across, height
   front: [number, number] | null; back: [number, number] | null;   // heels: x, z
   stride: [number, number] | null; stature: [number, number] | null; popping: [number, number] | null; runup: [number, number] | null;
 }
 const r3 = (v: number) => Math.round(v * 1000) / 1000;
-export function recordOnPitch(o: OnPitch, cam: Camera, markFrame: number, marks: Mark[]): OnPitchRecord {
+export function recordOnPitch(o: OnPitch, cam: Camera, markFrame: number, marks: Mark[], how?: Pick<OnPitchRecord, "auto" | "tapPx" | "far">): OnPitchRecord {
   const est = (e: Est | null): [number, number] | null => (e ? [r3(e.value), r3(e.sigma)] : null);
-  return { v: 1, w: cam.w, h: cam.h, markFrame, marks,
+  return { v: 1, w: cam.w, h: cam.h, markFrame, marks, auto: how?.auto ?? null, tapPx: how?.tapPx ?? null, far: how?.far ?? null,
     release: o.release ? [r3(o.release.p[0]), r3(o.release.p[1]), r3(o.release.p[2])] : null,
     releaseSigma: o.release ? [r3(o.release.across.sigma), r3(o.release.height.sigma)] : null,
     front: o.front ? [r3(o.front.heel[0]), r3(o.front.heel[2])] : null, back: o.back ? [r3(o.back.heel[0]), r3(o.back.heel[2])] : null,
@@ -453,6 +678,8 @@ export function cleanOnPitch(x: unknown): OnPitchRecord | null {
   if (!r || r.v !== 1 || !(r.w > 0) || !(r.h > 0) || !Number.isInteger(r.markFrame)) return null;
   if (!Array.isArray(r.marks) || r.marks.length < 4 || r.marks.length > 40 || !r.marks.every((m) => (m.end === "bowler" || m.end === "batter") && typeof m.kind === "string" && !!arr(m.px, 2))) return null;
   return { v: 1, w: r.w, h: r.h, markFrame: r.markFrame, marks: r.marks.map((m) => ({ end: m.end, kind: m.kind, px: [m.px[0], m.px[1]] })),
+    auto: r.auto === "creases" || r.auto === "near creases" || r.auto === "stumps+creases" || r.auto === "stumps" ? r.auto : null,
+    far: Array.isArray(r.far) && r.far.length <= 8 && r.far.every((m) => m.end === "batter" && typeof m.kind === "string" && !!arr(m.px, 2)) ? r.far.map((m) => ({ end: m.end, kind: m.kind, px: [m.px[0], m.px[1]] as Pt })) : null, tapPx: num(r.tapPx) && (r.tapPx as number) > 0 && (r.tapPx as number) < 50 ? r.tapPx : null,
     release: arr(r.release, 3) as [number, number, number] | null, releaseSigma: arr(r.releaseSigma, 2) as [number, number] | null,
     front: arr(r.front, 2) as [number, number] | null, back: arr(r.back, 2) as [number, number] | null, stride: arr(r.stride, 2) as [number, number] | null,
     stature: arr(r.stature, 2) as [number, number] | null, popping: arr(r.popping, 2) as [number, number] | null, runup: arr(r.runup, 2) as [number, number] | null };

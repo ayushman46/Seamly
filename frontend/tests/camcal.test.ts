@@ -75,9 +75,21 @@ describe("camera from the pitch markings", () => {
     expect(worstX).toBeLessThan(0.06);
     expect(Math.sqrt(sumL / n)).toBeLessThan(0.25);
   });
-  it("refuses too few marks, or marks at one end only", () => {
+  it("refuses too few marks, or marks all in one line", () => {
     const truth = makeCam([0.4, 1.6, 6], [0, 0.6, -12], 1500);
     expect(isCamera(solveCamera(marksFor(truth, GROUND.slice(0, 3)), 1920, 1080))).toBe(false);
-    expect(isCamera(solveCamera(marksFor(truth, GROUND.slice(0, 4)), 1920, 1080))).toBe(false);
+    // one crease alone: its two ends and nothing in front of or behind it
+    expect(isCamera(solveCamera(marksFor(truth, [GROUND[0], GROUND[1], GROUND[0], GROUND[1]]), 1920, 1080))).toBe(false);
+  });
+  it("from the four crease corners at one end, gives a level camera that is right at that end", () => {
+    // (the bowler's end is the end the bowler is measured at: lib/onpitch.ts, tests/nearcreases.test.ts)
+    const truth = makeCam([0.4, 1.6, 6], [0, 0.6, -12], 1500), cam = solveCamera(marksFor(truth, GROUND.slice(0, 4)), 1920, 1080);
+    expect(isCamera(cam)).toBe(true);
+    const c = cam as Camera;
+    expect(c.rms).toBeLessThan(0.05);
+    for (const p of [[-0.5, 0, -0.9], [0.8, 0, 0.6], [-0.45, 2.0, -1.15], [0, 0.711, 0]] as V3[]) {
+      const a = project(truth, p)!, b = project(c, p)!;
+      expect(Math.hypot(a[0] - b[0], a[1] - b[1])).toBeLessThan(0.5);   // points on and above that end land where they should
+    }
   });
 });

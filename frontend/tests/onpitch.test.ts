@@ -21,7 +21,9 @@ function cameraAt(pos: V3, at: V3, f: number, w = 1920, h = 1080): Camera {
 const H = 1.8, FPS = 60, T = 70, BFC = 36, FFC = 48, BR = 56;
 const BACK0: V3 = [-0.28, 0, 0.72], BACK = BACK0, FRONT: V3 = [-0.52, 0, -0.66];   // heels on the ground
 /** A stick bowler: runs towards -z at 6 m/s, plants the back then the front foot, lets go above the front foot. */
-function bowler(t: number, frontHeel = FRONT, BACK: V3 = BACK0) {
+const TOP_Y = 1.48 + (0.186 * 1.8 + 1.35 * 0.146 * 1.8) * Math.sqrt(1 - 0.06 * 0.06), TOP_X = -0.4 + 0.2 + (0.186 * 1.8 + 1.35 * 0.146 * 1.8) * 0.06;   // where the ball leaves: the top of the arm's arc
+const UA = 0.186 * H, FA = 0.146 * H, ARM = UA + 1.35 * FA, SH_Y = 1.48;   // the bowling arm: a 1.8 m person's, shoulder to ball
+function bowler(t: number, frontHeel = FRONT, BACK: V3 = BACK0, turn: { degPerFrame: number; topAfter: number } | null = null) {
   const zRun = BACK[2] + 0.1 + (BFC - t) * (6 / FPS);
   const pelvisZ = t < BFC ? zRun : t < FFC ? BACK[2] - 0.1 + ((frontHeel[2] + 0.45 - (BACK[2] - 0.1)) * (t - BFC)) / (FFC - BFC) : frontHeel[2] + 0.45 - (0.25 * Math.min(1, (t - FFC) / (BR - FFC)));
   const x = -0.4;
@@ -35,15 +37,20 @@ function bowler(t: number, frontHeel = FRONT, BACK: V3 = BACK0) {
   J[13] = [heelL[0], heelL[1] + 0.5, heelL[2] - 0.05]; J[14] = [heelR[0], heelR[1] + 0.5, heelR[2] - 0.05];
   J[15] = [heelL[0], heelL[1] + 0.08, heelL[2] - 0.07]; J[16] = [heelR[0], heelR[1] + 0.08, heelR[2] - 0.07];
   // the bowling arm (right): straight up above the front ankle at release
-  const az = frontHeel[2] - 0.07;
-  J[8] = [x + 0.22, 1.78, az]; J[10] = [x + 0.24, 2.04, az]; J[7] = [x - 0.3, 1.2, pelvisZ]; J[9] = [x - 0.35, 0.95, pelvisZ];
+  const az = frontHeel[2] - 0.07;   // the arm's plane at the top: the hand above the front ankle
+  // the bowling arm (right): straight up from the shoulder, above the front ankle. With `turn` it turns over the top
+  // through the release, going forward as it comes down: so many degrees a frame, at the top `topAfter` frames after BR.
+  const th = turn && Math.abs(t - BR) <= 3 ? ((t - BR - turn.topAfter) * turn.degPerFrame * Math.PI) / 180 : 0, ux = 0.06, uy = Math.sqrt(1 - ux * ux);
+  J[6] = [x + 0.2, SH_Y, az];
+  const arm = (len: number): V3 => [x + 0.2 + len * Math.cos(th) * ux, SH_Y + len * Math.cos(th) * uy, az - len * Math.sin(th)];
+  J[8] = arm(UA); J[10] = arm(UA + FA); J[7] = [x - 0.3, 1.2, pelvisZ]; J[9] = [x - 0.35, 0.95, pelvisZ];
   const head: V3 = [x, H, pelvisZ];
   return { J, heelL, heelR, head };
 }
-function resultFor(cam: Camera, opts: { frontHeel?: V3; backHeel?: V3; ds?: number; pan?: number } = {}): AnalysisResult {
+function resultFor(cam: Camera, opts: { frontHeel?: V3; backHeel?: V3; ds?: number; pan?: number; turn?: { degPerFrame: number; topAfter: number } } = {}): AnalysisResult {
   const ds = opts.ds ?? 0.5, xy: [number, number][][] = [], conf: number[][] = [], feet: number[][][] = [], motion: number[][][] = [];
   for (let t = 0; t < T; t++) {
-    const b = bowler(t, opts.frontHeel, opts.backHeel), dx = (opts.pan ?? 0) * (t - BR);   // the camera pans: the picture slides by dx pixels (none in the marked frame)
+    const b = bowler(t, opts.frontHeel, opts.backHeel, opts.turn ?? null), dx = (opts.pan ?? 0) * (t - BR);   // the camera pans: the picture slides by dx pixels (none in the marked frame)
     const px = (p: V3): [number, number] => { const q = project(cam, p)!; return [(q[0] + dx) * ds, q[1] * ds]; };
     xy.push(b.J.map(px)); conf.push(b.J.map(() => 0.9));
     const lh: V3 = [b.heelL[0], b.heelL[1] + HEEL_Y, b.heelL[2]], rh: V3 = [b.heelR[0], b.heelR[1] + HEEL_Y, b.heelR[2]];
@@ -72,8 +79,8 @@ describe("measuring on the pitch", () => {
       expect(o.front!.heel[0]).toBeCloseTo(FRONT[0], 2); expect(o.front!.heel[2]).toBeCloseTo(FRONT[2], 1);
       expect(Math.abs(o.stride!.value - Math.hypot(FRONT[0] - BACK[0], FRONT[2] - BACK[2]))).toBeLessThan(0.03);
       // the ball in the hand: 35% of the forearm beyond the wrist
-      expect(Math.abs(o.release!.height.value - (2.04 + 0.35 * 0.26))).toBeLessThan(0.02);
-      expect(Math.abs(o.release!.across.value - (-0.4 + 0.24 + 0.35 * 0.02))).toBeLessThan(0.02);
+      expect(Math.abs(o.release!.height.value - TOP_Y)).toBeLessThan(0.02);
+      expect(Math.abs(o.release!.across.value - TOP_X)).toBeLessThan(0.02);
       expect(Math.abs(o.stature!.value - H)).toBeLessThan(0.05);
       expect(Math.abs(o.runup!.value - 21.6)).toBeLessThan(2.5);
       expect(o.popping!.verdict).toBe("legal");
@@ -103,7 +110,7 @@ describe("measuring on the pitch", () => {
     expect(frameMaps(r, cam, BR).still).toBe(false);
     const o = measureOnPitch(r, cam, BR)!;
     expect(o.front!.heel[0]).toBeCloseTo(FRONT[0], 2);
-    expect(Math.abs(o.release!.height.value - (2.04 + 0.35 * 0.26))).toBeLessThan(0.02);
+    expect(Math.abs(o.release!.height.value - TOP_Y)).toBeLessThan(0.02);
     // without the camera's movement the same clip reads wrong: the test would not pass by accident
     const blind = measureOnPitch({ ...r, camera_motion: undefined }, cam, BR)!;
     expect(Math.abs(blind.back!.heel[0] - BACK[0])).toBeGreaterThan(0.2);
@@ -115,6 +122,47 @@ describe("measuring on the pitch", () => {
     expect(Math.abs(o.front!.heel[2] - FRONT[2])).toBeLessThan(0.08);
     expect(o.popping).toBeNull();          // the crease call needs the heel itself
     expect(o.stature).toBeNull();
+  });
+  it("puts the release at the top of the hand's arc, however the frames fall", () => {
+    // An arm turning 70 degrees a frame (a fast bowler at 30 frames a second), at the top of its arc 0.4 of a frame
+    // after the frame taken as the release: that frame catches the hand 28 degrees short of the top, 8 cm low.
+    const cam = cams[0][1], o = measureOnPitch(resultFor(cam, { turn: { degPerFrame: 70, topAfter: 0.4 } }), cam, BR)!;
+    expect(o.release!.arc).toBe(true);
+    expect(TOP_Y - o.release!.caught).toBeGreaterThan(0.06);                   // the frame itself: well short
+    expect(Math.abs(o.release!.height.value - TOP_Y)).toBeLessThan(0.025);     // the top of the arc: right
+    expect(Math.abs(o.release!.across.value - TOP_X)).toBeLessThan(0.03);
+    expect(o.release!.height.sigma).toBeLessThan(0.09);
+    expect(Math.abs(o.release!.height.value - TOP_Y)).toBeLessThan(1.5 * o.release!.height.sigma);   // and inside its own ±
+    expect(o.release!.arm).toBeGreaterThan(0.62); expect(o.release!.arm).toBeLessThan(0.76);
+    expect(Math.abs(o.release!.topFrame! - (BR + 0.4))).toBeLessThan(0.12);   // and when: to a tenth of a frame
+    // and the same answer when the top falls just before the frame instead (the frame catches it 21 degrees past)
+    const late = measureOnPitch(resultFor(cam, { turn: { degPerFrame: 70, topAfter: -0.3 } }), cam, BR)!;
+    expect(Math.abs(late.release!.height.value - TOP_Y)).toBeLessThan(0.025);
+    expect(Math.abs(late.release!.topFrame! - (BR - 0.3))).toBeLessThan(0.12);
+    // with the arm not turning (slow motion: the frame is the top) the two are the same thing
+    const still = measureOnPitch(resultFor(cam), cam, BR)!;
+    expect(Math.abs(still.release!.height.value - still.release!.caught)).toBeLessThan(0.025);
+  });
+  it("reads the front foot from its heel, whatever the toes say", () => {
+    // seen from above and behind, the toes of a flat front foot read well short of where they are: here 18 cm short
+    const cam = cams[0][1], r = resultFor(cam);
+    const feet = r.feet!.map((fr, t) => (t >= FFC && fr ? fr.map((p, i) => (i === 3 || i === 5 ? [...project(cam, [FRONT[0], TOE_Y, FRONT[2] - 0.27 + 0.18])!.map((v) => v * 0.5), 0.9] : p)) : fr));
+    const o = measureOnPitch({ ...r, feet }, cam, BR)!;
+    expect(Math.abs(o.front!.heel[2] - FRONT[2])).toBeLessThan(0.03);
+    expect(Math.abs(o.stride!.value - Math.hypot(FRONT[0] - BACK[0], FRONT[2] - BACK[2]))).toBeLessThan(0.06);
+  });
+  it("measures the release from the arm as each frame showed it, not as smoothed in time", () => {
+    // smoothing in time flattens the top of a fast arm: here the stored wrist and elbow are 12 cm low in the two
+    // frames nearest the top, and the unsmoothed ones (arms_raw: left elbow, right elbow, left wrist, right wrist) are right
+    const cam = cams[0][1], turn = { degPerFrame: 35, topAfter: 0.3 }, r = resultFor(cam, { turn });
+    const arms_raw = r.keypoints2d.xy.map((f) => [7, 8, 9, 10].map((j) => [f[j][0], f[j][1]]));
+    const low = (t: number, j: number): [number, number] => { const b = bowler(t, undefined, undefined, turn).J[j], q = project(cam, [b[0], b[1] - 0.12, b[2]])!; return [q[0] * 0.5, q[1] * 0.5]; };
+    const xy = r.keypoints2d.xy.map((f, t) => (t === BR || t === BR + 1 ? f.map((p, j) => (j === 8 || j === 10 ? low(t, j) : p)) : f));
+    const smooth = measureOnPitch({ ...r, keypoints2d: { ...r.keypoints2d, xy } }, cam, BR)!;
+    const raw = measureOnPitch({ ...r, keypoints2d: { ...r.keypoints2d, xy }, arms_raw }, cam, BR)!;
+    expect(TOP_Y - smooth.release!.height.value).toBeGreaterThan(0.05);
+    expect(Math.abs(raw.release!.height.value - TOP_Y)).toBeLessThan(0.025);
+    expect(Math.abs(raw.release!.topFrame! - (BR + 0.3))).toBeLessThan(0.15);
   });
   it("keeps and restores its record", () => {
     const cam = cams[0][1], o = measureOnPitch(resultFor(cam), cam, BR)!;
@@ -173,7 +221,7 @@ describe("the camera's own doubt", () => {
       const plain = measureOnPitch(r, m.cam, BR)!;
       console.log(`${vn}, ${sn}: release height ± ${(m.o.release!.height.sigma * 100).toFixed(1)} cm (camera known exactly: ${(plain.release!.height.sigma * 100).toFixed(1)}), across ± ${(m.o.release!.across.sigma * 100).toFixed(1)}, front heel down the pitch ± ${(m.o.front!.sz * 100).toFixed(1)} (${(plain.front!.sz * 100).toFixed(1)}), height ${m.o.release!.height.value.toFixed(3)}`);
       expect(m.o.release!.height.sigma).toBeGreaterThanOrEqual(plain.release!.height.sigma);
-      expect(Math.abs(m.o.release!.height.value - (2.04 + 0.35 * 0.26))).toBeLessThan(0.03);
+      expect(Math.abs(m.o.release!.height.value - TOP_Y)).toBeLessThan(0.03);
     });
   }
 });

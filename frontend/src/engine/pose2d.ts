@@ -474,6 +474,34 @@ export function butterSmooth(x: Arr3, fps: number, cutoffHz: number, order = 4):
   return out;
 }
 
+/**
+ * An arm joint misread for one frame: put back between its neighbours. The outlier filter above leaves the arms
+ * alone, because a bowling arm really does move a third of the body's height in a frame; but then one bad wrist near
+ * the top of the delivery is smeared by the smoothing over the frames either side, and the top of the arm's swing
+ * reads lower and later than it was (at 120 frames a second, by two frames). What tells a misreading from the swing
+ * is how far a turning arm can be from the midpoint of the frames either side of it: an arm's length times
+ * (1 - cos of the turn in one frame), at the fastest an arm turns. At 120 frames a second that is a few centimetres,
+ * and a wrist half a metre off is a misreading; at 30 it is nearly the whole arm, and nothing is touched.
+ */
+export function fixArmGlitches(kp: Arr3, kc: Arr2, fps: number): Arr3 {
+  const T = kp.length, out = kp.map((f) => f.map((p) => p.slice()));
+  if (fps < 45) return out;   // at 25 to 30 frames a second one frame up and back down again can be the delivery itself
+  const turn = Math.min(Math.PI / 2, (2600 * Math.PI / 180) / Math.max(1, fps));
+  const hs = bodyHeightPx(kp, kc).filter((v) => Number.isFinite(v) && v > 0).sort((a, b) => a - b), body = hs.length ? hs[hs.length >> 1] : 0;
+  if (!(body > 0)) return out;
+  const lim = Math.max(1.5 * 0.4 * body * (1 - Math.cos(turn)), 0.05 * body);
+  for (const j of ARM_JOINTS) {
+    for (let t = 1; t < T - 1; t++) {
+      const a = kp[t - 1][j], b = kp[t + 1][j], q = kp[t][j];
+      const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
+      const d = Math.hypot(q[0] - mx, q[1] - my), span = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      // (the neighbours themselves must agree with each other: two bad frames in a row are not mended from each other)
+      if (d > lim && d > 0.75 * span && span < 2 * lim + 0.15 * body) out[t][j] = [mx, my];
+    }
+  }
+  return out;
+}
+
 /** Trunk/legs ~ 8 Hz, arms ~ 12 Hz (capped below Nyquist). Fast bowling arm is left sharper. */
 export function smoothKeypoints(kp: Arr3, fps: number): Arr3 {
   const body = Array.from({ length: 17 }, (_, j) => j).filter((j) => !ARM_JOINTS.has(j));

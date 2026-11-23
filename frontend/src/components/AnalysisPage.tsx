@@ -34,6 +34,7 @@ const BioReplay = lazyPage(() => import("./BioReplay"));
 const FaceIt = lazyPage(() => import("./FaceIt"));
 const BallTracker = lazyPage(() => import("./BallTracker"));
 const OnPitch3D = lazyPage(() => import("./OnPitch3D"));
+import { FrameSource } from "../engine/video";
 import { concerns } from "../lib/sanity";
 
 const STAGES = [
@@ -327,8 +328,75 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
   const trackBtn = useRef<HTMLButtonElement>(null);
   const [pitch, setPitch] = useState<null | "marks" | "view">(null);   // measuring on the pitch: marking it, then the 3D view
   const pitchBtn = useRef<HTMLButtonElement>(null);
-  const [bio, setBio] = useState(false);   // the 3D bio-mech replay, over the page
   const doubts = useMemo(() => (result ? concerns(result) : []), [result]);
+  // The pitch is found and the bowler measured on it without being asked, when a clip from behind opens: nothing to
+  // mark. "none": it was looked for and nothing of known size was found at both ends (a net with no stumps, say).
+  const [autoPitch, setAutoPitch] = useState<"idle" | "running" | "none">("idle");
+  const blocked = doubts.some((c) => c.level === "block");
+  const metaNow = useRef(meta);
+  metaNow.current = meta;
+  useEffect(() => {
+    // (not re-run when the measurement it saves arrives: it goes on from the pitch to the ball in one go)
+    if (MODE !== "browser" || !result || result.view.view !== "behind" || !result.events.br || !api.hasVideo(id) || metaNow.current?.onpitch || blocked) return;
+    const key = `seamly:onpitch-auto:${id}:${result.frames.start}-${result.events.br.frame}`;
+    try { if (localStorage.getItem(key)) { setAutoPitch("none"); return; } } catch { /* no storage */ }
+    let alive = true, opened: FrameSource | null = null;
+    const timer = setTimeout(() => {
+      setAutoPitch("running");
+      (async () => {
+        const [{ autoCamera }, { measureWithDoubt, recordOnPitch }] = await Promise.all([import("../lib/autocam"), import("../lib/onpitch")]);
+        const blob = await (await fetch(api.videoUrl(id))).blob();
+        const fs = await FrameSource.open(blob, 1e9);
+        opened = fs;
+        const k = Math.min(1, 1920 / fs.info.width), w = Math.round(fs.info.width * k), h = Math.round(fs.info.height * k);
+        const c = document.createElement("canvas"); c.width = w; c.height = h;
+        const g = c.getContext("2d", { willReadFrequently: true })!;
+        const reader = { w, h, get: async (f: number) => { await fs.seek(Math.max(0, Math.min(fs.info.frameCount - 1, f))); g.drawImage(fs.video, 0, 0, w, h); return g.getImageData(0, 0, w, h).data; } };
+        // localStorage "seamly:debug" = "1" prints how the pitch was looked for (for diagnosing a clip)
+        let dbg: ((l: string) => void) | undefined;
+        try { if (localStorage.getItem("seamly:debug") === "1") dbg = (l) => console.info("[pitch] " + l.slice(0, 600)); } catch { /* no storage */ }
+        const t0 = performance.now();
+        const found = await autoCamera(reader, result, undefined, () => !alive, dbg);
+        dbg?.(`finding the pitch took ${Math.round(performance.now() - t0)} ms: ${found ? found.how : "nothing found"}`);
+        if (!alive) return;
+        const m = found ? measureWithDoubt(result, found.marks, w, h, found.markFrame, found.shifts, found.tapPx) : null;
+        if (!found || !m) { try { localStorage.setItem(key, "1"); } catch { /* no storage */ } setAutoPitch("none"); return; }
+        const next = await api.patch(id, { onpitch: recordOnPitch(m.o, m.cam, found.markFrame, found.marks, { auto: found.how, tapPx: found.tapPx, far: found.far }) });
+        if (!alive) return;
+        setMeta(next); setAutoPitch("idle");
+        if (m.o.release) flash(`Measured on the pitch: the ball left the hand ${m.o.release.height.value.toFixed(2)} m up. Open "On the pitch" for the rest.`);
+        // and the ball itself, with the same camera: kept only when the flight found fits tightly (nobody is looking
+        // over its shoulder here; the Track the ball screen is still there to look for it with help)
+        if (next.track) return;
+        // (a camera worked out from the bowler's end alone knows the far end poorly: the ball is followed only when
+        // the batter's wicket was found too, or the whole crease pattern was)
+        if (found.how === "near creases" && !found.far) { dbg?.("ball: not looked for (the far end was not found)"); return; }
+        const T = await import("../lib/tracker"), { solveCameraPoints, isCamera, worldOf } = await import("../lib/camcal"), { trackingMarks } = await import("../lib/autocam");
+        const tMarks = trackingMarks(found.marks, found.far);
+        const tCam = found.far ? solveCameraPoints(tMarks.map((q) => ({ world: worldOf(q), px: q.px })), w, h) : m.cam;
+        const plain = T.poseHints(result, w), rel = m.o.release;
+        if (!isCamera(tCam) || !plain) return;
+        // the release as measured on the pitch a moment ago: where the ball starts is no longer a rule of thumb
+        const measured = rel ? { z: rel.p[2], zSigma: m.o.frontSeen ? 0.25 : 0.45, height: rel.height.value, heightSigma: rel.height.sigma, frame: rel.topFrame } : null;
+        const hints = { ...plain, measured };
+        const sc = await T.scan(reader, tCam, found.markFrame, hints, undefined, () => !alive);
+        const a = sc ? T.autoTrack(tCam, sc, hints, null, dbg) : null;
+        if (dbg && sc) { const b = T.autoTrack(tCam, sc, plain, null); dbg(`ball without the measured release: ${b ? b.tracked.release.kmh.value.toFixed(1) + " km/h" : "not found"}`); }
+        dbg?.(`ball: ${!sc ? "too few frames after the release" : !a ? "not found" : "found"}`);
+        if (!alive || !a || !sc) return;
+        const tr = T.withDoubt(a.tracked, tCam, tMarks, a.sightings, sc.shifts, a.hints, null), kmh = tr.release.kmh.value;
+        dbg?.(`ball: ${kmh.toFixed(1)} km/h ± ${tr.release.kmh.sigma.toFixed(1)}, ${tr.used} sightings, ${tr.rmsPx.toFixed(2)} px off the flight; leaves the hand at x ${tr.release.p[0].toFixed(3)} y ${tr.release.p[1].toFixed(3)} z ${tr.release.p[2].toFixed(3)} t ${tr.release.t.toFixed(4)} (told: z ${measured ? measured.z.toFixed(3) : "-"} y ${measured ? measured.height.toFixed(3) : "-"})`);
+        if (tr.used < 6 || tr.rmsPx > Math.max(2.5, w / 600) || kmh < 55 || kmh > 165 || tr.release.kmh.sigma > 0.15 * kmh) return;
+        const moved = a.hints.releaseFrame !== hints.releaseFrame;
+        const withBall = await api.patch(id, { track: { ...T.recordOf(tCam, found.markFrame, tMarks, null, a.sightings, sc.shifts, tr, a.hints), measured: measured ? [measured.z, measured.zSigma, measured.height, measured.heightSigma, ...(measured.frame != null ? [measured.frame] : [])] : null, release: moved ? a.hints.releaseFrame : null, releaseSigma: moved ? 1.5 : null } });
+        if (!alive) return;
+        setMeta(withBall);
+        flash(`Ball tracked: ${Math.round(kmh)} km/h out of the hand. Open "Ball tracked" or "Face it" to see it.`);
+      })().catch(() => { if (alive) setAutoPitch("none"); });
+    }, 1200);
+    return () => { alive = false; clearTimeout(timer); opened?.close(); };
+  }, [id, result, blocked]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const [bio, setBio] = useState(false);   // the 3D bio-mech replay, over the page
   const bioBtn = useRef<HTMLButtonElement>(null);
   const [speed, setSpeed] = useState(0.25);
   const [loop, setLoop] = useState(true);
@@ -625,9 +693,11 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
                   if (meta.track?.marks?.length) {
                     try { setMeta(await api.patch(id, { onpitch: { v: 1, w: meta.track.w, h: meta.track.h, markFrame: meta.track.markFrame, marks: meta.track.marks, release: null, releaseSigma: null, front: null, back: null, stride: null, stature: null, popping: null, runup: null } })); setPitch("view"); return; } catch { /* mark it afresh */ }
                   }
+                  if (autoPitch === "running") { flash("Still finding the pitch in this clip: a few seconds more."); return; }
+                  flash("The creases could not be made out in this clip on their own. If both wickets are in the picture, tap the foot and top of the middle stump at each end.", true);
                   setPitch("marks");
                 }}
-                title="The delivery rebuilt in real metres on the pitch: where each foot landed, where the ball left the hand, the stride and the bowler's height, measured against the stumps and creases"><ICube size={15} /> {meta.onpitch?.release ? `On the pitch · ${meta.onpitch.release[1].toFixed(2)} m release` : "On the pitch 3D"}</button>
+                title="The delivery rebuilt in real metres on the pitch: where each foot landed, where the ball left the hand, the stride and the bowler's height, measured against the stumps and creases"><ICube size={15} /> {meta.onpitch?.release ? `On the pitch · ${(meta.track?.measured && meta.track.releaseP && Math.abs(meta.track.releaseP[1] - meta.onpitch.release[1]) < 0.25 ? meta.track.releaseP[1] : meta.onpitch.release[1]).toFixed(2)} m release` : autoPitch === "running" ? "Finding the pitch…" : "On the pitch 3D"}</button>
             )}
             <ClipMaker meta={meta} result={result} ins={ins} fileBase={fileBase} frame={frame}
               onFrame={(f) => { setPlaying(false); setFrame(f); }} players={() => [...(playerRef.current?.querySelectorAll<HTMLCanvasElement>(".player-stage canvas") ?? [])]} />
@@ -677,6 +747,25 @@ function Dashboard({ id, meta, result, setResult, setMeta, go, reload, initialTa
         {ins || insErr
           ? <Verdict result={result} ins={ins} pace={meta.pace} armPending={askArm} onPlan={openPlan} onCoaching={openCoaching} onJump={jumpTo} />
           : <div className="skeleton-box verdict-skel" />}
+        {MODE === "browser" && result.view.view === "behind" && (meta.onpitch?.release || autoPitch !== "idle") && (
+          <div className="onp-strip" role="status">
+            <b>On the pitch</b>
+            {meta.onpitch?.release ? (() => { const o = meta.onpitch!, cmv = (v: number) => `${Math.round(Math.abs(v) * 100)} cm`;
+              // with the ball tracked from this release, the flight's own start is the better reading of its height
+              const relH = meta.track?.measured && meta.track.releaseP && Math.abs(meta.track.releaseP[1] - o.release![1]) < 0.25 ? meta.track.releaseP[1] : o.release![1]; return (
+              <>
+                <span><em>Release</em> {relH.toFixed(2)} m high{o.releaseSigma ? ` ± ${cmv(o.releaseSigma[1])}` : ""}, {cmv(o.release![0])} {o.release![0] < 0 ? "left" : "right"} of middle stump</span>
+                {o.stride && <span><em>Stride</em> {o.stride[0].toFixed(2)} m</span>}
+                {o.popping && <span><em>Front heel</em> {o.popping[0] >= 0 ? `${cmv(o.popping[0])} behind the line` : `${cmv(o.popping[0])} over the line`} ± {cmv(o.popping[1])}</span>}
+                {o.stature && <span><em>Height</em> {o.stature[0].toFixed(2)} m</span>}
+                {o.runup && <span><em>Run-up</em> {Math.round(o.runup[0])} km/h</span>}
+                {meta.track && <span><em>Ball</em> {Math.round(meta.track.kmh)} km/h</span>}
+                <button type="button" className="btn sm" onClick={() => { setPlaying(false); setPitch("view"); }}><ICube size={14} /> See it in 3D</button>
+              </>); })()
+              : autoPitch === "running" ? <span><span className="pulse" /> Finding the pitch in this clip and measuring on it: nothing to mark.</span>
+              : <span>The crease lines at the bowler's end could not be made out in this clip, so there is nothing of known size to measure against. A clip from behind the bowler's arm with the bowling and popping creases clear in the picture measures itself: release point, feet, stride and height in real metres.</span>}
+          </div>
+        )}
         <div className="an-grid">
           <div className="stack">
             <div className="card player" ref={playerRef} tabIndex={-1}>
