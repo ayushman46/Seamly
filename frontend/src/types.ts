@@ -102,6 +102,10 @@ export interface AnalysisResult {
   arms_raw?: number[][][];
   /** per frame: was the non-bowling arm's [elbow, wrist] not seen (hidden behind the body) and carried across? 0/1 */
   arm_lost?: number[][];
+  /** were the arms corrected by the arm tracer (engine/armnet.ts)? */
+  arm_tracer?: boolean;
+  /** false when the clip shows no hand above the shoulder and no stride: probably not a delivery */
+  looks_like_delivery?: boolean;
   feet?: (number[][] | null)[];
   /** Per frame: the 2x3 map from the frame before to this one (video px) that follows the background: the camera's pan and zoom. */
   camera_motion?: number[][][];

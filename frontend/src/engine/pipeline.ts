@@ -14,6 +14,7 @@ import { FrameSource, repeatedFraction, segmentShots, signature, sigDistance, vi
   type Signature, type VideoInfo } from "./video";
 import { IDENTITY, MotionEstimator, appearance, detectionsByTrack, toGrey, track, type FrameDets, FLOW_SIZE } from "./tracking";
 import { isDelivery, scoreTracks, trackScoreDict, type Detection, type TrackScore, type TrackScoreDict } from "./bowler";
+import { ARMNET, loadArmNet, traceArms } from "./armnet";
 import { assemble, bodyHeightPx, fixArmGlitches, fixSwaps, hampel, interpolateGaps, mendLostArms, MEND, smoothKeypoints } from "./pose2d";
 import { armPeakSpeed, bestUpswing, classifyView, decideBowlingArm, detectEvents, facingDirection, sizeTrend, stabilise, strideAcross, wristLift } from "./events";
 import { estimateWorldFrame, reconstruct } from "./kinematics";
@@ -688,6 +689,15 @@ export async function stageB(A: StageA, overrides: Overrides = {}, onProgress?: 
   // The bowling arm is never mended: its release is read from the joints as the model gave them.
   const lost0: boolean[][] = A.kp.map(() => new Array<boolean>(17).fill(false));
   let kpM = smoothKeypoints(fixArmGlitches(mendLostArms(A.kp, A.kc, realFps, [0, 1], lost0), A.kc, realFps), realFps);
+  // The arm tracer (engine/armnet.ts), when its weights are there: both elbows and wrists corrected from the whole
+  // clip. It takes the place of the carrying-across above; a joint it moved far, or is unsure of, counts as not seen.
+  const armNet = ARMNET.on ? await loadArmNet() : null;
+  const traced = armNet ? traceArms(armNet, A.kp, A.kc, realFps) : null;
+  if (traced) {
+    kpM = smoothKeypoints(traced.kp, realFps);
+    const bh = bodyHeightPx(A.kp, A.kc);
+    traced.moved.forEach((mv, t) => [7, 8, 9, 10].forEach((j, q) => { lost0[t][j] = mv[q] > ARMNET.far * bh[t] || traced.spread[t][q] > ARMNET.unsure * bh[t]; }));
+  }
   let lostM = lost0;
   if (labelsSwapped) { kpM = kpM.map((f) => COCO_FLIP.map((j) => f[j])); lostM = lostM.map((f) => COCO_FLIP.map((j) => f[j])); }
   const up0: [number, number, number] = [0, -1, 0];
@@ -738,7 +748,15 @@ export async function stageB(A: StageA, overrides: Overrides = {}, onProgress?: 
       const fwd = wf.forward;
       // (the non-bowling arm, where the model lost it, is fitted to where it was carried, not to the misreading)
       const s2 = h2d(seq), c2 = c2d(seq);
-      if (MEND.on && MEND.fig) {
+      if (traced && ARMNET.fig) {
+        // (the tracer's joints for both arms; the bowling wrist only if it is trusted with it)
+        const H2C: [number, number][] = [[12, 7], [13, 9], [15, 8], [16, 10]];
+        for (const [hj, cj] of H2C) {
+          if (cj === side.c_wr && !ARMNET.bowlWrist) continue;
+          if (cj === side.c_el && !ARMNET.bowlElbow) continue;
+          for (let t = 0; t < T; t++) { s2[t][hj] = [kpM[t][cj][0], kpM[t][cj][1]]; if (lostM[t][cj]) c2[t][hj] = Math.max(c2[t][hj], MEND.figConf); }
+        }
+      } else if (MEND.on && MEND.fig) {
         const cj = side.c_wr === 10 ? [7, 9] : [8, 10], hj = side.c_wr === 10 ? [12, 13] : [15, 16];
         for (let t = 0; t < T; t++) cj.forEach((j, q) => { if (lostM[t][j]) { s2[t][hj[q]] = [kpM[t][j][0], kpM[t][j][1]]; c2[t][hj[q]] = Math.max(c2[t][hj[q]], MEND.figConf); } });
       }
@@ -798,7 +816,10 @@ export async function stageB(A: StageA, overrides: Overrides = {}, onProgress?: 
   // the non-bowling arm where the model lost it: carried across (see above). `armLost`: those frames, elbow and wrist.
   const nb = arm === "right" ? [7, 9] : [8, 10];
   const armLost = lostM.map((f) => nb.map((j) => f[j]));
-  if (MEND.on && armLost.some((f) => f[0] || f[1])) kpS = kpS.map((f, t) => f.map((p, j) => (nb.includes(j) ? kpM[t][j] : p)));
+  if (traced) {
+    const take = [...nb, ...(ARMNET.bowlElbow ? [side.c_el] : []), ...(ARMNET.bowlWrist ? [side.c_wr] : [])];
+    kpS = kpS.map((f, t) => f.map((p, j) => (take.includes(j) ? kpM[t][j] : p)));
+  } else if (MEND.on && armLost.some((f) => f[0] || f[1])) kpS = kpS.map((f, t) => f.map((p, j) => (nb.includes(j) ? kpM[t][j] : p)));
   let view = L.view;
   if (overrides.view === "side_on" || overrides.view === "behind" || overrides.view === "front_on") {
     const { oblique: _o, ...rest } = view;
@@ -830,13 +851,32 @@ export async function stageB(A: StageA, overrides: Overrides = {}, onProgress?: 
     // the scan's arm speed reads low on blurred, fast arms; the refined keypoints around release must agree
     coaching.capture_tips.unshift(`The bowling arm peaks at only ~${peakReal.toFixed(0)}°/s, which is unusually slow for a real delivery. If this clip is a slowed-down replay, set its clip speed in Detection & settings so timings are correct.`);
   }
-  if (peakReal > 4500) {
-    // no bowling arm turns this fast on video (at most ~3400°/s across the test clips); a bat swing close to the
-    // camera can
+  if (peakReal > 7000) {
+    // no bowling arm turns this fast on video; a bat swing close to the camera can. (The bar was 4500: three real
+    // nets clips at 60 to 100 frames a second read 5000 to 5600 with the skeleton on the bowler throughout, and
+    // raters who looked at them called the warning false. The scan's speed reads higher at high frame rates.)
     coaching.capture_tips.unshift("The arm movement Seamly followed is faster than a bowling arm turns, so it may have followed the wrong person (for example a batter close to the camera). Check the skeleton is on the bowler, and film from behind the bowler's stumps.");
   }
   // the whole body in the picture: feet around landing and release, the bowling hand at release
   if (feetOutOfFrame(kpS, kc, ev.ffc, ev.br, realFps, frameH)) coaching.capture_tips.unshift(FEET_OUT_TIP);
+  // Not a delivery at all? A bowler's hand goes well above the shoulder at release and the feet are a stride apart
+  // just before it. When neither is so (the hand never a fifth of the body's height above the shoulder, the feet
+  // never more than 0.15 of it apart), the clip is someone standing or walking: a fielder, an umpire, a bowler
+  // walking back. Of 39 real clips, the two this catches were both such (rated 2 out of 10 by eye); every real
+  // delivery clears one bar or the other.
+  let looksLikeDelivery = true;
+  {
+    const bhs = bodyHeightPx(kpS, kc).slice().sort((a, b) => a - b), bodyH = bhs[bhs.length >> 1] || 0;
+    if (bodyH > 0) {
+      let lift = -Infinity, stride = 0;
+      for (let t = Math.max(0, ev.br - 3); t <= Math.min(T - 1, ev.br + 3); t++) lift = Math.max(lift, (kpS[t][side.c_sh][1] - kpS[t][side.c_wr][1]) / bodyH);
+      for (let t = Math.max(0, ev.br - Math.round(0.4 * realFps)); t <= ev.br; t++) stride = Math.max(stride, Math.hypot(kpS[t][15][0] - kpS[t][16][0], kpS[t][15][1] - kpS[t][16][1]) / bodyH);
+      if (lift < 0.2 && stride < 0.15) {
+        looksLikeDelivery = false;
+        coaching.capture_tips.unshift("This does not look like a bowling delivery: the person Seamly followed never lifts a hand well above the shoulder or takes a stride. It may have followed a fielder or an umpire, or the clip may not contain the delivery. Check the skeleton is on the bowler, and trim the clip to one delivery.");
+      }
+    }
+  }
   if (handOutOfFrame(kpS, side.c_wr, ev.br, frameH)) coaching.capture_tips.unshift(HAND_OUT_TIP);
   prog.stage("mesh", 0.1);
   const mesh = await exportMesh(Wd, height, overrides.gender ?? meta.options.gender ?? 0, arm);
@@ -863,6 +903,8 @@ export async function stageB(A: StageA, overrides: Overrides = {}, onProgress?: 
     // the release is measured from these, because smoothing flattens and delays the top of a fast arm
     // frames where the non-bowling arm's elbow / wrist was not seen and is carried across from where it was (0/1 pairs)
     arm_lost: armLost.map((f) => [f[0] ? 1 : 0, f[1] ? 1 : 0]),
+    arm_tracer: !!traced,
+    looks_like_delivery: looksLikeDelivery,
     arms_raw: armsRaw.map((fr) => [7, 8, 9, 10].map((j) => [round(fr[j][0] * ds, 1), round(fr[j][1] * ds, 1)])),
     ...(A.feet ? { feet: A.feet.map((fr) => (fr ? fr.map((p) => [round(p[0] * ds, 1), round(p[1] * ds, 1), round(p[2], 2)]) : null)) } : {}),
     camera_motion: mot.map((m) => m.map((r) => r.map((v) => round(v, 5)))),

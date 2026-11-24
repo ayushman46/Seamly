@@ -900,6 +900,81 @@ the non-bowling wrist's.
 - All of this is measured on a plain rendered figure, where an arm and the trunk are the same colour. On real video
   the change is small and was judged by eye only; it has not been measured.
 
+## 9n. The arms, tested on real footage by blind judges; what was undone (2026-11-24)
+
+Section 9m scored the arms against rendered deliveries only. This section is what happened when the same changes,
+and several larger ones, were put in front of real footage.
+
+**A different pose model does not fix the hidden elbow.** Nine models from three families were run on the rendered
+deliveries, all with exact truth, hidden non-bowling elbow from behind, median error:
+
+| Model | Hidden elbow | Cost against the app's model |
+|---|---|---|
+| RTMPose-m 256 (the app's) | 12.6 cm | 1 |
+| RTMPose-l 384 | 11.1 | 3x |
+| RTMPose-x 384 | 8.4 | 4x, 200 MB |
+| DWPose-l 384 | 12.8 | 3x |
+| RTMW-x 256 / 384 (whole body) | 15.3 / 10.1 | 3x / 5x, 230 MB |
+| ViTPose base, ViTPose+ base | 11.1, 10.6 | 2x to 3x |
+| ViTPose+ large (1.2 GB, not for a browser) | 8.8 | 9x |
+
+All put the elbow low by the same 8 to 12 cm, the figure dressed as a player or plain. The larger models gain on
+some joints and lose on others (RTMPose-x: hidden bowling elbow 6.1 to 7.8 cm). No single frame shows a joint that
+is behind the body. Three rules from the arm's own geometry (the 3D skeleton's fit, the reach of the two bones,
+several crops and turns of the same frame) moved nothing either.
+
+**A model built for it: the arm tracer.** A small network that reads all the joints through the delivery and corrects
+the elbows and wrists, trained on 1200 rendered deliveries of varied style, build, kit and camera
+(`backend/tools/synth_arms.py`, `frontend/_local/loop/armnet/train.py`, `frontend/src/engine/armnet.ts`). On 100
+rendered deliveries it had not seen: hidden wrist from behind 8.5 to 5.3 cm, hidden elbow 5.7 to 4.9, side-on hidden
+wrist 14.9 to 9.2, and the worst tenth roughly halved. On the original truth clips the hidden elbow went from 12.6
+to 6.6 cm.
+
+**On real footage it fails, and so did the rule of 9m.** Three independent checks:
+
+- *A large referee model* (ViTPose+ large) on the 39 real clips, where it is sure of a joint: the first tracer moved
+  such joints more than 5 cm away on 30% of frames. Retrained to leave seen joints alone, with 26 real clips in the
+  training, it did no harm there (worse on 1%, better on 1%) but then changed nothing on the truth clips either.
+- *Blind judging by eye.* Real frames where two methods put a joint more than 4 to 5 cm apart, the two points
+  lettered A and B at random, judged by vision models that did not know which was which (Fable, then Opus):
+
+| Compared with the plain pose model | Frames | Judges preferred the pose model | Preferred the new method | Same or cannot tell |
+|---|---|---|---|---|
+| Arm tracer (Fable judges, confident picks) | 82 | 23 | 12 | 47 |
+| Arm tracer, close-ups left out (Opus judges, confident picks) | 74 | 11 | 6 | 57 |
+| The carried-across rule of 9m (Opus judges, confident picks) | 79 | 25 | 7 | 47 |
+
+So wherever a judge can see the joint, the pose model's own point is the better one, even when the model was unsure
+of it. The gains on rendered clips came from learning how the rendered figure moves, not how bowlers move.
+
+**What was done about it.**
+
+- The carried-across rule of 9m is off: the app no longer moves arm joints. The tracer is not shipped.
+- The overlay says what it does not know instead: an arm the model is unsure of (under 0.55), or a bowling arm that
+  has shrunk to a stub at the shoulder, is drawn dashed; nothing is drawn to a joint outside the picture or one the
+  model did not see (close-ups used to get legs drawn along the bottom edge).
+- A clip that is not a delivery (no hand a fifth of the body above the shoulder, no stride) now gets a warning. It
+  flags 2 of the 68 test clips, both people standing or walking.
+
+**The whole pipeline rated by eye** (five raters, one picture per real clip with the skeleton at each event):
+
+- First rating: 6.3 out of 10 over 39 clips. Three clips were not deliveries at all (2 out of 10 each). Close-ups
+  had invented legs. Hidden arms and arms just after release were drawn as if seen. Foot landings were judged early
+  or late on about a quarter of the clips; the release frame was judged right nearly everywhere it could be seen.
+- Second rating, with the display above (different raters, so compare the pattern, not the decimal): 6.4 out of 10.
+  The two clips now warned as not a delivery went from 2 to 5 and 6; close-up legs are no longer invented. Still
+  wrong: one non-delivery not caught (a man shaking out a jumper); legs drawn through a broadcast scoreboard;
+  a hidden bowling arm drawn solid as a bent arm on the body on about six clips (the model is confident there, so
+  nothing marks it); front-foot landing called early on about seven clips, mostly broadcast from behind.
+- The raters called one warning false three times: "may have followed the wrong person", on nets clips at 60 to
+  100 frames a second with the skeleton on the bowler throughout. Its bar is raised from 4500 to 7000 degrees a second.
+
+**What this means for accuracy.** The arm joints the camera can see are good (2 cm from the referee model, typically).
+The ones it cannot see cannot be measured on real footage by anything here, and every attempt to guess them made
+the seen ones worse. The honest limit from one camera is to draw them as estimates. Getting them right needs a second
+camera, side-on, on the same delivery; or real bowling footage with measured joints to train on, which does not
+exist here.
+
 ## 10. Still to do
 
 - Telling an umpire's signal or a fielder from a bowler when the clip has no clear delivery near the camera (§9j), and the

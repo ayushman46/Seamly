@@ -545,8 +545,12 @@ export function mendLostArms(kp: Arr3, kc: Arr2, fps: number, sides: number[] = 
   }
   return out;
 }
-/** Settings of mendLostArms (changed only by the accuracy loop's experiments). */
-export const MEND = { low: 0.55, floor: 0.55, maxS: 0.12, dupFrac: 0.34, dup: 0.07, dupConf: 0.8, joinS: 0.035, on: true, fig: true, figConf: 0.75, wristFrom: "shoulder" as "shoulder" | "elbow", path: "line" as "curve" | "line" | "polar" };
+/** Settings of mendLostArms (changed only by the accuracy loop's experiments).
+ * `on` is false: the joints are NOT moved. Blind judging of 79 real frames by eye (the carried point against the pose
+ * model's own, lettered at random) preferred the pose model's 25 times to 7 where it could tell: on real footage a
+ * joint the model is unsure of is still usually nearer the truth than a straight line carried across it. The
+ * function now only marks which frames it would not have believed, and those are drawn dashed. */
+export const MEND = { low: 0.55, floor: 0.55, maxS: 0.12, dupFrac: 0.34, dup: 0.07, dupConf: 0.8, joinS: 0.035, on: false, fig: true, figConf: 0.75, wristFrom: "shoulder" as "shoulder" | "elbow", path: "line" as "curve" | "line" | "polar" };
 
 /**
  * An arm joint misread for one frame: put back between its neighbours. The outlier filter above leaves the arms

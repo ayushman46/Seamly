@@ -28,6 +28,12 @@ export default function FramePlayer({ id, result, frame, overlay, selMetric, hud
   const f0 = result.frames.start, f1 = result.frames.end, n = f1 - f0;
   const kp = result.keypoints2d.xy, kc = result.keypoints2d.conf;
   const right = result.bowling_arm.arm === "right";
+  // the bowling arm's usual length in the picture (shoulder to elbow to wrist), to tell when it is drawn as a stub
+  const armLen = useMemo(() => {
+    const [sh, el, wr] = result.bowling_arm.arm === "right" ? [6, 8, 10] : [5, 7, 9];
+    const v = result.keypoints2d.xy.map((k) => Math.hypot(k[el][0] - k[sh][0], k[el][1] - k[sh][1]) + Math.hypot(k[wr][0] - k[el][0], k[wr][1] - k[el][1])).sort((x, y) => x - y);
+    return v.length ? v[Math.floor(0.75 * (v.length - 1))] : 0;
+  }, [result]);
   // bowling-side COCO indices
   const B = right ? { sh: 6, el: 8, wr: 10, hip: 12, kn: 14, an: 16 } : { sh: 5, el: 7, wr: 9, hip: 11, kn: 13, an: 15 };
   const F = right ? { sh: 5, el: 7, wr: 9, hip: 11, kn: 13, an: 15 } : { sh: 6, el: 8, wr: 10, hip: 12, kn: 14, an: 16 };
@@ -141,7 +147,10 @@ export default function FramePlayer({ id, result, frame, overlay, selMetric, hud
       ctx.lineCap = "round";
       for (const [a, b] of COCO_EDGES) {
         const c0 = Math.min(cf[a], cf[b]);
-        if (c0 < 0.1) continue;
+        // nothing is drawn to a joint that is outside the picture or that the model did not see at all (a close-up
+        // with the legs cut off used to get legs drawn along the bottom edge)
+        const out = (j: number) => kp[t][j][0] < 0 || kp[t][j][1] < 0 || kp[t][j][0] > W || kp[t][j][1] > H;
+        if (c0 < 0.2 || out(a) || out(b)) continue;
         const bowling = [B.sh, B.el, B.wr, B.hip, B.kn, B.an].includes(a) && [B.sh, B.el, B.wr, B.hip, B.kn, B.an].includes(b);
         const front = [F.sh, F.el, F.wr, F.hip, F.kn, F.an].includes(a) && [F.sh, F.el, F.wr, F.hip, F.kn, F.an].includes(b);
         ctx.strokeStyle = bowling ? "rgba(251,113,133,A)" : front ? "rgba(52,211,153,A)" : "rgba(226,232,240,A)";
@@ -150,14 +159,18 @@ export default function FramePlayer({ id, result, frame, overlay, selMetric, hud
         // the non-bowling arm where the camera could not see it (behind the body) or the model was unsure of it:
         // drawn dashed, because there it is an estimate, not a reading
         const lost = result.arm_lost?.[t];
-        const unsure = front && ((a === F.el || b === F.el) && (a === F.sh || b === F.sh) ? !!lost?.[0] || cf[F.el] < 0.55
-          : (a === F.wr || b === F.wr) ? !!lost?.[1] || !!lost?.[0] || cf[F.wr] < 0.55 : false);
+        // (the bowling arm too, where the model was unsure of it or it has shrunk to a stub at the shoulder: an arm
+        // blurred or hidden just after release is read as a short kink, which is not where the arm is)
+        const stub = armLen > 0 && Math.hypot(kp[t][B.el][0] - kp[t][B.sh][0], kp[t][B.el][1] - kp[t][B.sh][1]) + Math.hypot(kp[t][B.wr][0] - kp[t][B.el][0], kp[t][B.wr][1] - kp[t][B.el][1]) < 0.3 * armLen;
+        const unsure = front ? ((a === F.el || b === F.el) && (a === F.sh || b === F.sh) ? !!lost?.[0] || cf[F.el] < 0.55
+          : (a === F.wr || b === F.wr) ? !!lost?.[1] || !!lost?.[0] || cf[F.wr] < 0.55 : false)
+          : bowling && ((a === B.el || b === B.el) && (a === B.sh || b === B.sh) ? stub || cf[B.el] < 0.55 : (a === B.wr || b === B.wr) ? stub || cf[B.wr] < 0.55 || cf[B.el] < 0.55 : false);
         if (unsure) ctx.setLineDash([lw * 1.6, lw * 1.8]);
         ctx.beginPath(); ctx.moveTo(pts[a][0], pts[a][1]); ctx.lineTo(pts[b][0], pts[b][1]); ctx.stroke();
         if (unsure) ctx.setLineDash([]);
       }
       for (let j = 5; j < 17; j++) {
-        if (cf[j] < 0.1) continue;
+        if (cf[j] < 0.2 || kp[t][j][0] < 0 || kp[t][j][1] < 0 || kp[t][j][0] > W || kp[t][j][1] > H) continue;
         ctx.fillStyle = cf[j] > 0.5 ? "#fff" : "rgba(255,255,255,0.5)";
         ctx.beginPath(); ctx.arc(pts[j][0], pts[j][1], lw * 0.9, 0, Math.PI * 2); ctx.fill();
       }

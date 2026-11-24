@@ -250,7 +250,7 @@ VIEWS = {
 
 
 def render(out, view="phone", fps=60.0, kmh=128.0, length=6.5, line=0.05, swing=0.1, ball="red", sun=True, H=1.80,
-           bounce=(0.55, 0.87), seed=0, dur=1.72, shutter=1 / 500, raw=None, fall=(0.55, -0.12), wide=0.0, foot=0.0, lock=True):
+           bounce=(0.55, 0.87), seed=0, dur=1.72, shutter=1 / 500, raw=None, fall=(0.55, -0.12), wide=0.0, foot=0.0, lock=True, kit=None):
     rng = np.random.default_rng(seed)
     cfg = VIEWS[view]
     W, Hh = cfg["size"]
@@ -294,6 +294,28 @@ def render(out, view="phone", fps=60.0, kmh=128.0, length=6.5, line=0.05, swing=
         if t <= t_rel:
             return hand(t)
         return np.array([np.interp(t - t_rel, ft, fp[:, k]) for k in range(3)])
+    # `kit`: the figure dressed as a player (short-sleeved shirt, trousers, bare forearms and hands, hair, shoes),
+    # each face coloured by the bone that moves it; plain grey-white otherwise
+    kit_cols = None
+    if kit:
+        dom = np.array(m.labels)[m.vbi4[:, 0]][m.faces[:, 0]]
+        shirt, trousers, skin, hair, shoe = {"blue": ((170, 95, 35), (150, 80, 30)), "white": ((232, 236, 238), (225, 230, 233)),
+                                             "red": ((50, 45, 185), (40, 40, 60))}[kit] + ((125, 160, 215), (35, 40, 50), (240, 240, 240))
+        head_y = Vs[0][:, 1][m.faces].mean(1); top = Vs[0][:, 1].max()
+        kit_cols = []
+        for f, d in enumerate(dom):
+            # (the blue kit's sleeves stop half-way down the upper arm; the others reach the elbow)
+            if d.startswith(("lowerarm", "wrist", "finger", "metacarpal", "neck", "eye")) or (d.startswith("upperarm02") and kit == "blue"):
+                c = skin
+            elif d == "head":
+                c = hair if head_y[f] > top - 0.13 * H / 1.8 else skin
+            elif d.startswith(("foot", "toe")):
+                c = shoe
+            elif d.startswith(("upperleg", "lowerleg", "pelvis", "root")):
+                c = trousers
+            else:
+                c = shirt
+            kit_cols.append(c)
     tex, (tx0, tz0, res) = ground_texture(rng)
     fall = np.array(fall, float)
     col_ball = (45, 40, 190) if ball == "red" else (235, 238, 240)
@@ -350,6 +372,8 @@ def render(out, view="phone", fps=60.0, kmh=128.0, length=6.5, line=0.05, swing=
             base = (235, 235, 240) if yc[k] < 0.55 * H else (200, 205, 215)
             if yc[k] > 0.84 * H:
                 base = (150, 170, 205)
+            if kit_cols is not None:
+                base = kit_cols[k]
             cv2.fillConvexPoly(img, P[k], tuple(int(c * (0.35 + 0.65 * shade[k])) for c in base), lineType=cv2.LINE_AA)
         # the ball, blurred over the shutter time
         pa, pb = ball_at(t - shutter / 2), ball_at(t + shutter / 2)
@@ -408,9 +432,10 @@ def main() -> None:
     ap.add_argument("--height", type=float, default=1.80)
     ap.add_argument("--wide", type=float, default=0.0)
     ap.add_argument("--foot", type=float, default=0.0)
+    ap.add_argument("--kit", choices=["blue", "white", "red"], help="dress the figure as a player (default: plain)")
     ap.add_argument("--slide", action="store_true", help="the old figure, whose planted feet slide along the ground")
     a = ap.parse_args()
-    truth = render(a.out, a.view, a.fps, a.kmh, a.length, a.line, a.swing, a.ball, not a.no_sun, H=a.height, seed=a.seed, raw=a.raw, wide=a.wide, foot=a.foot, lock=not a.slide)
+    truth = render(a.out, a.view, a.fps, a.kmh, a.length, a.line, a.swing, a.ball, not a.no_sun, H=a.height, seed=a.seed, raw=a.raw, wide=a.wide, foot=a.foot, lock=not a.slide, kit=a.kit)
     Path(a.out).with_suffix(".truth.json").write_text(json.dumps(truth))
     print(json.dumps({k: truth[k] for k in ("release", "pitch", "swing", "stumps")}, indent=1))
 
