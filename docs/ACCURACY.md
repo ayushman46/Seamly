@@ -714,7 +714,7 @@ Pitch found on 12 of 19 real clips filmed from behind. Not found (so nothing is 
 
 Against the broadcaster's speed gun on 4 balls: 4.9% out on average, 11.0% at worst.
 
-Bumrah is 1.78 m: the app read 1.82 m off his run-up. It gives no height for Shami (1.73 m), whose run-up read
+Bumrah is 1.78 m: the app read 1.80 m off his run-up. It gives no height for Shami (1.73 m), whose run-up read
 32 km/h through the broadcast zoom, faster than anyone runs in, so nothing that leans on it is given. The two
 spinners (Afghanistan's k, New Zealand's j) show in every figure: strides of 0.91 to 0.96 m, balls of 82 and 87 km/h.
 The speed gun column is read off the broadcast graphic in the clip's own last frames; nothing in the app sees it.
@@ -722,7 +722,7 @@ The speed gun column is read off the broadcast graphic in the clip's own last fr
 **The ball.** With the pitch found, the frames after the release are searched as in §9f and the track is kept only
 when it is tight (six or more sightings within 2.5 px of the flight, the speed's own ± under 15%). The release
 measured on the pitch a moment earlier is now where the flight is told to start, in place of a rule of thumb about
-where bowlers let go. Against the rendered deliveries the speed is within 1.5% on average and 3.3% at worst, and the line it pitched on within 1.5 cm (§9l). On the real clips above a flight tight enough to keep was found on six broadcast deliveries and on the bundled rendered delivery (131 ± 4 km/h against a true 128). Four of the six show the broadcaster's speed gun in the clip's last frames, and the app is 5.4% from it on average (§9l). The measured flight is drawn in the same 3D scene as the bowler, and over the video
+where bowlers let go. Against the rendered deliveries the speed is within 1.5% on average and 3.3% at worst, and the line it pitched on within 1.5 cm (§9l). On the real clips above a flight tight enough to keep was found on six broadcast deliveries and on the bundled rendered delivery (131 ± 4 km/h against a true 128). Four of the six show the broadcaster's speed gun in the clip's last frames, and the app is 4.9% from it on average (§9l). The measured flight is drawn in the same 3D scene as the bowler, and over the video
 in the camera's own view.
 
 **The release is the top of the hand's arc, not the hand in one frame.** The hand is the fastest thing in the
@@ -814,6 +814,13 @@ limits the measurements; the rules that use it were. The app keeps its model, an
 | Broadcast gantry, zooming, 30 fps, 1.75 m bowler | 5 s | 1.96 (1.91) | +12 | 1.59 (1.66) | 139 ± 4 (136) | +2 / +1 |
 
 Pitch found on 12 of 12 in 3 to 6 s. Mean error (worst): release height 3.8 cm (6.1), from the arm alone 6.3 (13.5); front heel 5.3 cm (11.8); stride 5.9 cm (14.8); ball speed 1.5% (3.3) on 9 balls; pitching length 9.9 cm (20.0); line 0.7 cm (1.5).
+
+**Against the speed gun.** Four of the international clips end on the broadcaster's speed graphic. Hands off, in
+Chrome, with nothing marked: 81 ± 2 km/h against the gun's 80.9 (+0.6%), 80 ± 6 against 82.2 (−2.7%), 87 ± 3
+against 91.6 (−5.3%), and for the one fast bowler 148 ± 6 against 133.0 (+11.0%): 4.9% out on average. When these
+same clips had their creases marked by hand (§9f) the average was 6.9%. The pace ball is the hard one: at 25 frames
+a second it is seen twelve times, and a release moment known to half a frame is 6% of its flight to the pitch. Its ±
+is too small for that, and is the next thing to fix.
 
 **What still limits it.** Three things, none of them the pose model. *How far in front of the front foot the ball
 is let go* is not visible from behind: the app assumes the hand above the front ankle (what the three real side-on
