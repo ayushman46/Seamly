@@ -14,7 +14,7 @@ import { FrameSource, repeatedFraction, segmentShots, signature, sigDistance, vi
   type Signature, type VideoInfo } from "./video";
 import { IDENTITY, MotionEstimator, appearance, detectionsByTrack, toGrey, track, type FrameDets, FLOW_SIZE } from "./tracking";
 import { isDelivery, scoreTracks, trackScoreDict, type Detection, type TrackScore, type TrackScoreDict } from "./bowler";
-import { assemble, bodyHeightPx, fixArmGlitches, fixSwaps, hampel, interpolateGaps, smoothKeypoints } from "./pose2d";
+import { assemble, bodyHeightPx, fixArmGlitches, fixSwaps, hampel, interpolateGaps, mendLostArms, MEND, smoothKeypoints } from "./pose2d";
 import { armPeakSpeed, bestUpswing, classifyView, decideBowlingArm, detectEvents, facingDirection, sizeTrend, stabilise, strideAcross, wristLift } from "./events";
 import { estimateWorldFrame, reconstruct } from "./kinematics";
 import { FEET_OUT_TIP, HAND_OUT_TIP, compute, feetOutOfFrame, handOutOfFrame, type Ctx } from "./metrics";
@@ -683,6 +683,13 @@ export async function stageB(A: StageA, overrides: Overrides = {}, onProgress?: 
   // left/right labels as the smoothed joints)
   const armsRaw0 = fixArmGlitches(A.kp, A.kc, realFps);
   let armsRaw = labelsSwapped ? armsRaw0.map((f) => COCO_FLIP.map((j) => f[j])) : armsRaw0;
+  // the same joints with an arm the model lost behind the body carried across the loss (pose2d.mendLostArms), kept
+  // beside the plain ones under the same labels: the non-bowling arm is taken from these once the arm is settled.
+  // The bowling arm is never mended: its release is read from the joints as the model gave them.
+  const lost0: boolean[][] = A.kp.map(() => new Array<boolean>(17).fill(false));
+  let kpM = smoothKeypoints(fixArmGlitches(mendLostArms(A.kp, A.kc, realFps, [0, 1], lost0), A.kc, realFps), realFps);
+  let lostM = lost0;
+  if (labelsSwapped) { kpM = kpM.map((f) => COCO_FLIP.map((j) => f[j])); lostM = lostM.map((f) => COCO_FLIP.map((j) => f[j])); }
   const up0: [number, number, number] = [0, -1, 0];
   const runup: number[] = [];
   for (let t = 0; t < Math.max(0, sweepLo - Math.trunc(0.35 * realFps)); t++) runup.push(t);
@@ -729,7 +736,13 @@ export async function stageB(A: StageA, overrides: Overrides = {}, onProgress?: 
       const stance: number[] = [];
       for (let t = ev.ffc; t < Math.min(T, ev.br + Math.max(2, Math.round(0.05 * realFps)) + 1); t++) stance.push(t);
       const fwd = wf.forward;
-      sk = reconstruct(X, h2d(seq), c2d(seq), height, realFps, { depthW,
+      // (the non-bowling arm, where the model lost it, is fitted to where it was carried, not to the misreading)
+      const s2 = h2d(seq), c2 = c2d(seq);
+      if (MEND.on && MEND.fig) {
+        const cj = side.c_wr === 10 ? [7, 9] : [8, 10], hj = side.c_wr === 10 ? [12, 13] : [15, 16];
+        for (let t = 0; t < T; t++) cj.forEach((j, q) => { if (lostM[t][j]) { s2[t][hj[q]] = [kpM[t][j][0], kpM[t][j][1]]; c2[t][hj[q]] = Math.max(c2[t][hj[q]], MEND.figConf); } });
+      }
+      sk = reconstruct(X, s2, c2, height, realFps, { depthW,
         priors: [[stance, side.front_knee, side.front_ankle, fwd, -0.03], [stance, PELVIS, side.front_ankle, fwd, 0.05]] });
       P = sk.joints;
       wf = estimateWorldFrame(P, ev.ffc, ev.bfc, side.front_ankle, side.back_ankle, forwardHint, hintReliable);
@@ -752,6 +765,7 @@ export async function stageB(A: StageA, overrides: Overrides = {}, onProgress?: 
   const opposite = overrides.view === "behind" || shrinking ? "front_on" : overrides.view === "front_on" ? "behind" : null;
   if (opposite !== null && L.view.view === opposite) {
     armsRaw = armsRaw.map((f) => COCO_FLIP.map((j) => f[j]));
+    kpM = kpM.map((f) => COCO_FLIP.map((j) => f[j])); lostM = lostM.map((f) => COCO_FLIP.map((j) => f[j]));
     kpS = kpS.map((f) => COCO_FLIP.map((j) => f[j]));
     kc = kc.map((f) => COCO_FLIP.map((j) => f[j]));
     X = X.map((f) => H36M_FLIP.map((j) => f[j]));
@@ -768,6 +782,7 @@ export async function stageB(A: StageA, overrides: Overrides = {}, onProgress?: 
       const top = (sd: ReturnType<typeof sideForArm>) => (hi > lo ? Math.max(...wristLift(kpS, sd.c_sh, sd.c_el, sd.c_wr).slice(lo, hi)) : 0);
       if (top(sideForArm(arm)) < 0.3 && top(sideForArm(arm === "right" ? "left" : "right")) > 0.8) {
         kpS = kpS.map((f) => COCO_ARM_FLIP.map((j) => f[j]));
+        kpM = kpM.map((f) => COCO_ARM_FLIP.map((j) => f[j])); lostM = lostM.map((f) => COCO_ARM_FLIP.map((j) => f[j]));
         kc = kc.map((f) => COCO_ARM_FLIP.map((j) => f[j]));
         X = X.map((f) => H36M_ARM_FLIP.map((j) => f[j]));
         seq = seq.map((f) => H36M_ARM_FLIP.map((j) => f[j]));
@@ -780,6 +795,10 @@ export async function stageB(A: StageA, overrides: Overrides = {}, onProgress?: 
   }
   const { ev, wf } = L;
   skel = L.sk; P = L.P;
+  // the non-bowling arm where the model lost it: carried across (see above). `armLost`: those frames, elbow and wrist.
+  const nb = arm === "right" ? [7, 9] : [8, 10];
+  const armLost = lostM.map((f) => nb.map((j) => f[j]));
+  if (MEND.on && armLost.some((f) => f[0] || f[1])) kpS = kpS.map((f, t) => f.map((p, j) => (nb.includes(j) ? kpM[t][j] : p)));
   let view = L.view;
   if (overrides.view === "side_on" || overrides.view === "behind" || overrides.view === "front_on") {
     const { oblique: _o, ...rest } = view;
@@ -842,6 +861,8 @@ export async function stageB(A: StageA, overrides: Overrides = {}, onProgress?: 
     // for measuring on the pitch (lib/onpitch.ts): the feet's own points and how the camera moved, frame to frame
     // the bowling arm as the model read it frame by frame, not smoothed in time (elbows and wrists: left, right):
     // the release is measured from these, because smoothing flattens and delays the top of a fast arm
+    // frames where the non-bowling arm's elbow / wrist was not seen and is carried across from where it was (0/1 pairs)
+    arm_lost: armLost.map((f) => [f[0] ? 1 : 0, f[1] ? 1 : 0]),
     arms_raw: armsRaw.map((fr) => [7, 8, 9, 10].map((j) => [round(fr[j][0] * ds, 1), round(fr[j][1] * ds, 1)])),
     ...(A.feet ? { feet: A.feet.map((fr) => (fr ? fr.map((p) => [round(p[0] * ds, 1), round(p[1] * ds, 1), round(p[2], 2)]) : null)) } : {}),
     camera_motion: mot.map((m) => m.map((r) => r.map((v) => round(v, 5)))),

@@ -100,6 +100,8 @@ export interface AnalysisResult {
   /** Per frame: head top, neck, mid-hip, left/right big toe, left/right small toe, left/right heel as [x, y, confidence] (display px, unsmoothed). */
   /** Elbows and wrists (left elbow, right elbow, left wrist, right wrist) per frame, unsmoothed, in display pixels. */
   arms_raw?: number[][][];
+  /** per frame: was the non-bowling arm's [elbow, wrist] not seen (hidden behind the body) and carried across? 0/1 */
+  arm_lost?: number[][];
   feet?: (number[][] | null)[];
   /** Per frame: the 2x3 map from the frame before to this one (video px) that follows the background: the camera's pan and zoom. */
   camera_motion?: number[][][];

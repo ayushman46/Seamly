@@ -837,6 +837,69 @@ the analysis: measured on the test laptop, the step that waited for the models t
 on a return one, and the bundled 60 fps nets clip then takes 20 s (8.7 s of it the people-finding model, which
 only accepts a square picture and so spends nearly half its work on padding; 4.7 s the joints; 2.1 s the 3D estimate). A faster scan was also built (people looked for in about thirty frames of each real second, the bowler placed in the frames between from the scanned ones either side) and scored the same way on 22 clips filmed at 50 frames a second and more. Side-on it changed nothing: the key moments were the same frame on ten clips and no measurement moved by more than 0.6. From behind it moved the key moments by a frame or two on six of seven rendered deliveries, turned one 120 fps synthetic clip into a front-on reading eleven frames out, and put the release of the real 100 fps net clip three frames outside what the eye sees. It stays off: about a fifth of the analysis time is not worth a wrong frame.
 
+## 9m. The non-bowling arm when the body hides it (2026-11-24)
+
+**What was measured.** The 12 rendered deliveries and 8 of the plain bench clips have an exact answer for every
+joint in every frame, and for whether each joint is hidden behind another part of the body (the body's own surface
+lies between the joint and the camera). The app's joints were scored against that, over the delivery, from just
+before the back foot lands to the end of the follow-through. Tool: `frontend/_local/loop/armtruth.py` (truth) and
+`armhid.test.ts` (score). There is no joint-by-joint truth for real video; real clips were checked by eye only.
+
+**Before.** Non-bowling arm, error in cm at the bowler, typical / worst tenth of frames:
+
+| | Seen | Hidden by the body |
+|---|---|---|
+| Elbow, from behind | 3.1 / 14.2 | 12.6 / 16.6 |
+| Wrist, from behind | 1.6 / 4.4 | 4.8 / 16.3 |
+| Elbow, side-on | 3.4 / 22.4 | 4.4 / 5.4 |
+| Wrist, side-on | 1.0 / 64.1 | 10.5 / 25.0 |
+
+The model says when it has lost a joint: a wrist it gives under 0.5 confidence is typically 15 to 70 cm out, one over
+0.8 is 1 to 2 cm out. Side-on, in the follow-through, a lost wrist was put on the bowling arm's wrist. Nothing used
+that confidence, and the overlay drew a lost arm like a seen one.
+
+**What changed.** For the non-bowling arm only (the bowling arm and the release are read exactly as before):
+
+- an elbow or wrist the model gives under 0.55 for a short stretch (up to 0.12 s) is not believed. It is carried in a
+  straight line, relative to the shoulder, from where it was last seen to where it is next seen;
+- a lost wrist that keeps landing on the other arm's wrist is held as last seen, however long the loss;
+- the 3D figure's arm is fitted to the carried joints on those frames, not to the misreading;
+- the overlay draws the arm dashed wherever it was carried or the model was unsure of it (under 0.55).
+
+**After.** Same clips, same measure:
+
+| | Hidden, before | Hidden, after |
+|---|---|---|
+| Wrist, from behind | 4.8 / 16.3 | 4.4 / 7.8 |
+| Wrist, side-on | 10.5 / 25.0 | 10.6 / 19.4 |
+| Wrist, side-on, seen again after a loss | 1.0 / 64.1 | 1.0 / 11.1 |
+| Elbow, from behind | 12.6 / 16.6 | 12.6 / 16.6 (no change) |
+| 3D elbow bend, from behind (degrees) | 60 / 124 | 44 / 130 |
+| 3D forearm direction, side-on, seen again after a loss (degrees) | 8 / 98 | 8 / 47 |
+
+Nothing else moved: on the 48-clip scorecard (events, release, feet, height, ball) the only numbers that changed are
+the non-bowling wrist's.
+
+**What was tried and not kept.**
+
+- *Believing nothing under 0.75, for any length of time.* Best on the rendered clips (hidden wrist 16 → 7 cm from
+  behind and 25 → 12 cm side-on). On real footage the model's confidence runs lower, and on two county clips this
+  replaced good joints with a straight line for a third of a second or more: clearly worse by eye. The shipped rule
+  touches 0 to 5 frames of a real delivery, never more than 0.13 s at a stretch.
+- *Turning the arm about the shoulder across the loss* (rather than a straight line): right side-on, wrong from
+  behind, where the arm's swing is seen edge-on and its picture is a straight line.
+- *The elbow put half-way along a straight arm.* Helps the hidden frames, hurts the seen ones; applied only where the
+  elbow sits impossibly along the line it changes almost nothing.
+- *A depth rule* (a joint lost inside the trunk's outline is behind the trunk): no measurable effect.
+
+**Still not right.**
+
+- From behind the hidden elbow is 11 to 17 cm out and the model is confident of it, so nothing flags it. It sits
+  about 12 cm low while the arm points at or away from the camera.
+- The 3D arm from behind is poor even when seen (upper arm 24 degrees out, forearm 34): depth from one camera.
+- All of this is measured on a plain rendered figure, where an arm and the trunk are the same colour. On real video
+  the change is small and was judged by eye only; it has not been measured.
+
 ## 10. Still to do
 
 - Telling an umpire's signal or a fielder from a bowler when the clip has no clear delivery near the camera (§9j), and the

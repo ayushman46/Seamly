@@ -475,6 +475,80 @@ export function butterSmooth(x: Arr3, fps: number, cutoffHz: number, order = 4):
 }
 
 /**
+ * An arm the model has lost. When a forearm or upper arm goes behind the body the model still returns a point for
+ * the elbow and the wrist, but says so in its confidence, and the point is no longer the joint: against rendered
+ * deliveries a wrist given under 0.65 is typically 10 to 70 cm from the real one (over 0.8: 1 to 2 cm), and a lost
+ * wrist is often put on the other arm's wrist. Such a joint is not believed. Its limb (upper arm from the shoulder,
+ * forearm from the elbow) is carried across the doubtful stretch instead, turning and changing length evenly from
+ * where it was last seen to where it is next seen, or held as last seen when the clip ends first.
+ * `sides`: which arms to mend (0 left, 1 right); `lost` (optional) is filled with the frames replaced, per joint.
+ */
+export function mendLostArms(kp: Arr3, kc: Arr2, fps: number, sides: number[] = [0, 1], lost?: boolean[][]): Arr3 {
+  const T = kp.length, out = kp.map((f) => f.map((p) => p.slice()));
+  if (T < 3) return out;
+  const hs = bodyHeightPx(kp, kc).filter((v) => Number.isFinite(v) && v > 0).sort((a, b) => a - b), body = hs.length ? hs[hs.length >> 1] : 0;
+  if (!(body > 0)) return out;
+  const LOW = MEND.low, near = MEND.dup * body;
+  const ARMS = [[5, 7, 9], [6, 8, 10]];
+  for (const sd of sides) {
+    const [, el, wr] = ARMS[sd], [, elO, wrO] = ARMS[1 - sd];
+    // put on the other arm's joint, which the model is surer of
+    const dup = (t: number, j: number, jo: number) => kc[t][j] < Math.min(LOW, MEND.dupConf) && kc[t][jo] > kc[t][j] && Math.hypot(kp[t][j][0] - kp[t][jo][0], kp[t][j][1] - kp[t][jo][1]) < near;
+    const isDup = (t: number, j: number) => dup(t, j, j === el ? elO : wrO);
+    const doubt = (t: number, j: number, jo: number) => kc[t][j] < LOW || dup(t, j, jo);
+    let dE = Array.from({ length: T }, (_, t) => doubt(t, el, elO)), dW = Array.from({ length: T }, (_, t) => doubt(t, wr, wrO));
+    // a frame or two believed between doubtful ones is part of the same loss
+    const close = (d: boolean[]) => { const g = Math.max(1, Math.round(MEND.joinS * fps)), o = d.slice(); let last = -1e9; for (let t = 0; t < T; t++) { if (d[t]) { if (t - last - 1 <= g && last >= 0) for (let q = last + 1; q < t; q++) o[q] = true; last = t; } } return o; };
+    dE = close(dE); dW = close(dW);
+    const carry = (parent: number, j: number, d: boolean[]) => {
+      for (let t = 0; t < T;) {
+        if (!d[t]) { t++; continue; }
+        let b = t; while (b < T && d[b]) b++;
+        const a = t - 1;   // last good frame before, first good frame after: a, b
+        // A long stretch is left as the model gave it unless the joint sat on the other arm's for a good part of it: a
+        // straight carry is a fair guess for a tenth of a second, not for half a second of a moving arm, and on real
+        // footage (blur, compression) the model is often unsure of a joint it has placed well.
+        let nd = 0; for (let q = t; q < b; q++) if (isDup(q, j)) nd++;
+        const open = a < 0 || b >= T;
+        if (nd < MEND.dupFrac * (b - t) && (b - t > Math.max(1, Math.round(MEND.maxS * fps)) || open)) { t = b; continue; }
+        const rel = (q: number) => [kp[q][j][0] - out[q][parent][0], kp[q][j][1] - out[q][parent][1]];
+        const ra = a >= 0 ? rel(a) : null, rb = b < T ? rel(b) : null;
+        if (ra || rb) {
+          const A0 = ra ?? rb!, B0 = rb ?? ra!;
+          const la = Math.hypot(A0[0], A0[1]), lb = Math.hypot(B0[0], B0[1]);
+          const aa = Math.atan2(A0[1], A0[0]); let ab = Math.atan2(B0[1], B0[0]);
+          while (ab - aa > Math.PI) ab -= 2 * Math.PI; while (ab - aa < -Math.PI) ab += 2 * Math.PI;
+          for (let q = t; q < b; q++) {
+            const u = ra && rb ? (q - a) / (b - a) : 0;
+            let rx: number, ry: number;
+            if (MEND.path === "polar") { const ang = aa + (ab - aa) * u, len = la + (lb - la) * u; rx = len * Math.cos(ang); ry = len * Math.sin(ang); }
+            else if (MEND.path === "line" || !(ra && rb)) { rx = A0[0] + (B0[0] - A0[0]) * u; ry = A0[1] + (B0[1] - A0[1]) * u; }
+            else {
+              // a curve through both ends that leaves and arrives as the limb was moving there (when the frame beyond each end was seen)
+              const n = b - a, va = a >= 1 && !d[a - 1] ? rel(a).map((v, k) => (v - rel(a - 1)[k]) * n) : [B0[0] - A0[0], B0[1] - A0[1]];
+              const vb = b + 1 < T && !d[b + 1] ? rel(b + 1).map((v, k) => (v - rel(b)[k]) * n) : [B0[0] - A0[0], B0[1] - A0[1]];
+              const h00 = 2 * u ** 3 - 3 * u ** 2 + 1, h10 = u ** 3 - 2 * u ** 2 + u, h01 = -2 * u ** 3 + 3 * u ** 2, h11 = u ** 3 - u ** 2;
+              rx = h00 * A0[0] + h10 * va[0] + h01 * B0[0] + h11 * vb[0]; ry = h00 * A0[1] + h10 * va[1] + h01 * B0[1] + h11 * vb[1];
+            }
+            const cx = out[q][parent][0] + rx, cy = out[q][parent][1] + ry;
+            // how far the model's own point is still believed: not at all at `floor` and under, or on the other arm's joint
+            const w = isDup(q, j) ? 0 : Math.max(0, Math.min(1, (kc[q][j] - MEND.floor) / Math.max(1e-6, LOW - MEND.floor)));
+            out[q][j] = [cx + w * (kp[q][j][0] - cx), cy + w * (kp[q][j][1] - cy)];
+            if (lost) lost[q][j] = true;
+          }
+        }
+        t = b;
+      }
+    };
+    carry(ARMS[sd][0], el, dE);
+    carry(MEND.wristFrom === "elbow" ? el : ARMS[sd][0], wr, dW);
+  }
+  return out;
+}
+/** Settings of mendLostArms (changed only by the accuracy loop's experiments). */
+export const MEND = { low: 0.55, floor: 0.55, maxS: 0.12, dupFrac: 0.34, dup: 0.07, dupConf: 0.8, joinS: 0.035, on: true, fig: true, figConf: 0.75, wristFrom: "shoulder" as "shoulder" | "elbow", path: "line" as "curve" | "line" | "polar" };
+
+/**
  * An arm joint misread for one frame: put back between its neighbours. The outlier filter above leaves the arms
  * alone, because a bowling arm really does move a third of the body's height in a frame; but then one bad wrist near
  * the top of the delivery is smeared by the smoothing over the frames either side, and the top of the arm's swing

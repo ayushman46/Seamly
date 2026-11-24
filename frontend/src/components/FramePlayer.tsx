@@ -147,7 +147,14 @@ export default function FramePlayer({ id, result, frame, overlay, selMetric, hud
         ctx.strokeStyle = bowling ? "rgba(251,113,133,A)" : front ? "rgba(52,211,153,A)" : "rgba(226,232,240,A)";
         ctx.strokeStyle = ctx.strokeStyle.replace("A", String(0.35 + 0.6 * Math.min(1, c0)));
         ctx.lineWidth = lw;
+        // the non-bowling arm where the camera could not see it (behind the body) or the model was unsure of it:
+        // drawn dashed, because there it is an estimate, not a reading
+        const lost = result.arm_lost?.[t];
+        const unsure = front && ((a === F.el || b === F.el) && (a === F.sh || b === F.sh) ? !!lost?.[0] || cf[F.el] < 0.55
+          : (a === F.wr || b === F.wr) ? !!lost?.[1] || !!lost?.[0] || cf[F.wr] < 0.55 : false);
+        if (unsure) ctx.setLineDash([lw * 1.6, lw * 1.8]);
         ctx.beginPath(); ctx.moveTo(pts[a][0], pts[a][1]); ctx.lineTo(pts[b][0], pts[b][1]); ctx.stroke();
+        if (unsure) ctx.setLineDash([]);
       }
       for (let j = 5; j < 17; j++) {
         if (cf[j] < 0.1) continue;
