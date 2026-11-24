@@ -162,7 +162,12 @@ export default function FramePlayer({ id, result, frame, overlay, selMetric, hud
         // (the bowling arm too, where the model was unsure of it or it has shrunk to a stub at the shoulder: an arm
         // blurred or hidden just after release is read as a short kink, which is not where the arm is)
         const stub = armLen > 0 && Math.hypot(kp[t][B.el][0] - kp[t][B.sh][0], kp[t][B.el][1] - kp[t][B.sh][1]) + Math.hypot(kp[t][B.wr][0] - kp[t][B.el][0], kp[t][B.wr][1] - kp[t][B.el][1]) < 0.3 * armLen;
-        const unsure = front ? ((a === F.el || b === F.el) && (a === F.sh || b === F.sh) ? !!lost?.[0] || cf[F.el] < 0.55
+        // a leg the model was unsure of (under 0.5 at the knee or ankle): by eye on 39 real clips that is half the
+        // legs drawn in the wrong place (on a score graphic, another player, or both legs on one foot) and one in
+        // twenty of the right ones
+        const legJ = [11, 12, 13, 14, 15, 16], isLeg = legJ.includes(a) && legJ.includes(b) && Math.max(a, b) >= 13;
+        const legUnsure = isLeg && (Math.max(a, b) >= 15 ? Math.min(cf[a], cf[b]) < 0.5 : cf[Math.max(a, b)] < 0.5);
+        const unsure = legUnsure ? true : front ? ((a === F.el || b === F.el) && (a === F.sh || b === F.sh) ? !!lost?.[0] || cf[F.el] < 0.55
           : (a === F.wr || b === F.wr) ? !!lost?.[1] || !!lost?.[0] || cf[F.wr] < 0.55 : false)
           : bowling && ((a === B.el || b === B.el) && (a === B.sh || b === B.sh) ? stub || cf[B.el] < 0.55 : (a === B.wr || b === B.wr) ? stub || cf[B.wr] < 0.55 || cf[B.el] < 0.55 : false);
         if (unsure) ctx.setLineDash([lw * 1.6, lw * 1.8]);

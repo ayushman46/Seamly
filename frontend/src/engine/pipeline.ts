@@ -108,7 +108,7 @@ export interface Models { pose: PoseModels; lifter: Lifter }
 let modelsP: Promise<Models> | null = null;
 let modelsAt = 0;
 const modelWatchers = new Set<(f: number) => void>();
-/** Load (once) the detection and lifting models; ~110 MB, cached by the browser after the first visit. The load can
+/** Load (once) the detection and lifting models; ~170 MB, cached by the browser after the first visit. The load can
  *  be started early (when a clip is chosen) and joined later: every caller's onProgress hears how far it has got. */
 export function loadModels(onProgress?: (f: number) => void): Promise<Models> {
   if (onProgress) { modelWatchers.add(onProgress); onProgress(modelsAt); }
@@ -202,7 +202,9 @@ function usableLength(kc: Arr2, motions: (number[][] | undefined)[], peak: numbe
   // so the average over the body is low throughout, and that is not the tracking failing.
   const body = (t: number) => kc[t].slice(5).reduce((a, b) => a + b, 0) / 12;
   const lead = kc.slice(0, Math.max(1, Math.min(T, peak + 1))).map((_, t) => body(t)).sort((a, b) => a - b);
-  const floor = Math.min(minConf, 0.75 * lead[lead.length >> 1]);
+  // (0.7 of it: at 0.75 a close-up whose level dipped from 0.58 to 0.44 for two frames as the arm crossed the
+  // face was cut off before the release)
+  const floor = Math.min(minConf, 0.7 * lead[lead.length >> 1]);
   for (let t = Math.max(1, peak + 1); t < T; t++) {
     const m = motions[t];
     if (m) zoom *= Math.sqrt(Math.abs(m[0][0] * m[1][1] - m[0][1] * m[1][0]));
@@ -284,7 +286,7 @@ export async function analyseVideo(file: Blob, options: Partial<Options>, onProg
   let lastProgress: Parameters<ProgressCb>[0] | null = null;
   const prog = new Progress((p) => { lastProgress = p; onProgress?.(p); });
   const t0 = performance.now();
-  const loading = (await modelsCached()) ? "Loading the analysis models" : "Downloading the analysis models (first time only, about 110 MB)";
+  const loading = (await modelsCached()) ? "Loading the analysis models" : "Downloading the analysis models (first time only, about 170 MB)";
   prog.stage("probe", 0, loading);
   const models = await loadModels((f) => prog.stage("probe", 0.9 * f, loading));
   prog.stage("probe", 0.92, "Reading video");

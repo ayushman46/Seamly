@@ -146,10 +146,13 @@ export function armSpeed2d(kp: Arr3, sh: number, wr: number, fps: number): Arr1 
   return w.length ? endsAvg(w) : new Array(kp.length).fill(0);
 }
 
-/** Height of the wrist above the shoulder in arm lengths (image y is down). */
-export function wristLift(kp: Arr3, sh: number, el: number, wr: number): Arr1 {
+/** Height of the wrist above the shoulder in arm lengths (image y is down).
+ *  The arm's length in the picture is averaged over nine frames, or 0.3 s where `fps` is given and that is longer:
+ *  at 120 frames a second nine frames is 0.075 s, and an elbow misread for that long as the arm comes over (it is
+ *  behind the head from the back) stretched the arm and halved the lift for the whole of the rise. */
+export function wristLift(kp: Arr3, sh: number, el: number, wr: number, fps = 30): Arr1 {
   const arm = kp.map((f) => norm2(f[el][0] - f[sh][0], f[el][1] - f[sh][1]) + norm2(f[wr][0] - f[el][0], f[wr][1] - f[el][1]));
-  const armS = uniformFilter1dScipy(arm, Math.min(arm.length, 9)).map((v) => Math.max(v, 1.0));
+  const armS = uniformFilter1dScipy(arm, Math.min(arm.length, Math.max(9, Math.round(0.3 * fps)))).map((v) => Math.max(v, 1.0));
   return kp.map((f, t) => (f[sh][1] - f[wr][1]) / armS[t]);
 }
 
@@ -204,7 +207,7 @@ export function upright(p: Arr2): number {
  * fall after it (arm lengths, capped), marked down where the wrist was barely seen; 0 and -1 when there is none.
  * Bent double with an arm in the air is the follow-through, so those are left out. */
 export function bestUpswing(kp: Arr3, kc: Arr2, sh: number, el: number, wr: number, lo: number, hi: number, fps: number): [number, number] {
-  const lift = wristLift(kp, sh, el, wr);
+  const lift = wristLift(kp, sh, el, wr, fps);
   let v = 0, at = -1;
   for (const [, th, amp, fall] of upswings(lift, lo, hi, fps)) {
     if (upright(kp[th]) < 0.5) continue;
@@ -224,6 +227,10 @@ export function decideBowlingArm(kp: Arr3, kc: Arr2, P: Arr3, fps: number, sweep
   }
   const votes: Record<string, number> = {};
   let overTop: number | null = null;
+  // One arm plainly went up and over and the other plainly did not: that settles it. (The speed cues were tuned on a
+  // smaller pose model whose misread wrists made the bowling arm look faster than it is; read accurately, the front
+  // arm of a bowler seen from behind is often as fast, and those cues then outvoted this one.)
+  let clearTop = false;
   if (tuned) {
     // The bowling arm is the one that goes up and over: its wrist rises from below the shoulder to well above it
     // and falls away again, all within a third of a second. The front arm goes up and stays, or comes down
@@ -238,13 +245,20 @@ export function decideBowlingArm(kp: Arr3, kc: Arr2, P: Arr3, fps: number, sweep
     // bowling arm, and the other cues are read up to just after it, so the trailing arm's swing isn't in them.
     // (The first must be a full one, 2.7 or more: a front arm reaching up before the release is weaker than that.)
     if ((tr < tl ? vr : vl) >= 2.7 && Math.min(vr, vl) >= 2.0 && Math.abs(tr - tl) >= 0.15 * fps && Math.abs(tr - tl) <= 0.45 * fps) {
-      overTop = tr < tl ? 1 : -1;
-      hi = Math.max(lo + 3, Math.min(hi, Math.min(tr, tl) + Math.trunc(0.1 * fps) + 1));
-    }
+      // (unless the first went over the top at well under half the speed of the second: that is the front arm
+      // reaching up before a spinner's release, not a bowling arm, which is at its fastest there)
+      const topSpeed = (sh: number, wrj: number, t: number) => { const sp = armSpeed2d(kp, sh, wrj, fps), d = Math.round(0.05 * fps) + 1; return amaxN(sp.slice(Math.max(0, t - d), t + d)); };
+      const w1 = tr < tl ? topSpeed(6, 10, tr) : topSpeed(5, 9, tl), w2 = tr < tl ? topSpeed(5, 9, tl) : topSpeed(6, 10, tr);
+      if (w1 < 0.4 * w2) overTop = tr < tl ? -1 : 1;
+      else {
+        overTop = tr < tl ? 1 : -1;
+        hi = Math.max(lo + 3, Math.min(hi, Math.min(tr, tl) + Math.trunc(0.1 * fps) + 1));
+      }
+    } else if (Math.max(vr, vl) >= 2.7 && Math.abs(vr - vl) >= 1.5) clearTop = true;
   }
   const wr = armSpeed2d(kp, 6, 10, fps).slice(lo, hi), wl = armSpeed2d(kp, 5, 9, fps).slice(lo, hi);
   votes.speed_2d = npSign(npPercentile(wr, 90) - npPercentile(wl, 90));
-  const lr = wristLift(kp, 6, 8, 10).slice(lo, hi), ll = wristLift(kp, 5, 7, 9).slice(lo, hi);
+  const lr = wristLift(kp, 6, 8, 10, tuned ? fps : 30).slice(lo, hi), ll = wristLift(kp, 5, 7, 9, tuned ? fps : 30).slice(lo, hi);
   // height reached while moving fast (the front arm is high early and slow; the bowling arm high & fast)
   const mr = amaxN(wr) + 1e-6, ml = amaxN(wl) + 1e-6;
   const fr = lr.map((v, i) => v * (wr[i] / mr)), fl = ll.map((v, i) => v * (wl[i] / ml));
@@ -253,7 +267,7 @@ export function decideBowlingArm(kp: Arr3, kc: Arr2, P: Arr3, fps: number, sweep
   votes.speed_3d = npSign(npPercentile(w3r, 90) - npPercentile(w3l, 90));
   if (sweepHint === "left" || sweepHint === "right") votes.sweep_2d = sweepHint === "right" ? 1.0 : -1.0;
   if (overTop !== null) votes.over_top = overTop;
-  const weights: Record<string, number> = { speed_2d: 1.0, fast_high_2d: 1.4, speed_3d: 0.6, sweep_2d: 1.0, over_top: 1.6 };
+  const weights: Record<string, number> = { speed_2d: 1.0, fast_high_2d: 1.4, speed_3d: 0.6, sweep_2d: 1.0, over_top: clearTop ? 4.5 : 1.6 };
   let s = 0, total = 0;
   for (const [k, v] of Object.entries(votes)) { s += weights[k] * v; total += weights[k]; }
   return [s >= 0 ? "right" : "left", Math.abs(s) / total, votes];
@@ -313,7 +327,7 @@ export function detectEvents(kp: Arr3, kc: Arr2, kpStab: Arr3, P: Arr3, side: Si
   const kcAt = (a: number, b: number, j: number) => kc.slice(Math.max(0, a), b).map((r) => r[j]);
 
   // ---------------- ball release: final upswing of the bowling wrist ----------------
-  const lift = wristLift(kp, side.c_sh, side.c_el, side.c_wr);   // (uniform_filter1d size=1 is the identity)
+  const lift = wristLift(kp, side.c_sh, side.c_el, side.c_wr, tuned ? fps : 30);   // (uniform_filter1d size=1 is the identity)
   const w2 = armSpeed2d(kp, side.c_sh, side.c_wr, fps);
   let [lo, hi] = sweepWindow;
   const anchor = Math.trunc(npClip(sweepPeak === null ? Math.floor((lo + hi) / 2) : sweepPeak, 0, T - 1));

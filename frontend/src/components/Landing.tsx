@@ -239,7 +239,7 @@ const FAQS: { q: string; a: ReactNode }[] = [
   {
     q: "Does it need an internet connection?",
     a: LOCAL
-      ? <p>Only the first time. Open Seamly and analyse one clip while you're online (that downloads the analysis models, about 110 MB), and after that it works with no signal: at the nets, film, analyse and review right there. A recent phone or laptop works best; older devices can take noticeably longer.</p>
+      ? <p>Only the first time. Open Seamly and analyse one clip while you're online (that downloads the analysis models, about 170 MB), and after that it works with no signal: at the nets, film, analyse and review right there. A recent phone or laptop works best; older devices can take noticeably longer.</p>
       : <p>Yes, to reach the Seamly server this page is connected to.</p>,
   },
   {

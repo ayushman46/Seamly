@@ -1003,6 +1003,75 @@ back-foot event on two rendered clips, whose figure's foot stops the instant it 
 **Limits.** Sixteen clips, labelled by a vision model, not by a person with a frame-by-frame viewer; a label is good
 to about a frame. Nothing is known yet at 50 frames a second and over, where the change is not applied.
 
+## 9p. A larger pose model, chosen by blind test on real footage (2026-11-25)
+
+**How the skeleton was audited.** For each of 39 real clips, nine frames from before back-foot landing to the end of
+the follow-through, each as a clean crop beside the same crop with the app's skeleton, left limbs one colour and
+right the other. Four vision models (Opus) marked every arm, leg and trunk in every frame: right, misplaced, on the
+opposite limb, on something that is not the limb, or cannot tell. Tools: `frontend/_local/loop/armnet/stripsheets.py`,
+`audit_prompt2.txt`, `tally.py`.
+
+| Skeleton from | Limbs drawn right | Arms wrong | Legs wrong | Trunk wrong |
+|---|---|---|---|---|
+| RTMPose-m 256 (the app until now) | 92.2% of 1559 | 37 | 67 | 18 |
+| ViTPose+ large (1.2 GB, not for a browser), same rules | 94.4% | 31 | 53 | 6 |
+| RTMPose-l 384, in the app in Chrome | 93.5% of 1567 | 43 | 46 | 13 |
+
+Different judges rated each row, so the totals are good to about a point. Most of what is wrong is legs after the
+release (left and right exchanged as the back leg kicks up, both legs on one foot, legs drawn onto a score graphic).
+
+**The blind test.** Every audited frame where two models put a limb joint more than 15% of the trunk apart, the two
+skeletons lettered A and B at random, judged without knowing which was which (`absheets.py`, `abscore.py`):
+
+| Against RTMPose-m | Frames | Preferred the larger | Preferred RTMPose-m | Same |
+|---|---|---|---|---|
+| RTMPose-l 384 (113 MB) | 171 | 49 (21 sure) | 28 (12 sure) | 94 |
+| RTMPose-x 384 (200 MB) | 170 | 53 (14 sure) | 28 (13 sure) | 89 |
+
+RTMPose-l is as good as -x at half the size, so the app now uses RTMPose-l at 384x288 (the official OpenMMLab
+Halpe26 export, Apache-2.0). The first download is 170 MB instead of 110. Analysis time in Chrome on six clips is no
+longer than before (28 to 181 s against 43 to 181 s).
+
+**Against the rendered deliveries with exact truth** (12 clips, mean absolute error):
+
+| | RTMPose-m | RTMPose-l |
+|---|---|---|
+| Bowling wrist, worst frame of three clips | 27, 34, 38 cm | 4.5, 9, 11 cm |
+| Ankles, typical | 3 cm | 1.5 to 2 cm |
+| Front foot along the pitch | 3.7 cm | 2.2 cm |
+| Stride | 5.0 cm | 4.0 cm |
+| Bowler's height | 3.9 cm | 2.9 cm |
+| Release height | 6.2 cm | 6.0 cm |
+| Back foot along the pitch | 3.7 cm | 3.6 cm |
+| Release across the pitch | 1.6 cm | 2.1 cm |
+
+**The rules had learnt the smaller model's mistakes.** With the better joints the bowling arm was called wrong on
+three clips and the release on four. What was found and changed:
+
+- *Which arm bowls.* The speed cues leaned on misread wrists: the smaller model's bowling wrist jumped about, which
+  made that arm look faster than it is. Read accurately, the front arm of a bowler seen from behind is often as fast.
+  Now, when one arm plainly goes up and over (a rise and fall of 2.7 arm lengths or more) and the other plainly does
+  not (1.5 less), that settles it.
+- *A spinner's front arm.* When both arms go over the top a third of a second apart the first was taken as the
+  bowling arm. Not when the first went over at under 0.4 of the second's speed: that is the front arm reaching up.
+- *Wrist height at 120 frames a second.* The arm's length in the picture was averaged over nine frames, 0.075 s at
+  120 fps. An elbow hidden behind the head for that long halved the measured lift through the whole rise and put the
+  release 58 ms late. It is now averaged over 0.3 s at any frame rate.
+- *The truth was wrong on one clip* (parry, a left-arm spinner). The old answer, right arm and release at frame 283,
+  came from one misread wrist frame; the release is at 291 and the right arm at 283 is the front arm reaching up.
+
+Hand-checked real clips (23) after the changes: RTMPose-l fails 2 (ipl04, a 17-frame close-up whose analysis window
+is cut before the release; ipl11, which failed before too); RTMPose-m with the same rules fails 1. Rendered clips: the
+release is within two frames on all but the 120 fps one (+3 frames, 25 ms, where the wrist sits at full height for
+0.13 s and the release is near the start of that).
+
+**Also changed.** A leg the model is unsure of (under 0.5 at the knee or ankle) is drawn dashed: in the first audit
+that marked half the legs drawn in the wrong place and one in twenty of the right ones.
+
+**Still wrong.** Left and right exchanged for a few frames after the release on about six clips; legs drawn solid on
+a score graphic when the model is confident; ipl04's window. The 1.2 GB model is better again on the trunk and on
+exchanges, so there is more to gain from a model that size if one ever fits a browser.
+
 ## 10. Still to do
 
 - Telling an umpire's signal or a fielder from a bowler when the clip has no clear delivery near the camera (§9j), and the

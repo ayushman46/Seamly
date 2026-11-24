@@ -42,7 +42,7 @@ async function hasWebGPU(): Promise<boolean> {
 
 // Where the models are downloaded from, in order: jsDelivr, then GitHub's own raw-file host, both serving them
 // straight from the public repository at the commit that added them (so the files never change under a URL), which
-// keeps the ~110 MB first download off the site's own bandwidth; the site's copy is the last resort. jsDelivr
+// keeps the ~170 MB first download off the site's own bandwidth; the site's copy is the last resort. jsDelivr
 // serves files up to 20 MB (hence the parts) and refuses some of them for a repository this size ("package size
 // exceeded"), which is what the second source is for.
 // When a model file changes, point MODEL_COMMIT at a commit that contains the new file.
@@ -50,10 +50,13 @@ const MODEL_COMMIT = "0704330bc412b896ae9985268b9cb7bf5127e8b4";
 const MODEL_CDN = `https://cdn.jsdelivr.net/gh/ayushman46/Seamly@${MODEL_COMMIT}/frontend/public/models/`;
 const MODEL_RAW = `https://raw.githubusercontent.com/ayushman46/Seamly/${MODEL_COMMIT}/frontend/public/models/`;
 export const MODEL_SOURCES: string[] = [MODEL_CDN, MODEL_RAW, MODEL_BASE];
-export const SCAN_MODEL = "rtmo-s.onnx", REFINE_MODEL = "rtmpose-m-halpe26.onnx";
+// The crop model is RTMPose-l at 384x288: on real bowling clips, judged blind frame by frame, it was preferred to
+// RTMPose-m at 256x192 on 49 frames against 28 (docs/ACCURACY.md, 9p), for twice the download and about four times
+// the work per frame.
+export const SCAN_MODEL = "rtmo-s.onnx", REFINE_MODEL = "rtmpose-l-halpe26-384.onnx";
 const MODEL_PARTS: Record<string, string[]> = {
   [SCAN_MODEL]: [1, 2].map((i) => `${SCAN_MODEL}.part${i}`),
-  [REFINE_MODEL]: [1, 2, 3].map((i) => `${REFINE_MODEL}.part${i}`),
+  [REFINE_MODEL]: [1, 2, 3, 4, 5, 6].map((i) => `${REFINE_MODEL}.part${i}`),
 };
 
 /** Download with progress (the models are tens of MB), served from Cache Storage after the first time. */
@@ -257,6 +260,8 @@ const HALPE_FLIP = [...COCO_FLIP, 17, 18, 19, 21, 20, 23, 22, 25, 24];
 /** SimCC output -> keypoints in crop pixels with a confidence. The raw peak height runs to about 0.9 on a clearly
  *  seen joint (a seen joint's median is 0.72): it is stretched so that the engine's thresholds, set on YOLO's
  *  0-1 confidences, mean what they meant. */
+// (0.75 for RTMPose-m; RTMPose-l at 384 peaks 5% higher on the same joints of the same real frames)
+const SIMCC_FULL = 0.79;
 function simcc(sx: ort.Tensor, sy: ort.Tensor): { kps: number[][]; kcs: number[] } {
   const X = sx.data as Float32Array, Y = sy.data as Float32Array, K = sx.dims[1], nx = sx.dims[2], ny = sy.dims[2];
   const kps: number[][] = [], kcs: number[] = [];
@@ -264,7 +269,7 @@ function simcc(sx: ort.Tensor, sy: ort.Tensor): { kps: number[][]; kcs: number[]
     let bx = 0, vx = -Infinity, by = 0, vy = -Infinity;
     for (let i = 0; i < nx; i++) { const v = X[j * nx + i]; if (v > vx) { vx = v; bx = i; } }
     for (let i = 0; i < ny; i++) { const v = Y[j * ny + i]; if (v > vy) { vy = v; by = i; } }
-    kps.push([bx / 2, by / 2]); kcs.push(Math.min(1, Math.max(0, Math.min(vx, vy) / 0.75)));
+    kps.push([bx / 2, by / 2]); kcs.push(Math.min(1, Math.max(0, Math.min(vx, vy) / SIMCC_FULL)));
   }
   return { kps, kcs };
 }
@@ -281,8 +286,8 @@ export class PoseModels {
     private scanCanvas: OffscreenCanvas | HTMLCanvasElement, private cropCanvas: OffscreenCanvas | HTMLCanvasElement) {}
 
   static readonly SCAN = 640;
-  static readonly CROP_W = 192;
-  static readonly CROP_H = 256;
+  static readonly CROP_W = 288;
+  static readonly CROP_H = 384;
 
   static async load(onProgress?: (f: number) => void): Promise<PoseModels> {
     let a = 0, b = 0;

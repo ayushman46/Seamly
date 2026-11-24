@@ -220,7 +220,7 @@ function Processing({ meta, go }: { meta: AnalysisMeta; go: (to: string) => void
             ) : (
               <div className="notice"><IInfo size={16} /> <div>You can leave this page — the analysis keeps running on your Seamly server and will appear in your history.</div></div>
             )}
-            {MODE === "browser" && !cached && <p>This first one also downloads the analysis models (about 110 MB, once).</p>}
+            {MODE === "browser" && !cached && <p>This first one also downloads the analysis models (about 170 MB, once).</p>}
           </div>
         </div>
       </main>
