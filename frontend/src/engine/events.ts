@@ -219,7 +219,7 @@ export function bestUpswing(kp: Arr3, kc: Arr2, sh: number, el: number, wr: numb
 
 /** tuned: adds the `over_top` vote (the app uses it; the Python reference engine does not have it). */
 export function decideBowlingArm(kp: Arr3, kc: Arr2, P: Arr3, fps: number, sweepHint: string | null | undefined,
-  window: [number, number], tuned = false): [Arm, number, Record<string, number>] {
+  window: [number, number], tuned = false): [Arm, number, Record<string, number>, boolean] {
   let lo = Math.max(0, window[0]), hi = Math.min(kp.length, window[1]);
   if (hi - lo < 3) {   // degenerate window (very low fps / sweep at the clip edge)
     lo = Math.max(0, Math.min(lo, kp.length - 3));
@@ -270,7 +270,7 @@ export function decideBowlingArm(kp: Arr3, kc: Arr2, P: Arr3, fps: number, sweep
   const weights: Record<string, number> = { speed_2d: 1.0, fast_high_2d: 1.4, speed_3d: 0.6, sweep_2d: 1.0, over_top: clearTop ? 4.5 : 1.6 };
   let s = 0, total = 0;
   for (const [k, v] of Object.entries(votes)) { s += weights[k] * v; total += weights[k]; }
-  return [s >= 0 ? "right" : "left", Math.abs(s) / total, votes];
+  return [s >= 0 ? "right" : "left", Math.abs(s) / total, votes, clearTop];
 }
 
 const gauss = (dtMs: number, mu: number, sd: number): number => -0.5 * ((dtMs - mu) / sd) ** 2;

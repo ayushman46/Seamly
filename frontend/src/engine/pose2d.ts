@@ -401,7 +401,11 @@ export function fixSwaps(kpIn: Arr3, kcIn: Arr2, switchCost = 0.25, checkAttach 
           const flip = name === "arm" && legStates[k] === 1, pl = flip ? ar : al, pr = flip ? al : ar;
           asIs.push(dist(k, jl, pl) + dist(k, jr, pr)); swapped.push(dist(k, jr, pl) + dist(k, jl, pr));
         }
-        if (npMedian(swapped) > ATTACH_MARGIN * npMedian(asIs)) for (let k = t; k < e; k++) states[k] = 0;
+        // (and with the hips out of the picture, a close-up, there is nothing to check a long run against: over four
+        // frames or more the detector is believed. A broadcast close-up had its arms exchanged for its first five
+        // frames that way. A flicker of a frame or two is still repaired.)
+        const anchorSeen = npMedian(Array.from({ length: e - t }, (_, i) => Math.min(kc[t + i][al], kc[t + i][ar])));
+        if (npMedian(swapped) > ATTACH_MARGIN * npMedian(asIs) || (anchorSeen < 0.2 && e - t >= 4)) for (let k = t; k < e; k++) states[k] = 0;
         t = e;
       }
     }

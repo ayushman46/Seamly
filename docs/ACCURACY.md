@@ -1072,6 +1072,44 @@ that marked half the legs drawn in the wrong place and one in twenty of the righ
 a score graphic when the model is confident; ipl04's window. The 1.2 GB model is better again on the trunk and on
 exchanges, so there is more to gain from a model that size if one ever fits a browser.
 
+## 9q. After the larger model: the bench it had not been run on, and four fixes (2026-11-25)
+
+Section 9p was shipped without re-scoring the plain bench clips (11 side-on, 6 from behind, exact joint angles and
+3D joints). Run afterwards, they showed what the truth clips of 9p could not:
+
+- **One clip from behind at 120 fps read as front-on, release 83 ms early.** With the bowling arm given by the user,
+  the labels are mirrored when the cues say the other arm bowls; that test still leaned on the speed cues of 9p.
+  A clear up-and-over of the other arm now mirrors them too. `frontend/_local/loop/rescore.sh` now scores the bench
+  with every change.
+- **The 3D body from behind was a mirror image.** When the detector takes the back for the front, the joints were
+  relabelled left for right but left where the lifter put them in depth, which is the body's reflection. It is now
+  turned round in depth as well. 3D joints from behind against the rendered body: 265 mm to 190 mm (side-on, where no
+  mirroring happens, is unchanged at about 85 mm). Lifting the relabelled joints afresh was no better (198 mm): the
+  lifter itself, a general model that has never seen bowling, puts the bowling wrist 35 cm out from behind.
+- **Front-knee angle at landing, side-on:** 3.6 degrees out with the smaller pose model, 7.6 with the larger, both
+  reading the knee straighter than the rendered body's joint centres. This is one or two pixels of where a model
+  puts "the knee" on a rendered mannequin, and there is no measured knee on real footage to say which is nearer on
+  people. Stride (2.7 to 1.6 points of height) and the timings improved; release height side-on worsened (6.5 to
+  9.8 points). Not changed; noted.
+
+Two more from the audits of real clips (two independent sets of four judges on the output of 9p: 92.9% and 90.3% of
+limbs right, agreeing that a limb was wrong on 61 of 1548):
+
+- **The analysis window ended on a one-frame dip in confidence**, before the release on two broadcast close-ups
+  (ipl04, and ipl11 where the old window also ended early). It now ends only where the body's confidence is under
+  0.55 of the clip's own level for two frames running, or the camera has zoomed in hard.
+- **Arms exchanged in a close-up.** The repair of left/right exchanges checks the arms against the hips; with the
+  hips out of the picture it relabelled five frames of one close-up wrongly. A run of four frames or more is now left
+  as the detector gave it when the hips are not seen.
+
+A hand-checked answer was wrong again: ipl11's release is at frame 17 (the frames show the arm vertical there); the
+24 to 26 on file was the other arm swinging up afterwards. With that corrected the larger model has no miss on the
+23 hand-checked real clips (release within a frame, arm right), the smaller one 1.
+
+**Tried and not kept:** undoing leg exchanges after the release by carrying each ankle on at its own speed through
+the frames where the two meet. On the frames two judges agreed were exchanged it put right 2 and exchanged 10 that
+both had called right.
+
 ## 10. Still to do
 
 - Telling an umpire's signal or a fielder from a bowler when the clip has no clear delivery near the camera (§9j), and the

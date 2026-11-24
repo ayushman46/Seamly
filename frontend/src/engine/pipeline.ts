@@ -87,7 +87,7 @@ class Progress {
 
 /** Everything Stage B needs (the browser counterpart of stage_a.npz + stage_a.json). */
 export interface StageA {
-  X: Arr3; seq: Arr3; kp: Arr3; kp_s: Arr3; kc: Arr2; motions: number[][][]; bbox: Arr2; timestamps: number[];
+  X: Arr3; X_alt?: Arr3; seq: Arr3; kp: Arr3; kp_s: Arr3; kc: Arr2; motions: number[][][]; bbox: Arr2; timestamps: number[];
   /** Per frame of the window: the crop model's nine extra points (head top, neck, mid-hip, big toes, small toes, heels;
    * left before right) as [x, y, confidence] in video pixels, unsmoothed; null where the bowler was not read. */
   feet?: (number[][] | null)[];
@@ -202,13 +202,14 @@ function usableLength(kc: Arr2, motions: (number[][] | undefined)[], peak: numbe
   // so the average over the body is low throughout, and that is not the tracking failing.
   const body = (t: number) => kc[t].slice(5).reduce((a, b) => a + b, 0) / 12;
   const lead = kc.slice(0, Math.max(1, Math.min(T, peak + 1))).map((_, t) => body(t)).sort((a, b) => a - b);
-  // (0.7 of it: at 0.75 a close-up whose level dipped from 0.58 to 0.44 for two frames as the arm crossed the
-  // face was cut off before the release)
-  const floor = Math.min(minConf, 0.7 * lead[lead.length >> 1]);
+  // (Well under it, and for two frames running: at 0.75 of it, for one frame, two broadcast close-ups were cut off
+  // before the release. One dipped from 0.58 to 0.44 for two frames as the arm crossed the face; the other settled
+  // at 0.5 as the bowler turned side-on and only fell to 0.3 a second later, when he ran out of the picture.)
+  const floor = Math.min(minConf, 0.55 * lead[lead.length >> 1]);
   for (let t = Math.max(1, peak + 1); t < T; t++) {
     const m = motions[t];
     if (m) zoom *= Math.sqrt(Math.abs(m[0][0] * m[1][1] - m[0][1] * m[1][0]));
-    if (t >= start && (body(t) < floor || zoom > maxZoom)) return t;
+    if (t >= start && (zoom > maxZoom || (body(t) < floor && (t + 1 >= T || body(t + 1) < floor)))) return t;
   }
   return T;
 }
@@ -608,6 +609,16 @@ export interface StageBOut {
   mesh: { rest: ArrayBuffer; pose: ArrayBuffer };
 }
 
+/** The lifter's body when the left and right labels are mirrored (the detector took the back for the front): the
+ *  joints relabelled and turned round in depth. The lifter built a body facing the camera, and the same joints
+ *  under the other labels are that body's mirror image, not a body seen from behind (rendered deliveries from
+ *  behind: 3D joints 265 mm out as the mirror image, 190 turned round; lifting the relabelled joints afresh, 198).
+ *  `alt` is such a fresh lift, for a lifter that reads a back view properly; none is made at present. */
+function mirror3d(X: Arr3, alt: Arr3 | null): [Arr3, Arr3 | null] {
+  if (alt && alt.length === X.length) return [alt, X];
+  return [X.map((f) => H36M_FLIP.map((j) => [f[j][0], f[j][1], -f[j][2]])), null];
+}
+
 // left/right swapped for the arms only (shoulders, elbows, wrists), in COCO and H36M order
 const COCO_ARM_FLIP = [0, 1, 2, 3, 4, 6, 5, 8, 7, 10, 9, 11, 12, 13, 14, 15, 16];
 const H36M_ARM_FLIP = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 14, 15, 16, 11, 12, 13];
@@ -617,6 +628,7 @@ export async function stageB(A: StageA, overrides: Overrides = {}, onProgress?: 
   const prog = new Progress(onProgress);
   const meta = A.meta;
   let { X, seq, kp_s: kpS, kc } = A;
+  let Xalt: Arr3 | null = A.X_alt ?? null;
   const mot = A.motions, tsAll = A.timestamps;
   const f0 = meta.analysis_window.start, f1 = meta.analysis_window.end;
   const T = f1 - f0;
@@ -668,14 +680,15 @@ export async function stageB(A: StageA, overrides: Overrides = {}, onProgress?: 
     [arm, armConf, votes] = decideBowlingArm(kpS, kc, P, realFps, sweepSide, armWindow, true);
   } else {
     arm = opts.bowling_arm; armConf = 1; votes = { user: 1 };
-    const [, , av] = decideBowlingArm(kpS, kc, P, realFps, sweepSide, armWindow, true);
+    const [, , av, clearTop] = decideBowlingArm(kpS, kc, P, realFps, sweepSide, armWindow, true);
     const other = arm === "right" ? -1 : 1;
-    if (av.fast_high_2d === other && (av.speed_2d === other || av.over_top === other)) {
+    // (or the other arm plainly goes up and over and this one plainly does not, whatever the speed cues say)
+    if ((av.fast_high_2d === other && (av.speed_2d === other || av.over_top === other)) || (clearTop && av.over_top === other)) {
       // every cue says the *other* arm bowls: the detector labelled left/right as if the bowler faced the other
       // way (front/back ambiguity). Mirror the labels consistently in 2D and 3D.
       kpS = kpS.map((f) => COCO_FLIP.map((j) => f[j]));
       kc = kc.map((f) => COCO_FLIP.map((j) => f[j]));
-      X = X.map((f) => H36M_FLIP.map((j) => f[j]));
+      [X, Xalt] = mirror3d(X, Xalt);
       seq = seq.map((f) => H36M_FLIP.map((j) => f[j]));
       skel = reconstruct(X, h2d(seq), c2d(seq), height, realFps, { depthW });
       P = skel.joints;
@@ -788,7 +801,7 @@ export async function stageB(A: StageA, overrides: Overrides = {}, onProgress?: 
     kpM = kpM.map((f) => COCO_FLIP.map((j) => f[j])); lostM = lostM.map((f) => COCO_FLIP.map((j) => f[j]));
     kpS = kpS.map((f) => COCO_FLIP.map((j) => f[j]));
     kc = kc.map((f) => COCO_FLIP.map((j) => f[j]));
-    X = X.map((f) => H36M_FLIP.map((j) => f[j]));
+    [X, Xalt] = mirror3d(X, Xalt);
     seq = seq.map((f) => H36M_FLIP.map((j) => f[j]));
     skel = reconstruct(X, h2d(seq), c2d(seq), height, realFps, { depthW });
     P = skel.joints;

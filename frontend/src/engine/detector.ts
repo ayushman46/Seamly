@@ -49,7 +49,9 @@ async function hasWebGPU(): Promise<boolean> {
 const MODEL_COMMIT = "b0a4a3317406082026933694feb5cd4328deadbc";
 const MODEL_CDN = `https://cdn.jsdelivr.net/gh/ayushman46/Seamly@${MODEL_COMMIT}/frontend/public/models/`;
 const MODEL_RAW = `https://raw.githubusercontent.com/ayushman46/Seamly/${MODEL_COMMIT}/frontend/public/models/`;
-export const MODEL_SOURCES: string[] = [MODEL_CDN, MODEL_RAW, MODEL_BASE];
+// (a site served from this machine reads its own copy first: a development build then never pulls 170 MB per run)
+const LOCAL_SITE = typeof location !== "undefined" && /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+export const MODEL_SOURCES: string[] = LOCAL_SITE ? [MODEL_BASE, MODEL_CDN, MODEL_RAW] : [MODEL_CDN, MODEL_RAW, MODEL_BASE];
 // The crop model is RTMPose-l at 384x288: on real bowling clips, judged blind frame by frame, it was preferred to
 // RTMPose-m at 256x192 on 49 frames against 28 (docs/ACCURACY.md, 9p), for twice the download and about four times
 // the work per frame.
