@@ -819,8 +819,10 @@ Pitch found on 12 of 12 in 3 to 6 s. Mean error (worst): release height 3.8 cm (
 Chrome, with nothing marked: 81 ± 2 km/h against the gun's 80.9 (+0.6%), 80 ± 6 against 82.2 (−2.7%), 87 ± 3
 against 91.6 (−5.3%), and for the one fast bowler 148 ± 6 against 133.0 (+11.0%): 4.9% out on average. When these
 same clips had their creases marked by hand (§9f) the average was 6.9%. The pace ball is the hard one: at 25 frames
-a second it is seen twelve times, and a release moment known to half a frame is 6% of its flight to the pitch. Its ±
-is too small for that, and is the next thing to fix.
+a second it is seen twelve times, and a release moment known to half a frame is 7% of its flight to the pitch. Its ±
+was too small for that; the speed's range is now never tighter than the release moment allows (half a frame, or 6 ms
+at high frame rates, against the time the ball was followed for), which makes it 147 ± 11 and leaves all four balls
+within 1.5 of their own ranges. Spinners and clips at 50 fps and more are unchanged by it.
 
 **What still limits it.** Three things, none of them the pose model. *How far in front of the front foot the ball
 is let go* is not visible from behind: the app assumes the hand above the front ankle (what the three real side-on

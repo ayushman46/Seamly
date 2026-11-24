@@ -345,7 +345,16 @@ export function withDoubt(tracked: Tracked, cam: Camera, marks: Mark[], sighting
     const c = solveCameraPoints(marks.map((m) => ({ world: worldOf(m), px: [m.px[0] + sd * gauss(), m.px[1] + sd * gauss()] as Pt })), cam.w, cam.h, cam);
     if (isCamera(c)) alt.push(refit(c, sightings, shifts, h, upright));
   }
-  return withCameraDoubt(tracked, alt);
+  const out = withCameraDoubt(tracked, alt);
+  // The moment of release is known to about half a frame at 25 to 30 frames a second (a little better above), and the
+  // speed out of the hand cannot be surer than that moment is against the time the ball was followed for. A fast
+  // ball at 25 fps is in the air a quarter of a second before it pitches: half a frame is 7% of that. (A real
+  // 133 km/h ball came out at 148 with a stated range of 6; this makes it 11.) Spinners and higher frame rates are
+  // not changed: their fit's own range is already wider than this.
+  const span = out.pitch ? out.pitch.t : out.samples.length ? out.samples[out.samples.length - 1].t : NaN;   // seconds from the hand
+  const tDoubt = Math.max(0.006, 0.5 / Math.max(1, h.fps));
+  const floor = Number.isFinite(span) && span > 0.05 ? out.release.kmh.value * Math.min(0.2, tDoubt / span) : 0;
+  return floor > out.release.kmh.sigma ? { ...out, release: { ...out.release, kmh: { value: out.release.kmh.value, sigma: floor } } } : out;
 }
 
 /** What is kept with an analysis: the marks and sightings (enough to rebuild everything) and the headline figures. */
