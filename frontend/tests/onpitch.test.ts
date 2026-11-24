@@ -44,7 +44,9 @@ function bowler(t: number, frontHeel = FRONT, BACK: V3 = BACK0, turn: { degPerFr
   J[6] = [x + 0.2, SH_Y, az];
   const arm = (len: number): V3 => [x + 0.2 + len * Math.cos(th) * ux, SH_Y + len * Math.cos(th) * uy, az - len * Math.sin(th)];
   J[8] = arm(UA); J[10] = arm(UA + FA); J[7] = [x - 0.3, 1.2, pelvisZ]; J[9] = [x - 0.35, 0.95, pelvisZ];
-  const head: V3 = [x, H, pelvisZ];
+  // running in, the head is a quarter of the bowler's height ahead of the foot being left behind and rides 2.5% under
+  // standing height (what the measurement allows for); from the delivery stride on it is over the hips
+  const head: V3 = t < BFC ? [x, H / 1.025, zRun - 0.25 * H] : [x, H, pelvisZ];
   return { J, heelL, heelR, head };
 }
 function resultFor(cam: Camera, opts: { frontHeel?: V3; backHeel?: V3; ds?: number; pan?: number; turn?: { degPerFrame: number; topAfter: number } } = {}): AnalysisResult {

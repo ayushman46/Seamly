@@ -697,22 +697,22 @@ changes of §9l in; the rendered deliveries, where the answers are known exactly
 
 | Clip | Pitch found by, in | Release height | Stride, m | Front heel behind the line, cm | Height read, m | Ball, km/h | Speed gun on screen, km/h |
 |---|---|---|---|---|---|---|---|
-| International delivery a (Afghanistan bowling) | creases, 13 s | 2.11 ± 7 cm | 1.61 | +8 ± 13 |  |  |  |
-| International delivery b (Afghanistan bowling) | near creases, 15 s | 1.89 ± 6 cm | 1.44 | +12 ± 12 |  | 129 ± 5 |  |
-| International delivery c (Afghanistan bowling) | near creases, 7 s | 2.06 ± 6 cm | 1.71 | +46 ± 13 | 1.87 | 148 ± 6 | 133.0 (+11.0%) |
-| International delivery h (Afghanistan bowling) | near creases, 8 s | 2.10 ± 10 cm |  |  | 1.89 | 78 ± 6 | 82.2 (-4.8%) |
-| International delivery k (Afghanistan bowling) | creases, 16 s | 2.02 ± 6 cm | 0.96 | +30 ± 13 | 1.74 | 82 ± 2 | 80.9 (+0.8%) |
-| Bumrah, broadcast, 30 fps (1.78 m) | creases, 10 s | 2.09 ± 6 cm | 1.41 | +20 ± 14 | 1.82 |  |  |
+| International delivery a (Afghanistan bowling) | creases, 14 s | 2.11 ± 7 cm | 1.61 | +8 ± 13 |  |  |  |
+| International delivery b (Afghanistan bowling) | near creases, 14 s | 1.89 ± 6 cm | 1.44 | +12 ± 12 |  | 129 ± 5 |  |
+| International delivery c (Afghanistan bowling) | near creases, 7 s | 2.06 ± 6 cm | 1.71 | +46 ± 13 | 1.84 | 148 ± 6 | 133.0 (+11.0%) |
+| International delivery h (Afghanistan bowling) | near creases, 7 s | 2.15 ± 7 cm | 0.83 | +64 ± 13 | 1.85 | 80 ± 6 | 82.2 (-2.7%) |
+| International delivery k (Afghanistan bowling) | creases, 16 s | 2.02 ± 6 cm | 0.96 | +30 ± 13 | 1.70 | 81 ± 2 | 80.9 (+0.6%) |
+| Bumrah, broadcast, 30 fps (1.78 m) | creases, 9 s | 2.09 ± 6 cm | 1.41 | +20 ± 14 | 1.80 |  |  |
 | International delivery e (New Zealand bowling) | creases, 4 s | 2.00 ± 7 cm | 1.71 | +7 ± 13 |  | 129 ± 7 |  |
-| International delivery g (New Zealand bowling) | near creases, 14 s | 2.16 ± 7 cm | 1.39 | +31 ± 14 | 1.90 |  |  |
-| International delivery j (New Zealand bowling) | creases, 7 s | 2.04 ± 6 cm | 0.91 | +73 ± 14 | 1.80 | 87 ± 3 | 91.6 (-5.2%) |
-| International delivery k (New Zealand bowling) | creases, 7 s | 2.21 ± 9 cm |  |  | 1.94 |  |  |
+| International delivery g (New Zealand bowling) | near creases, 14 s | 2.15 ± 6 cm | 1.39 | +31 ± 14 | 1.87 |  |  |
+| International delivery j (New Zealand bowling) | creases, 7 s | 2.04 ± 6 cm | 0.91 | +73 ± 14 | 1.77 | 87 ± 3 | 91.6 (-5.3%) |
+| International delivery k (New Zealand bowling) | creases, 7 s | 2.20 ± 9 cm |  |  | 1.91 |  |  |
 | Shami, broadcast, 30 fps (1.73 m) | creases, 4 s | 1.87 ± 8 cm |  |  |  |  |  |
 | Bundled rendered delivery, 60 fps (release 1.90 m, 128 km/h) | near creases, 5 s | 1.91 ± 4 cm | 1.45 | +68 ± 8 |  | 131 ± 4 |  |
 
 Pitch found on 12 of 19 real clips filmed from behind. Not found (so nothing is measured, and the page says so): IPL net cut 9; IPL net cut 10 (after 4 s); County spinner from the stands (after 18 s); Net session, 60 fps (after 17 s); Bundled nets clip (artificial turf, no creases) (after 14 s); International delivery f (New Zealand bowling) (after 14 s); County seamer from the stands (after 14 s).
 
-Against the broadcaster's speed gun on 4 balls: 5.4% out on average, 11.0% at worst.
+Against the broadcaster's speed gun on 4 balls: 4.9% out on average, 11.0% at worst.
 
 Bumrah is 1.78 m: the app read 1.82 m off his run-up. It gives no height for Shami (1.73 m), whose run-up read
 32 km/h through the broadcast zoom, faster than anyone runs in, so nothing that leans on it is given. The two
@@ -793,6 +793,7 @@ limits the measurements; the rules that use it were. The app keeps its model, an
 | The ball not looked for on two of four broadcast clips with a speed gun reading, and 13.6% fast on a third | With the batter in front of his stumps the far end had nothing to fix it, and a camera worked out from the bowler's end alone is unsure how far away it stands: its four corners a pixel out move the far crease a metre (simulated: 65 to 120 cm). The far popping crease is now looked for where that camera expects it, a pale line with a batter and a keeper standing on part of it, and its height in the picture settles the distance | Far end 67 to 82 cm → 8 to 12 cm (rendered, corners nudged a pixel). The pace ball's pitching spot 8.98 → 9.20 m (9.22 when its creases were marked by hand), its speed 151 → 148 km/h against the gun's 133 |
 | The pitch slow to find, or missed, on broadcast clips where the bowler and umpire stand on the creases | A camera that moves had no bowler-free picture. Its frames are now laid over the release frame by their measured zoom and shift, and the middle value of each pixel taken with the bowler's box left out, as on a tripod; that picture is used for the bowler's end | One gun-timed clip: found in 7 s where it took 13; the other clips unchanged |
 | A fast bowler's ball never tried among a thousand moving things | The stretches of chain were tried longest first, sixty at most; a pace ball at 25 fps is eleven frames long. Those that begin at the bowling hand within a few frames of the release now go first | Balls kept on real broadcast clips: 2 → 6 |
+| The bowler's height 10 to 15 cm short from a tripod at chest height close behind, and 4 cm tall on a broadcast clip | The head was read at the distance of the foot being left behind. The hips are a short step ahead of that foot and a running bowler's head a little ahead of the hips, a quarter of the bowler's height in all: from a close, low camera that makes the bowler smaller, from a high one taller. The head is now read where it is, and 2.5% allowed for a runner riding under standing height | Rendered deliveries: worst 14.6 → 6.4 cm, and the same few centimetres short from every camera (the figure runs in more crouched than a person). Bumrah, 1.78 m: 1.82 → 1.80 |
 | Release height from the arm 4 to 14 cm high from a high camera | How far in front of the front foot the hand is cannot be seen from behind, and a high camera turns each 10 cm of that into 2 cm of height. Once the ball is tracked its own first sightings say more: the flight's start is now the release height shown | 6.4 → 3.8 cm on average; worst 13.8 → 6.2 |
 
 **Where that leaves it, hands off in Chrome** (the twelve rendered deliveries; nothing marked, nothing entered):
@@ -804,22 +805,15 @@ limits the measurements; the rules that use it were. The app keeps its model, an
 | Phone on a tall tripod, 720p, 120 fps, 1.95 m bowler | 4 s | 2.18 (2.16) | -7 | 1.83 (1.68) | 143 ± 5 (140) | -15 / -0 |
 | Phone behind the umpire, 1080p, 60 fps, 1.80 m bowler | 5 s | 2.01 (1.99) | -3 | 1.68 (1.62) | 127 ± 4 (128) | +12 / -1 |
 | Phone behind the umpire, 1080p, 30 fps, 1.70 m bowler | 4 s | 1.88 (1.85) | +4 | 1.65 (1.65) | 118 ± 4 (118) | +14 / -1 |
-| Phone behind the umpire, 1080p, 60 fps, 1.90 m bowler | 6 s | 2.13 (2.09) | -1 | 1.68 (1.66) | 133 ± 4 (135) | +20 / +0 |
-| Tripod at chest height, 1080p, 60 fps, 1.80 m bowler | 5 s | 2.01 (1.99) | +3 | 1.73 (1.62) | far end out of the picture: not looked for |  |
+| Phone behind the umpire, 1080p, 60 fps, 1.90 m bowler | 5 s | 2.13 (2.09) | -1 | 1.68 (1.66) | 133 ± 4 (135) | +20 / +0 |
+| Tripod at chest height, 1080p, 60 fps, 1.80 m bowler | 5 s | 2.02 (1.99) | +3 | 1.73 (1.62) | far end out of the picture: not looked for |  |
 | Tripod at chest height, 1080p, 30 fps, 1.70 m bowler | 5 s | 1.89 (1.85) | +4 | 1.63 (1.65) | far end out of the picture: not looked for |  |
 | Tripod at chest height, 1080p, 60 fps, 1.92 m bowler | 5 s | 2.15 (2.12) | +3 | 1.67 (1.67) | far end out of the picture: not looked for |  |
 | Broadcast gantry, zooming, 50 fps, 1.80 m bowler | 6 s | 2.02 (1.98) | +10 | 1.56 (1.63) | 128 ± 3 (128) | +3 / +1 |
-| Broadcast gantry, zooming, 25 fps, 1.90 m bowler | 6 s | 2.12 (2.06) | +8 | 1.82 (1.69) | 143 ± 5 (140) | +3 / +1 |
+| Broadcast gantry, zooming, 25 fps, 1.90 m bowler | 5 s | 2.12 (2.06) | +8 | 1.82 (1.69) | 143 ± 5 (140) | +3 / +1 |
 | Broadcast gantry, zooming, 30 fps, 1.75 m bowler | 5 s | 1.96 (1.91) | +12 | 1.59 (1.66) | 139 ± 4 (136) | +2 / +1 |
 
-Pitch found on 12 of 12 in 3 to 6 s. Mean error (worst): release height 3.8 cm (6.2), from the arm alone 6.4 (13.8); front heel 5.3 cm (11.8); stride 5.9 cm (14.8); ball speed 1.5% (3.3) on 9 balls; pitching length 9.9 cm (20.0); line 0.7 cm (1.5).
-
-**Against the speed gun.** Four of the international clips end on the broadcaster's speed graphic. Hands off, in
-Chrome, with nothing marked: 82 ± 2 km/h against the gun's 80.9 (+0.8%), 78 ± 6 against 82.2 (−4.8%), 87 ± 3
-against 91.6 (−5.2%), and for the one fast bowler 148 ± 6 against 133.0 (+11.0%): 5.4% out on average. When these
-same clips had their creases marked by hand (§9f) the average was 6.9% on the three spinners' balls and the pace
-ball. The pace ball is the hard one: at 25 frames a second it is seen twelve times, and a release moment known to
-half a frame is 6% of its flight to the pitch. Its ± is too small for that, and is the next thing to fix.
+Pitch found on 12 of 12 in 3 to 6 s. Mean error (worst): release height 3.8 cm (6.1), from the arm alone 6.3 (13.5); front heel 5.3 cm (11.8); stride 5.9 cm (14.8); ball speed 1.5% (3.3) on 9 balls; pitching length 9.9 cm (20.0); line 0.7 cm (1.5).
 
 **What still limits it.** Three things, none of them the pose model. *How far in front of the front foot the ball
 is let go* is not visible from behind: the app assumes the hand above the front ankle (what the three real side-on

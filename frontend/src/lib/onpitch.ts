@@ -59,7 +59,7 @@ const HAND_AHEAD = 0.0, HAND_DEPTH_SIGMA = 0.25;
 // the hand's reach to the ball a third of the forearm again (Drillis and Contini's segment lengths).
 const ARM_OF_HEIGHT = 0.186 + 1.35 * 0.146;
 /** Switches for trying one way of measuring against another (tests and the local accuracy loop only). */
-export const TUNE: { release: "arc" | "fit" | "blend"; planeZ: number | null; timing: "sides" | "fit"; arms: "raw" | "smooth" } = { release: "blend", planeZ: null, timing: "fit", arms: "raw" };
+export const TUNE: { release: "arc" | "fit" | "blend"; planeZ: number | null; timing: "sides" | "fit"; arms: "raw" | "smooth"; stature: "new" | "old" } = { release: "blend", planeZ: null, timing: "fit", arms: "raw", stature: "new" };
 const L_SH = 5, R_SH = 6, L_EL = 7, R_EL = 8, L_WR = 9, R_WR = 10, L_HIP = 11, R_HIP = 12, L_AN = 15, R_AN = 16;
 // COCO joint -> the H36M joint the 3D estimate has for it
 const COCO_TO_H36M = [9, 9, 9, 9, 9, 11, 14, 12, 15, 13, 16, 4, 1, 5, 2, 6, 3];
@@ -263,19 +263,32 @@ export function measureOnPitch(r: AnalysisResult, cam: Camera, markFrame: number
   // ---- the bowler's height: the top of the head above the ground through the run-up ----
   let stature: Est | null = null;
   if (r.feet && line) {
-    const hs: number[] = [];
-    for (let t = Math.max(0, runEnd - Math.round(0.8 * fps)); t < runEnd; t++) {
-      const h = r.feet[t]?.[0], z = line.a + line.b * t;
-      if (!h || h[2] < 0.3 || z == null || !inView(h)) continue;
-      const p = onPlaneZ(cam, map(t, [h[0], h[1]]), z);
-      if (p) hs.push(p[1]);
+    // The head is not over the foot the line follows. That line runs through the feet as they are left behind (of
+    // the two feet, the one nearer the camera); the hips are a short step ahead of it and a running bowler's head a
+    // little ahead of the hips: about a quarter of the bowler's height in all. Reading the head on the foot's own
+    // plane makes it too high from a camera looking down (Bumrah, 1.78 m, read 1.82) and too small from a camera
+    // close behind at chest height (a 1.80 m figure read 1.68). So it is read where it is, a first time for a
+    // bowler of ordinary height and again with the height that gives.
+    let hs: number[] = [];
+    for (let pass = 0, H0 = 1.8; pass < 2; pass++) {
+      hs = [];
+      const ahead = TUNE.stature === "old" ? 0 : 0.25 * H0;
+      for (let t = Math.max(0, runEnd - Math.round(0.8 * fps)); t < runEnd; t++) {
+        const h = r.feet[t]?.[0], z = line.a + line.b * t;
+        if (!h || h[2] < 0.3 || z == null || !inView(h)) continue;
+        const p = onPlaneZ(cam, map(t, [h[0], h[1]]), z - ahead);
+        if (p) hs.push(p[1]);
+      }
+      if (hs.length < 5) break;
+      H0 = Math.max(1.3, Math.min(2.2, quantile(hs, 0.75) * (TUNE.stature === "old" ? 1 : 1.025)));
     }
     if (hs.length >= 5) {
       // running, the head rides a little below standing height for most of each stride and reaches it at the top
       const top = onPlaneZ(cam, map(runEnd, [r.feet[runEnd]?.[0]?.[0] ?? 0, r.feet[runEnd]?.[0]?.[1] ?? 0]), line.a + line.b * runEnd);
       const top2 = onPlaneZ(cam, map(runEnd, [r.feet[runEnd]?.[0]?.[0] ?? 0, r.feet[runEnd]?.[0]?.[1] ?? 0]), line.a + line.b * runEnd + Math.max(0.25, line.rms));
       const dd = top && top2 ? Math.abs(top2[1] - top[1]) : 0.05;
-      stature = { value: quantile(hs, 0.75), sigma: Math.max(0.06, Math.hypot(dd, 0.02, (quantile(hs, 0.9) - quantile(hs, 0.5)) / 2)) };
+      // (and a bowler running in rides a few centimetres under standing height: 2.5% is allowed for it)
+      stature = { value: quantile(hs, 0.75) * (TUNE.stature === "old" ? 1 : 1.025), sigma: Math.max(0.06, Math.hypot(dd, 0.02, (quantile(hs, 0.9) - quantile(hs, 0.5)) / 2)) };
     }
   }
   (globalThis as { __onpDbg2?: (x: unknown) => void }).__onpDbg2?.({ line, runKmh, near, stature, runEnd, f0 });
