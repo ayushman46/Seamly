@@ -46,7 +46,7 @@ async function hasWebGPU(): Promise<boolean> {
 // serves files up to 20 MB (hence the parts) and refuses some of them for a repository this size ("package size
 // exceeded"), which is what the second source is for.
 // When a model file changes, point MODEL_COMMIT at a commit that contains the new file.
-const MODEL_COMMIT = "0704330bc412b896ae9985268b9cb7bf5127e8b4";
+const MODEL_COMMIT = "b0a4a3317406082026933694feb5cd4328deadbc";
 const MODEL_CDN = `https://cdn.jsdelivr.net/gh/ayushman46/Seamly@${MODEL_COMMIT}/frontend/public/models/`;
 const MODEL_RAW = `https://raw.githubusercontent.com/ayushman46/Seamly/${MODEL_COMMIT}/frontend/public/models/`;
 export const MODEL_SOURCES: string[] = [MODEL_CDN, MODEL_RAW, MODEL_BASE];
