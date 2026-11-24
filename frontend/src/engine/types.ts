@@ -56,9 +56,11 @@ export interface Events {
   ft: number | null;
   confidence: Partial<Record<EventKey, number>>;
   method: Partial<Record<EventKey, string>>;
+  /** the frame the back foot has stopped moving (bfc is its first touch, a little earlier); for measuring where it is */
+  bfcSettled?: number | null;
 }
 
-export interface EventOut { frame: number; time: number; confidence: number; method: string }
+export interface EventOut { frame: number; time: number; confidence: number; method: string; settled?: number }
 
 /** Events.as_dict: absolute frame numbers and timestamps. */
 export function eventsAsDict(ev: Events, f0: number, timestamps: number[]): Record<EventKey, EventOut | null> {
@@ -68,6 +70,7 @@ export function eventsAsDict(ev: Events, f0: number, timestamps: number[]): Reco
     out[k] = v === null || v === undefined ? null : {
       frame: v + f0, time: round(timestamps[Math.min(timestamps.length - 1, v + f0)], 4),
       confidence: round(ev.confidence[k] ?? 0.5, 2), method: ev.method[k] ?? "auto",
+      ...(k === "bfc" && ev.bfcSettled != null && ev.bfcSettled !== v ? { settled: ev.bfcSettled + f0 } : {}),
     };
   }
   return out;

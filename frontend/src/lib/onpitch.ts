@@ -146,7 +146,9 @@ function bodyPx(r: AnalysisResult, k: number): number {
 export function measureOnPitch(r: AnalysisResult, cam: Camera, markFrame: number, shifts?: FrameShifts | null): OnPitch | null {
   const T = r.keypoints2d.xy.length, f0 = r.frames.start;
   const ev = (k: "bfc" | "ffc" | "br") => { const f = r.events[k]?.frame; return f == null ? null : Math.max(0, Math.min(T - 1, f - f0)); };
-  const bfc = ev("bfc"), ffc = ev("ffc"), br = ev("br");
+  // (the back foot from where it has stopped moving, which is a frame or two after its first touch)
+  const bfcS = r.events.bfc?.settled, ffc = ev("ffc"), br = ev("br");
+  const bfc = bfcS != null ? Math.max(0, Math.min(T - 1, bfcS - f0)) : ev("bfc");
   if (br === null) return null;
   const { map, still } = frameMaps(r, cam, markFrame, shifts);
   // a point the model placed at the very edge of the picture is a guess at something out of view

@@ -975,6 +975,34 @@ the seen ones worse. The honest limit from one camera is to draw them as estimat
 camera, side-on, on the same delivery; or real bowling footage with measured joints to train on, which does not
 exist here.
 
+## 9o. Foot landings against frames labelled by eye on real clips (2026-11-24)
+
+The raters of 9n thought the foot landings early or late on a quarter of the clips. So the true frames were labelled:
+for each of 29 real clips with the feet in the picture, eleven consecutive frames round the app's own landing frame,
+numbered, the app's frame at a random place among them, and a vision model (Opus) asked for the first frame the foot
+touches the ground. Done twice, by separate labellers on differently shuffled strips. The two agreed to a frame on 16
+of 20 front-foot landings and 16 of 18 back-foot landings; those are used, the truth being their mean. All these
+clips are at 24 to 30 frames a second, so a frame is 33 to 42 ms. Tools: `frontend/_local/loop/armnet/footsheets.py`,
+`footeval.py`.
+
+| | App minus labelled, median | Typical error | Within 40 ms | Later / earlier than labelled |
+|---|---|---|---|---|
+| Front-foot landing | 0 ms | 34 ms | 13 of 16 | 5 / 7 |
+| Back-foot landing, before | +55 ms | 68 ms | 5 of 16 | 14 / 2 |
+| Back-foot landing, after | 0 ms | 44 ms | 10 of 16 | 7 / 6 |
+
+**What was wrong.** The app times a landing by when the ankle stops moving. The front foot lands on the heel and
+stops at once. The back foot lands on the toe or its outside edge and rolls flat, so it stops about 55 ms after it
+first touches.
+
+**What changed.** At under 45 frames a second the back-foot contact is put 55 ms before the foot stops (one frame at
+25, two at 30). The frame the foot stops is kept beside it (`events.bfc.settled`) and is what the on-pitch
+measurement uses for where the foot is, so no measured position changed (scorecard: the only differences are the
+back-foot event on two rendered clips, whose figure's foot stops the instant it lands).
+
+**Limits.** Sixteen clips, labelled by a vision model, not by a person with a frame-by-frame viewer; a label is good
+to about a frame. Nothing is known yet at 50 frames a second and over, where the change is not applied.
+
 ## 10. Still to do
 
 - Telling an umpire's signal or a fielder from a bowler when the clip has no clear delivery near the camera (§9j), and the

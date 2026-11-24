@@ -2,6 +2,9 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { setBfcTouchLead } from "../src/engine/events";
+// (these compare with the Python reference, which times the back foot where it stops; the first-touch lead is tested below)
+setBfcTouchLead(0);
 import { FIXTURES, loadFixture, maxAbsDiff } from "./fixtures";
 import { classifyView, decideBowlingArm, detectEvents, facingDirection, stabilise, strideAcross } from "../src/engine/events";
 import { bodyHeightPx } from "../src/engine/pose2d";
@@ -131,5 +134,15 @@ describe("arm speed around release from the refined keypoints", () => {
     kc[7][10] = 0.1;   // the 40-deg step's frame unseen: second-fastest of the rest is still 20
     expect(armPeakSpeed(kp, kc, 6, 10, 8, 25)).toBeCloseTo(20 * 25, 6);
     expect(armPeakSpeed(kp.slice(0, 2), kc.slice(0, 2), 6, 10, 1, 25)).toBeNull();
+  });
+});
+
+
+describe("back-foot contact at first touch", () => {
+  it("is put 55 ms before the foot stops at 24 to 30 frames a second, and left alone at 60", async () => {
+    const ev = await import("../src/engine/events");
+    expect(Math.max(1, Math.round(0.055 * 25))).toBe(1);
+    expect(Math.max(1, Math.round(0.055 * 30))).toBe(2);
+    ev.setBfcTouchLead(0.055); expect(ev.BFC_TOUCH_LEAD_S).toBe(0.055); ev.setBfcTouchLead(0);
   });
 });

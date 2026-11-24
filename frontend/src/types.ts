@@ -7,6 +7,8 @@ export interface EventInfo {
   time: number;
   confidence: number;
   method: string;
+  /** back-foot contact only: the frame the foot has stopped moving, when later than its first touch (`frame`) */
+  settled?: number;
 }
 
 export interface Metric {

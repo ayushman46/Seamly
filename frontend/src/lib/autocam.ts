@@ -131,7 +131,7 @@ export async function autoCamera(reader: FrameReader, r: AnalysisResult, onProgr
   if (laidOver && looks.length > 1) { const [bgLook, first] = looks; looks[0] = first; looks[1] = bgLook; }
 
   // where the bowler's back foot comes down, in each picture: the bowler's wicket is beside it and about 40% of the bowler's height
-  const bfc = r.events.bfc?.frame ?? r.events.ffc?.frame ?? br, tb = clamp(bfc) - f0, kb = r.keypoints2d.xy[tb];
+  const bfc = r.events.bfc?.settled ?? r.events.bfc?.frame ?? r.events.ffc?.frame ?? br, tb = clamp(bfc) - f0, kb = r.keypoints2d.xy[tb];
   const foot = (frame: number) => {
     const sh = shiftsFor(frame), near = [...sh.keys()].reduce((a, b) => (Math.abs(b - (tb + f0)) < Math.abs(a - (tb + f0)) ? b : a));
     const m = sh.get(near)!, at = (j: number) => applyShift(m as Shift, [kb[j][0] * kd, kb[j][1] * kd]);

@@ -22,6 +22,10 @@ import { round } from "./util";
 
 export const BFC_FFC_MS: [number, number] = [197.0, 59.0];
 export const FFC_BR_MS: [number, number] = [126.0, 37.0];
+/** How long before the back foot stops moving it first touches the ground (seconds); see detectEvents. */
+export let BFC_TOUCH_LEAD_S = 0.055;
+/** (for the accuracy loop's experiments) */
+export function setBfcTouchLead(s: number): void { BFC_TOUCH_LEAD_S = s; }
 
 // ---------------- numpy-exact helpers ----------------
 /** np.degrees / np.radians (x * (180 / pi), as numpy computes them). */
@@ -452,11 +456,20 @@ export function detectEvents(kp: Arr3, kc: Arr2, kpStab: Arr3, P: Arr3, side: Si
       if (best === null || score > best[0]) best = [score, f, b, sf, sb];
     }
   }
-  const [, ffc, bfc, sf, sb] = best!;
+  const [, ffc, bfcStill, sf, sb] = best!;
   if (sf === 0.0) meth.ffc = "timing_prior";
   if (sb === 0.0) meth.bfc = "timing_prior";
   meth.ffc ??= "foot_stops_stabilised_2d";
   meth.bfc ??= "foot_stops_stabilised_2d";
+  // The back foot touches down before it stops moving: it lands on the toe or the outside edge and rolls flat. The
+  // cue above finds where it stops. Against the first touch labelled by eye on 16 real clips at 24 to 30 frames a
+  // second (two independent labellings, agreeing to a frame), that was late on 14, by 55 ms at the median; the front
+  // foot, which lands heel first and stops at once, was not late (median 0). So the back-foot contact is put that
+  // much earlier. Only at these frame rates: there are no labels yet at 50 and over, where the cue's own windows
+  // are shorter. (A rendered figure's foot stops the instant it lands, so this cannot be seen on rendered clips.)
+  let bfc = bfcStill;
+  if (meth.bfc === "foot_stops_stabilised_2d" && fixed.bfc === undefined && fps < 45 && BFC_TOUCH_LEAD_S > 0)
+    bfc = Math.max(0, bfcStill - Math.max(1, Math.round(BFC_TOUCH_LEAD_S * fps)));
   conf.ffc = npClip(0.25 + 0.1 * Math.min(sf, 4) + 0.3 * meanN(kcAt(ffc - 1, ffc + 2, side.c_fan)), 0.2, 0.85);
   conf.bfc = npClip(0.2 + 0.08 * Math.min(sb, 4) + 0.3 * meanN(kcAt(bfc - 1, bfc + 2, side.c_ban)), 0.15, 0.8);
   // contacts placed from typical timing (no clear foot-strike signal) are estimates, not measurements
@@ -470,7 +483,7 @@ export function detectEvents(kp: Arr3, kc: Arr2, kpStab: Arr3, P: Arr3, side: Si
   meth.ft = ftC.length ? "back_foot_recovery_step" : "fixed_offset";
   conf.ft = ftC.length ? 0.6 : 0.3;
   for (const k of Object.keys(fixed) as EventKey[]) { meth[k] = "user"; conf[k] = 1.0; }
-  return { bfc, ffc, uah, br, ft, confidence: conf, method: meth };
+  return { bfc, ffc, uah, br, ft, confidence: conf, method: meth, bfcSettled: fixed.bfc === undefined ? bfcStill : bfc };
 }
 
 /** Anterior direction (horizontal) from the hip line: up x (R_hip - L_hip). */
